@@ -784,8 +784,11 @@ def calculation(language: str, method: str, options: dict | None, *, label_en: s
     from workspace_methods import METHODS
     from workspace_text import label
 
+    from research_workflow import METHOD_ALIASES
+
     if not method:
         return "—"
+    method = METHOD_ALIASES.get(method, method)
     options = dict(options or {})
     parts = [label(language, label_en or method_label(method, options))]
     if tests:

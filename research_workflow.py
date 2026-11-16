@@ -489,12 +489,19 @@ def open_checks(checks) -> tuple[Check, ...]:
     return tuple(c for c in checks if c.needs_decision and c.key != "H-ASSUMPTIONS-OPEN")
 
 
+# Saved method keys that are not METHODS keys, and the method they name.
+METHOD_ALIASES = {"posthoc": "omnibus"}
+
+
 def method_title(key: str, options: dict | None = None) -> str:
     """The English title of a method, or of its chosen variant, as Analyze
     shows it (``Spearman’s ρ`` for a batch of Spearman correlations)."""
     from workspace_methods import METHODS
 
-    spec = METHODS.get(key)
+    # Review W3: an omnibus result re-saved with its post-hoc tests keeps
+    # the method key "posthoc" (how the project reproduces it); its name is
+    # the omnibus test's.
+    spec = METHODS.get(METHOD_ALIASES.get(key, key))
     if spec is None:
         return key or "—"
     for option in spec.options:

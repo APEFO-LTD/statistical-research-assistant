@@ -608,5 +608,23 @@ class W1FooterKeepsTheAnalysisOnScreenTests(Case):
         self.assertEqual(ws.app.route, "analyze")
 
 
+class W3PostHocTitleTests(unittest.TestCase):
+    """W3: after post-hoc tests the report heads the result with the
+    translated method title, never the raw key ``posthoc``."""
+
+    def test_post_hoc_tests_keep_the_name_of_the_method(self):
+        import research_workflow as rw
+
+        roles, options = {"outcome": "stress_q1", "group": "group"}, {"method": "kruskal"}
+        for language in ("en", "lv", "ru"):
+            with self.subTest(language=language):
+                title = rw.task_title(language, "posthoc", roles, options)
+                self.assertEqual(title, rw.task_title(language, "omnibus", roles, options))
+                self.assertNotIn("posthoc", title)
+                calc = rr.calculation(language, "posthoc", options)
+                self.assertNotIn("posthoc", calc)
+                self.assertEqual(calc, rr.calculation(language, "omnibus", options))
+
+
 if __name__ == "__main__":
     unittest.main()
