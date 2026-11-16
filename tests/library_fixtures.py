@@ -443,7 +443,11 @@ def pdf(document: CorpusDocument, *, image_page: tuple[str, ...] | None = None,
 
     pages = max(p.page for p in document.passages)
     stream = BytesIO()
-    with matplotlib.rc_context(PINNED_STYLE), PdfPages(stream) as out:
+    # No creation date: the same document gives the same bytes (and SHA-256)
+    # whenever it is written; a timestamp made the duplicate check depend on
+    # whether two writes fell in the same second (a slow CI runner).
+    with matplotlib.rc_context(PINNED_STYLE), PdfPages(
+            stream, metadata={"CreationDate": None}) as out:
         for number in range(1, pages + 1):
             lines, y = [], 0.92
             if number == 1:

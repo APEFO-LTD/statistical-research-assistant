@@ -310,6 +310,17 @@ class StoreTests(LibraryCase):
         self.assertEqual(library.counts(), (1, first.passages))
         self.assertEqual(len(list((library.folder / rl.SOURCES).iterdir())), 1)
 
+    def test_the_pdf_fixture_is_the_same_bytes_whenever_it_is_written(self):
+        """CI: ``test_adding_shows_progress_then_the_documents`` adds the same
+        PDF twice and expects a duplicate. The fixture carried a creation
+        date in whole seconds, so two writes on either side of a second
+        boundary (a slow runner) were different files to the library."""
+        with mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "1700000000"}):
+            first = fx.pdf(fx.EN_NOTES)
+        with mock.patch.dict(os.environ, {"SOURCE_DATE_EPOCH": "1700000001"}):
+            second = fx.pdf(fx.EN_NOTES)
+        self.assertEqual(rl.sha256_bytes(first), rl.sha256_bytes(second))
+
     def test_a_revision_of_the_same_file_gets_a_version_label(self):
         library = self.library()
         folder = self.sources / "v"
