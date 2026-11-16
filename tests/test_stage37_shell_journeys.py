@@ -286,7 +286,10 @@ class JourneyListTests(unittest.TestCase):
     def test_the_stage37_journeys_follow_the_others(self):
         names = list(e2e.JOURNEYS)
         self.assertEqual(names[16:18], ["confirmations", "report-composition"])
-        self.assertEqual(names[18:20], ["startup-workspace", "settings-language"])
+        # Stage 37 (#68): UX 1/2's journeys, then UX 2/2's, in this order.
+        self.assertEqual(names[18:], ["startup-workspace", "settings-language",
+                                      "variable-picker"])
+        self.assertEqual(len(names), 21)
         self.assertTrue(set(names).isdisjoint(e2e.STARTS_ITSELF))
 
     def test_a_segmented_button_is_found_with_or_without_its_tooltip(self):

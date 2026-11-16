@@ -552,6 +552,7 @@ class WorkspaceApp:
                     ("analyze", "variables"): "step-variables",
                     ("analyze", "task-result"): "task-result",
                     ("project", "hypotheses"): "project-hypotheses",
+                    ("results", "detail"): "result-detail",
                     ("settings", "ai"): "settings-ai"}
     section: str | None = None
 
@@ -1246,6 +1247,7 @@ class DataPage:
         self.opened: set[str] = set()
         self.sample = SAMPLES[0][0]
         self._preparation = None
+        self.items_picker = None       # the scale items' variable panel (Stage 37)
         from workspace_groups import GroupsCard
 
         self.groups = GroupsCard(app)      # Stage 36.3: groups from a scale
@@ -1521,14 +1523,23 @@ class DataPage:
                                 "success")
                 self.app.render()
 
-            # The theme's text colour: readable in the light and the dark theme (D6).
+            # Stage 37 (Issue #68): a scale's items are chosen in the variable
+            # panel (search, name groups, ranges), not one box at a time; the
+            # theme's text colour keeps the caption readable in the light and
+            # the dark theme (D6).
+            from workspace_variables import PreparationItems
+
+            self.items_picker = PreparationItems(self.app)
             self._preparation = build_preparation_workspace(self.app.page, load_dataframe=adopt,
-                                                            with_steps=True, caption_color=None)
+                                                            with_steps=True, caption_color=None,
+                                                            item_picker=self.items_picker)
             self._preparation_df = None
         panel, reset = self._preparation
         if self._preparation_df is not self.app.session.df:
             reset(self.app.session.df, self.app.session.source_path)
             self._preparation_df = self.app.session.df
+        elif self.items_picker is not None:
+            self.items_picker.refresh()          # the language and theme on screen
         return panel
 
     def _open_preparation(self, e=None):
