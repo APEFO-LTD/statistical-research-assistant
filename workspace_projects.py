@@ -312,10 +312,15 @@ class ProjectHub:
         self._done(self.app.t("project.closed"))
 
     async def duplicate(self, project_id: str):
+        warnings: list[str] = []
         try:
-            info = await asyncio.to_thread(self.binding.duplicate, project_id)
+            info = await asyncio.to_thread(self.binding.duplicate, project_id, warnings)
         except (ProjectError, OSError) as error:
             self._failed(error)
+            return
+        if warnings:          # a research library that cannot be read was left out
+            self._done(self.app.t("project.duplicated", title=info.title) + " "
+                       + self.app.t("project.library_left_out_copy"), "warning")
             return
         self._done(self.app.t("project.duplicated", title=info.title))
 
@@ -366,11 +371,16 @@ class ProjectHub:
 
     async def backup(self, project_id: str, title: str):
         app = self.app
+        warnings: list[str] = []
         outcome = await app.save_file(
             app.t("project.backup_title"), _file_name(title), "sra",
-            lambda path: self.binding.export(project_id, path, app.survey_root),
+            lambda path: self.binding.export(project_id, path, app.survey_root, warnings),
             announce=lambda path: app.t("project.backup_saved", path=path))
-        self._done(outcome.message, outcome.tone)
+        message, tone = outcome.message, outcome.tone
+        if warnings and outcome.saved:   # a research library that cannot be read was left out
+            message, tone = message + " " + app.t("project.library_left_out_backup"), "warning"
+            app.status(message, tone)
+        self._done(message, tone)
 
     def confirm_copy_older(self, project_id: str, title: str):
         """Stage 37.0b (design §8.6, AC-11): a copy that version 36.x opens.
@@ -518,7 +528,7 @@ class ProjectPage:
         views = self.hypotheses.views()
         body += [self._next(datasets), self._question(), self.plan.build(),
                  self.hypotheses.list_card(views), self._sources(datasets), self._questionnaires(),
-                 self._results(), self._report()]
+                 self._results(), self._report(), self._library()]
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="project-dashboard",
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
@@ -715,6 +725,12 @@ class ProjectPage:
     def _show(self, entry_id: int):
         self.app.session.selected_result = entry_id
         self.app.navigate("results")
+
+    def _library(self) -> ft.Control:
+        """Stage 37.3: the project's research library (its own page)."""
+        from workspace_library import project_card
+
+        return project_card(self.app)
 
     def _report(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session

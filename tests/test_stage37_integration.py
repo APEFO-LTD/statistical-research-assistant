@@ -11,6 +11,10 @@ the integrated tree (docs/STAGE37_INTEGRATION.md):
   quantities unrounded with their bootstrap seed and 0b's hypothesis
   snapshot in its provenance; the reproducibility bundle's Word report holds
   0b's hypothesis rows.
+* library × export: the research library's backup choice (in the library
+  folder) and the export choices (in the preferences file) are separate; the
+  reproducibility bundle never carries the library, whatever the backup
+  choice, while a .sra backup carries it only when chosen.
 
 Synthetic data only.
 """
@@ -164,6 +168,52 @@ class ExportTests(TwoResults):
         self.assertIn("H1 (primary): " + H1, text)
         self.assertIn("Mediation (PROCESS-equivalent Model 4)", text)
         self.assertEqual(len(manifest["analyses"]), 2)
+
+
+
+class LibraryExportTests(unittest.TestCase):
+    def test_the_backup_choice_and_the_export_bundle_do_not_collide(self):
+        import library_fixtures as lfx
+        import research_library as rl
+        import stage36_fixtures as fx
+        from test_workspace_library import picked
+        from workspace_export import preferences_file
+        from workspace_harness import Workspace
+
+        ws = Workspace()
+        self.addCleanup(ws.close)
+        ws.click("nav-home")
+        ws.type("project-new-title", "Fictional library and export study")
+        ws.click("project-create")
+        project = ws.app.projects.project
+        ws.app.navigate("project")
+        ws.click("project-library-open")
+        page = ws.app.pages["library"]
+        document = lfx.write(lfx.EN_NOTES, ws.root / "documents", "txt")
+        self.assertTrue(ws.run(page.add_files(picked(document))))
+        ws.check("library-backup", True)
+        self.assertTrue(rl.travels(project.path))
+        self.assertTrue(ws.run(ws.app.load_path(str(fx.fixture(fx.CSV)))))
+        ws.click("nav-data")
+        ws.choose("export-format-data", "bundle")
+        ws.click("export-save-data")
+        with zipfile.ZipFile(ws.saved[-1]) as archive:
+            names = archive.namelist()
+        self.assertTrue(any(n.startswith("data/") for n in names), names)
+        self.assertFalse([n for n in names if "library" in n.lower()
+                          or n.endswith((".sqlite3", "backup.json"))], names)
+        # Each choice is kept where its own branch keeps it, untouched by the other.
+        self.assertTrue(rl.travels(project.path), "exporting leaves the backup choice")
+        remembered = json.loads(preferences_file().read_text(encoding="utf-8"))
+        self.assertNotIn("library", json.dumps(remembered).lower())
+        backup = ws.app.projects.store.export_package(project.id, ws.root / "with.sra")
+        with zipfile.ZipFile(backup) as archive:
+            self.assertIn("project/library/backup.json", archive.namelist())
+        ws.app.navigate("library")
+        ws.check("library-backup", False)
+        self.assertFalse(rl.travels(project.path))
+        self.assertEqual(json.loads(preferences_file().read_text(encoding="utf-8")),
+                         remembered, "the backup choice leaves the export choices")
 
 
 if __name__ == "__main__":

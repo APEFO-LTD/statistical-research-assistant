@@ -70,8 +70,8 @@ def notes_value(ws) -> str:
 
 
 # The Stage 37 journeys after the 18 of the release candidate, in the order of
-# the integration merges (0b, export; then the library and the UX journeys).
-STAGE37_JOURNEYS = ["stage37-hypothesis", "export-data"]
+# the integration merges (0b, export, the library; then the UX journeys).
+STAGE37_JOURNEYS = ["stage37-hypothesis", "export-data", "research-library"]
 
 
 class JourneyOrderTests(unittest.TestCase):

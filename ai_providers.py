@@ -87,7 +87,14 @@ class Reply:
 
 def _request(provider: str, method: str, path: str, key: str, *, body: dict | None = None,
              cancel: threading.Event | None = None, timeout: float = TIMEOUT,
-             opener=None, base: str | None = None) -> dict:
+             opener=None, base: str | None = None, resend: bool = True) -> dict:
+    """One API call. A POST that may have reached the provider is never sent
+    again on a lost reply (the connection closed, reset or timed out after
+    it went out): that is reported as ``uncertain`` (or ``timeout``).
+    ``resend=False`` (Ask with sources: "Send sends exactly this request,
+    once") also leaves a 429/5xx refusal to the researcher instead of
+    repeating the request; only a connection that was never made is tried
+    again."""
     info = PROVIDERS[provider]
     url = (base or f"https://{info.host}") + path
     parts = urlsplit(url)
@@ -125,7 +132,8 @@ def _request(provider: str, method: str, path: str, key: str, *, body: dict | No
                 # the model cannot answer it (a model for images, audio or
                 # tools, or for another API); sent again, it fails the same way.
                 raise ProviderError("unsupported", f"HTTP {status}") from None
-            if (status == 429 or status >= 500) and attempt < RETRIES:
+            if ((status == 429 or status >= 500) and attempt < RETRIES
+                    and (resend or method != "POST")):
                 wait = _retry_after(error.headers.get("Retry-After"), attempt)
                 if cancel is not None and cancel.wait(wait):
                     raise ProviderError("cancelled") from None
@@ -135,20 +143,23 @@ def _request(provider: str, method: str, path: str, key: str, *, body: dict | No
             raise ProviderError("rate_limited" if status == 429 else "unavailable",
                                 f"HTTP {status}") from None
         except (urllib.error.URLError, TimeoutError, OSError) as error:
-            # A bare TimeoutError: the request was sent and no reply came in
-            # time (a refused or timed-out connection arrives as URLError). A
-            # generation may still be running, and billed: it is not re-sent.
+            # urllib wraps what fails while connecting and sending in URLError:
+            # the request did not reach the provider whole. A bare OSError
+            # comes after it was sent (a TimeoutError waiting for the reply,
+            # RemoteDisconnected or ConnectionResetError): a generation may be
+            # running, and billed, so a POST is not sent again (privacy F3).
             timed_out = isinstance(error, TimeoutError)
+            lost_reply = not isinstance(error, urllib.error.URLError) and method == "POST"
             if (attempt < RETRIES and not isinstance(error, ssl.SSLError)
-                    and not (timed_out and method == "POST")):
+                    and not lost_reply):
                 wait = _retry_after(None, attempt)
                 if cancel is not None and cancel.wait(wait):
                     raise ProviderError("cancelled") from None
                 if cancel is None:
                     time.sleep(wait)
                 continue
-            raise ProviderError("timeout" if timed_out else "offline",
-                                type(error).__name__) from None
+            raise ProviderError("timeout" if timed_out else "uncertain" if lost_reply
+                                else "offline", type(error).__name__) from None
         except http.client.HTTPException as error:
             # A reply cut off mid-body, or not HTTP at all (a broken proxy).
             raise ProviderError("malformed", type(error).__name__) from None
