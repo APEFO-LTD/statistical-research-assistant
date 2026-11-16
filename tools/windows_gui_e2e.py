@@ -948,12 +948,20 @@ class Gui:
             element.click_input()
             return "click"
 
-    def choose(self, label: str, option: str, *, index: int = 0, options=None):
+    def choose(self, label: str, option: str, *, index: int = 0, options=None,
+               current: str | None = None):
         """Pick ``option`` in the dropdown named ``label``: open it through UI
         Automation and press the entry that appeared with the menu (the page
         may hold a checkbox of the same name: the ANCOVA form lists the
         covariates). Where the open menu exposes no entries (the method form,
-        runs 13-14), choose like a keyboard user: Down to the entry, Enter."""
+        runs 13-14), choose like a keyboard user: Down to the entry, Enter.
+
+        ``current``: the entry the field shows, when the journey knows it.
+        UI Automation exposes no value of a Flet dropdown (it reads ''), and
+        the menu of a freshly built dropdown opens with that entry highlighted
+        (see :func:`keyboard_keys`): from '' the keys would be counted from
+        the wrong place (PR #79, startup-workspace: two Downs from "Research
+        workspace" wrapped round to it again and nothing changed)."""
         from pywinauto import keyboard
 
         kinds_menu = ("MenuItem", "ListItem", "Button", "Text", "Custom", "Group")
@@ -1003,12 +1011,10 @@ class Gui:
         focused = self.focused()
         expect(focused.process_id == self.window_pid and not self.system_menu_open(),
                f"the dropdown {label!r} does not have the keyboard focus")
-        current = self.value(field)
-        start = options.index(current) if current in options else -1
-        moves = options.index(option) - start
+        current = self.value(field) or current or ""
         print(f"  [choose] choosing entry {options.index(option) + 1} of {len(options)} by "
               f"keyboard (from {current!r})", flush=True)
-        keyboard.send_keys(("{DOWN}" if moves > 0 else "{UP}") * abs(moves))
+        keyboard.send_keys(keyboard_keys(options, option, current))
         time.sleep(0.4)
         keyboard.send_keys("{ENTER}")
         time.sleep(0.9)
@@ -1268,6 +1274,48 @@ def nav(gui: Gui, key: str) -> None:
     gui.click(regex="^" + re.escape(T(key)) + r"(\n\d+)?$", control_type=("Button", "Text"))
 
 
+def wait_for(condition, timeout: float = 10, interval: float = 0.5):
+    """``condition()``'s first true value within ``timeout`` seconds (else
+    its last value)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        value = condition()
+        if value or time.monotonic() > deadline:
+            return value
+        time.sleep(interval)
+
+
+def open_method_form(gui: Gui, title: str, first_field: str, *, wait: float = 10) -> None:
+    """Open a method's form from its card in "All methods" and wait for the
+    form's ``first_field``. In run 43894133123 (project-a, 90d0b40) the click
+    on the ANCOVA card was lost: the catalogue stayed, the window's system
+    menu stood open at the end of the step, and the next step reported no
+    "Outcome". The step now ends with the form on screen; a lost click is
+    logged, the menu closed and the card clicked once more."""
+    # A method card is named by its title and its summary.
+    card = "^" + re.escape(title) + r"(\n|$)"
+    kinds = ("Button", "Text", "Group", "Custom")
+    gui.click(regex=card, control_type=kinds)
+    if not wait_for(lambda: gui.query(first_field), timeout=wait):
+        print(f"  [click] the form of {title!r} did not open (system menu open: "
+              f"{gui.system_menu_open()}); clicking the card again", flush=True)
+        gui.close_menus()
+        gui.click(regex=card, control_type=kinds)
+    gui.find(first_field, timeout=15)
+
+
+def keyboard_keys(options: list[str], option: str, current: str = "") -> str:
+    """The keys that move the open menu of a Flet dropdown to ``option``
+    (Enter follows). Flutter's DropdownMenu (material_ui 1.6.0,
+    ``_DropdownMenuState``) opens a freshly built dropdown with the entry its
+    field shows highlighted (its search finds that label), and with nothing
+    highlighted when the field is empty; Down from nothing goes to the first
+    entry, and Down/Up wrap round. ``current``: the entry the field shows."""
+    start = options.index(current) if current in options else -1
+    moves = options.index(option) - start
+    return ("{DOWN}" if moves > 0 else "{UP}") * abs(moves)
+
+
 def option_label(name: str, level: str) -> str:
     return f"{name} · {T('level.' + level)}"
 
@@ -1362,9 +1410,7 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(T("analyze.mode.all"), control_type=("Button", "Text"))
         from workspace_methods import METHODS
 
-        # A method card is named by its title and its summary.
-        gui.click(regex="^" + re.escape(METHODS["ancova"].title) + r"(\n|$)",
-                  control_type=("Button", "Text", "Group", "Custom"))
+        open_method_form(gui, METHODS["ancova"].title, T("role.outcome"))
     with journey.step("choose outcome, group and covariate"):
         gui.choose(T("role.outcome"), option_label("wellbeing", "scale"), options=ANCOVA_OPTIONS)
         gui.choose(T("role.group"), option_label("group", "nominal"), options=ANCOVA_OPTIONS)
@@ -4574,8 +4620,10 @@ def journey_startup_workspace(gui: Gui, work: Path, journey: Journey) -> None:
         with journey.step("Settings: the classic interface as the start interface"):
             nav(gui, "nav.settings")
             click_chip(gui, T("settings.section.start"))      # the hub's index
+            # The field shows the stored choice (checked above): the menu
+            # opens on it, one Down reaches the classic interface.
             gui.choose(T("settings.start_interface"), T("settings.start.classic"),
-                       options=START_OPTIONS)
+                       options=START_OPTIONS, current=T("settings.start.workspace"))
             saved = wait_setting(gui, "start_interface", "classic")
             journey.facts["start_interface_chosen"] = saved
             expect(saved == "classic", f"start interface saved: {saved!r}")
@@ -4590,7 +4638,7 @@ def journey_startup_workspace(gui: Gui, work: Path, journey: Journey) -> None:
             nav(gui, "nav.settings")
             click_chip(gui, T("settings.section.start"))
             gui.choose(T("settings.start_interface"), T("settings.start.workspace"),
-                       options=START_OPTIONS)
+                       options=START_OPTIONS, current=T("settings.start.classic"))
             saved = wait_setting(gui, "start_interface", "workspace")
             expect(saved == "workspace", f"start interface saved: {saved!r}")
             gui.stop()

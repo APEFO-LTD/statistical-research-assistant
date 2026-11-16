@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import tempfile
@@ -130,12 +131,103 @@ class Program(Workspace):
         assert len(found) == 1, (label, found)
         return found[0]
 
-    def pick(self, label: str, entry: str):
-        """``gui.choose(label, entry)``: the entry named ``entry``."""
+    def pick(self, label: str, entry: str, *, current: str | None = None):
+        """``gui.choose(label, entry, options=..., current=...)``: the entry
+        named ``entry``, reached with the driver's keys in a model of the
+        open menu (:func:`flutter_menu`) from the entry the field shows; the
+        journey's ``current`` must be that entry."""
         field = self.dropdown(label)
+        options = [o.text for o in field.options]
+        shown = next((o.text for o in field.options if o.key == field.value), "")
+        if current is not None:
+            assert current == shown, (current, shown)
+        keys = e2e.keyboard_keys(options, entry, current or "")
+        assert flutter_menu(options, shown, keys) == entry, (shown, keys, entry)
         key = next(o.key for o in field.options if o.text == entry)
         field.value = key
         return self.dispatch(field.on_select, SimpleNamespace(control=field, data=key))
+
+
+def flutter_menu(options: list[str], shown: str, keys: str) -> str:
+    """The entry Enter picks in Flutter's DropdownMenu (material_ui 1.6.0)
+    after ``keys``: a freshly built dropdown opens with the entry its field
+    shows highlighted (none when empty); Down from none is the first entry,
+    Up from none the last; both wrap round."""
+    highlight = options.index(shown) if shown in options else None
+    for key in re.findall(r"\{(DOWN|UP)\}", keys):
+        if key == "DOWN":
+            highlight = (-1 if highlight is None else highlight) + 1
+        else:
+            highlight = (0 if highlight is None else highlight) - 1
+        highlight %= len(options)
+    return shown if highlight is None else options[highlight]
+
+
+class DropdownKeyboardTests(unittest.TestCase):
+    """PR #79, startup-workspace on Windows: the field showed "Research
+    workspace", UI Automation read '' and the driver pressed Down twice: the
+    menu, opened on "Research workspace", wrapped round to it again."""
+
+    def test_the_keys_counted_from_an_empty_field_miss_the_classic_interface(self):
+        keys = e2e.keyboard_keys(e2e.START_OPTIONS, "Classic interface")
+        self.assertEqual(keys, "{DOWN}{DOWN}")
+        self.assertEqual(flutter_menu(e2e.START_OPTIONS, "Research workspace", keys),
+                         "Research workspace")
+
+    def test_the_keys_from_the_shown_entry_reach_it(self):
+        for shown, wanted in (("Research workspace", "Classic interface"),
+                              ("Classic interface", "Research workspace")):
+            keys = e2e.keyboard_keys(e2e.START_OPTIONS, wanted, shown)
+            self.assertEqual(flutter_menu(e2e.START_OPTIONS, shown, keys), wanted)
+        # An empty field: Down from nothing (the variable dropdowns of the journeys).
+        options = e2e.stage36_options()
+        keys = e2e.keyboard_keys(options, e2e.option_label("UCLA", "scale"))
+        self.assertEqual(flutter_menu(options, "", keys), e2e.option_label("UCLA", "scale"))
+
+
+class LostClickGui:
+    """A stand-in for windows_gui_e2e.Gui: the first click on the card is
+    lost and leaves the window's system menu open (run 43894133123)."""
+
+    def __init__(self, lose: int):
+        self.lose, self.clicks, self.menu, self.form = lose, 0, False, False
+        self.closed = 0
+
+    def click(self, name=None, *, regex=None, control_type=None):
+        self.clicks += 1
+        if self.menu:
+            self.menu = False            # a click while a menu is open only closes it
+        elif self.clicks <= self.lose:
+            self.menu = True
+        else:
+            self.form = True
+
+    def query(self, name):
+        return ["Outcome"] if self.form else []
+
+    def system_menu_open(self):
+        return self.menu
+
+    def close_menus(self):
+        self.closed += 1
+        self.menu = False
+
+    def find(self, name, timeout=15):
+        if not self.form:
+            raise e2e.StepFailure(f"not found on screen: {name!r} (any)")
+
+
+class MethodFormTests(unittest.TestCase):
+    def test_a_lost_click_on_the_method_card_is_repeated(self):
+        gui = LostClickGui(lose=1)
+        e2e.open_method_form(gui, "ANCOVA / general linear model", "Outcome", wait=0.1)
+        self.assertTrue(gui.form)
+        self.assertEqual((gui.clicks, gui.closed), (2, 1))
+
+    def test_the_step_fails_where_the_form_never_opens(self):
+        gui = LostClickGui(lose=5)
+        with self.assertRaises(e2e.StepFailure):
+            e2e.open_method_form(gui, "ANCOVA / general linear model", "Outcome", wait=0.1)
 
 
 class StartupWorkspaceJourneyTests(unittest.TestCase):
@@ -171,7 +263,8 @@ class StartupWorkspaceJourneyTests(unittest.TestCase):
                 c.content.controls[-1].value for c in program.find_all("settings-jump-")])
             field = program.dropdown(T("settings.start_interface"))
             self.assertEqual([o.text for o in field.options], e2e.START_OPTIONS)
-            program.pick(T("settings.start_interface"), T("settings.start.classic"))
+            program.pick(T("settings.start_interface"), T("settings.start.classic"),
+                         current=T("settings.start.workspace"))
             self.assertEqual(e2e.stored_settings(disk)["start_interface"], "classic")
 
             # The next start opens the classic interface.
@@ -183,7 +276,8 @@ class StartupWorkspaceJourneyTests(unittest.TestCase):
             # The research workspace as the start interface again.
             program.press(e2e.CLASSIC_OPEN_WORKSPACE)
             program.app.navigate("settings")
-            program.pick(T("settings.start_interface"), T("settings.start.workspace"))
+            program.pick(T("settings.start_interface"), T("settings.start.workspace"),
+                         current=T("settings.start.classic"))
             self.assertEqual(e2e.stored_settings(disk)["start_interface"], "workspace")
             program.restart()
             self.assertTrue(program.in_workspace)

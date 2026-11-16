@@ -283,6 +283,32 @@ class SettingsFileTests(unittest.TestCase):
             app_preferences.remember_export({"csv_bom": True}, settings=settings)
         self.assertEqual(settings.stored("export"), {**self.EXPORT, "csv_bom": True})
 
+    def test_the_start_interface_survives_the_other_writers_of_the_settings_file(self):
+        # PR #79, startup-workspace: the start interface stayed "workspace".
+        # Not a lost update: interleaved with the export choices (this
+        # instance and the cards'), a second instance of the settings (the
+        # launcher's window keeper) and the library choice, the start
+        # interface chosen in Settings is kept, and so is every other key.
+        import flet as ft
+
+        import user_settings as us
+
+        ws = self.workspace()
+        ws.app.navigate("settings")
+        other = us.UserSettings.load(ws.app.settings.path, migrate=False)   # read before
+        ws.choose("settings-export-format-data", "sav")
+        ws.app.set_start_interface("classic")
+        other.update(window={"left": 10, "top": 20, "width": 1200, "height": 800})
+        ws.app.pages["data"].export._choose("csv")
+        ws.app.navigate("settings")
+        self.assertEqual(ws.find("settings-start-interface", ft.Dropdown).value, "classic")
+        stored = json.loads(ws.app.settings.path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["start_interface"], "classic")
+        self.assertEqual(stored["export"]["formats"], {"data": "csv"})
+        self.assertEqual(stored["window"]["width"], 1200)
+        self.assertEqual(us.UserSettings.load(ws.app.settings.path).get("start_interface"),
+                         "classic")
+
     def test_the_export_defaults_section_is_the_cards_choices(self):
         ws = self.workspace()
         ws.app.navigate("settings")
