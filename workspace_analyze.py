@@ -468,6 +468,22 @@ class AnalyzePage:
             app.render()
             return
         number, hypothesis = found
+        if (self.mode == "guided" and self.task_id is None and self.goal
+                and self.pending_hypothesis == hypothesis_id):
+            # Review W1: the analysis of this hypothesis is being set up on
+            # screen (step 1). It becomes the task, with what is chosen on
+            # screen; nothing on screen is reset.
+            task = ResearchTask(str(uuid.uuid4()), app.t("task.title_for", h=number), self.goal,
+                                {k: (list(v) if isinstance(v, list) else v)
+                                 for k, v in self.selection.items()},
+                                hypothesis_id=hypothesis_id,
+                                state={"created": datetime.now().isoformat(timespec="seconds"),
+                                       "auto_title": True})
+            app.session.save_task(task)
+            self._record_link(task, None, hypothesis_id)
+            self.task_id, self.pending_hypothesis = task.id, None
+            app.navigate("analyze", section="variables")
+            return
         questions = {q["id"]: q for q in plan.get("questions", [])}
         goal = (questions.get(hypothesis.get("question_id") or "") or {}).get("type", "")
         goal = goal if goal in GOALS else ""
@@ -497,7 +513,10 @@ class AnalyzePage:
         if self.app.session.task(task_id) is None:
             self.app.render()
             return
-        self._open_task(task_id, render=False)
+        if not (self.mode == "guided" and self.task_id == task_id):
+            # Review W1: the task already open keeps what is chosen on screen
+            # (variables, method, confirmations not yet saved by a run).
+            self._open_task(task_id, render=False)
         has_result = bool(self.app.session.task_results(task_id))
         self.app.navigate("analyze", section="task-result" if has_result else "variables")
 

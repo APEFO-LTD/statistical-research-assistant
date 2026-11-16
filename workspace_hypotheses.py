@@ -179,8 +179,14 @@ class HypothesisPanel:
         action = self.next_action(project.datasets(), self.views())
         params = action.params
         buttons, here = [], False
+        analyze = app.pages.get("analyze") if route == "analyze" else None
         for item in action.actions:
-            if self.GOES_TO.get(item.action) == route:
+            if self.GOES_TO.get(item.action) == route or (analyze is not None and (
+                    (item.action == "open_task" and analyze.mode == "guided"
+                     and analyze.task_id == item.target)
+                    or (item.action == "create_analysis" and analyze.task_id is None
+                        and analyze.goal and analyze.pending_hypothesis == item.target))):
+                # Review W1: the analysis it names is the one on screen.
                 here = True
                 continue
             label = ui.t(item.label, **params)

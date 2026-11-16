@@ -544,5 +544,69 @@ class EOlderCopyReturnsTests(FormatsCase):
             self.assertNotIn("{", wt.t(language, "project.older_copy_fields", items="H1: x"))
 
 
+class W1FooterKeepsTheAnalysisOnScreenTests(Case):
+    """W1: on Analyze, no footer button throws away the variables, the
+    method or the confirmations chosen on screen."""
+
+    def choose(self, ws):
+        ws.choose("role-x", "UCLA")
+        ws.click("role-y-all-scale")
+        ws.check("role-y-Age", False)
+        for box in ws.find_all("design-confirm-"):
+            ws.check(box.data)
+        ws.click("alt-batch_correlation-spearman")
+        page = ws.app.pages["analyze"]
+        assert page.selection and page.override, "choices on screen"
+        return page, (dict(page.selection), page.override, dict(page.confirms))
+
+    def press_footer(self, ws):
+        for data in ("next-open-task", "next-create-analysis"):
+            if ws.find_all(data):
+                ws.click(data)
+
+    def test_the_footer_keeps_what_is_chosen_in_the_task_on_screen(self):
+        from test_stage37_ui import write_plan
+
+        ws = self.workspace()
+        write_plan(ws, direction="two-sided")
+        ws.app.navigate("project")
+        ws.click("next-create-analysis")             # H1's task opens at step 2
+        page, shown = self.choose(ws)
+        tasks = len(ws.app.session.tasks)
+        self.press_footer(ws)
+        self.assertEqual((dict(page.selection), page.override, dict(page.confirms)), shown,
+                         "a footer button discarded the choices on screen")
+        self.assertEqual(len(ws.app.session.tasks), tasks)
+
+    def test_the_footer_keeps_an_analysis_set_up_from_step_one(self):
+        from test_stage37_ui import write_plan
+
+        ws = self.workspace()
+        hid = write_plan(ws, direction="two-sided")
+        ws.click("nav-analyze")
+        ws.click("goal-relate")
+        ws.choose("task-hypothesis", hid)            # H1 chosen in step 1, no task yet
+        page, shown = self.choose(ws)
+        self.press_footer(ws)
+        self.assertEqual((dict(page.selection), page.override, dict(page.confirms)), shown,
+                         "a footer button discarded the choices on screen")
+        self.assertTrue(all(task.selection or task.goal for task in ws.app.session.tasks),
+                        "no empty task was created over the analysis on screen")
+
+    def test_the_project_page_button_keeps_the_open_task(self):
+        from test_stage37_ui import write_plan
+
+        ws = self.workspace()
+        write_plan(ws, direction="two-sided")
+        ws.app.navigate("project")
+        ws.click("next-create-analysis")
+        page, shown = self.choose(ws)
+        task_id = page.task_id
+        ws.app.navigate("project")
+        ws.app.pages["analyze"].open_task_for(task_id)
+        self.assertEqual((dict(page.selection), page.override, dict(page.confirms)), shown)
+        self.assertEqual(ws.app.route, "analyze")
+
+
 if __name__ == "__main__":
     unittest.main()
