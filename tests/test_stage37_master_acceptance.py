@@ -32,6 +32,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import tempfile
@@ -287,9 +288,20 @@ class Scenario:
                 rows = item.rows
                 if section.key == "appendix" and item.kind == "table":
                     rows = tuple(row[:-1] for row in rows)      # without the run's uuid
-                out.append((section.key, item.kind, item.text, item.title, item.columns,
-                            rows))
+                rows = tuple(tuple(without_times(cell) for cell in row) for row in rows)
+                out.append((section.key, item.kind, without_times(item.text), item.title,
+                            item.columns, rows))
         return out
+
+
+# A result's data line names when it was calculated, to the minute ("calculated
+# 2026-11-16 15:04"). Two runs of the scenario can fall on either side of a
+# minute, so the reproducibility comparison leaves that time out, and only it.
+_CALCULATED = re.compile(r"(calculated) \d{4}-\d{2}-\d{2} \d{2}:\d{2}(?::\d{2})?")
+
+
+def without_times(value):
+    return _CALCULATED.sub(r"\1 <time>", value) if isinstance(value, str) else value
 
 
 class MasterAcceptanceTests(unittest.TestCase):
@@ -543,6 +555,14 @@ class MasterAcceptanceTests(unittest.TestCase):
         self.assertGreater(len(tables), 20)
         for name, run in s.runs.items():
             self.assertEqual(s.stored[name].report, run.report, name)
+
+    def test_only_the_calculation_time_is_left_out(self):
+        # CI run 43890696395: the two runs were calculated at 15:03 and 15:04.
+        a = "Data of “T”: d (180 rows), version 83314f86c508, calculated 2026-11-16 15:03."
+        b = "Data of “T”: d (180 rows), version 83314f86c508, calculated 2026-11-16 15:04."
+        self.assertEqual(without_times(a), without_times(b))
+        self.assertNotEqual(without_times(a), without_times(a.replace("83314f86c508", "0" * 12)))
+        self.assertEqual(without_times(3.5), 3.5)
 
     def test_the_scenario_reproduces_exactly(self):
         with tempfile.TemporaryDirectory() as folder:
