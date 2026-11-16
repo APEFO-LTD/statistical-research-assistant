@@ -3626,12 +3626,20 @@ def section_box(gui: Gui, language: str, key: str = LEFT_OUT):
 
 def open_interpretation(gui: Gui) -> None:
     """Open a result's Interpretation section (it holds the researcher's
-    note), unless it is open already: a click on an open section closes it."""
-    header, _ = find_text(gui, regex="^" + re.escape(T("results.interpretation")) + r"(\n|$)")
+    note), unless it is open already: a click on an open section closes it.
+
+    The header is looked for again before every click: the search for the
+    note field scrolls the page, and where the page ends soon after the
+    section (Stage 37: other results at the end of a result) the header
+    was left under the context bar, where a click lands on the bar."""
+    header_text = "^" + re.escape(T("results.interpretation")) + r"(\n|$)"
+    find_text(gui, regex=header_text)
     for attempt in range(3):
         with contextlib.suppress(StepFailure):
             find_text(gui, T("results.notes"), exact=True, timeout=6, moves=3)
             return
+        header, _ = find_text(gui, regex=header_text, first="up")
+        gui.scroll_into_view(header)
         if attempt == 0:
             header.click_input()
         else:
