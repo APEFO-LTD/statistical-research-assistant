@@ -174,3 +174,20 @@ file that UX promises never to change. What changed:
 | e2e | The `export-data` journey and its harness test read the remembered format from the data folder's `settings.json`. |
 | Tests | `test_stage37_settings`: the hub's section list now includes `export` and `library`. Its "another feature" test registers its own key instead of replacing the real export section. `tests/test_stage37_integration.py` (`SettingsFileTests`) checks five things. Migration loses nothing and keeps Russian, and the old file stays byte-identical. Remembering a choice leaves the language as it was. The fallback read works. The hub's export section matches the cards' choices in both directions and after a reset. The library section shows and changes the real backup choice. |
 
+
+## 7. Full suite (once, on the final code)
+
+The suite ran once, on commit `129f0ed`, with:
+
+    SRA_REQUIRE_REAL_OCR=1 MPLBACKEND=Agg PYTHONUTF8=1 python -m unittest discover -s tests
+
+The Python was 3.12.3 in a fresh venv with `requirements.txt` and
+`requirements-dev.txt` installed by hash.
+
+**Result:** 1827 tests ran in 1338 s. All passed: **OK, 10 skipped**, 0 failures,
+0 errors.
+
+The commit that adds this section changes only this document.
+
+Not run here: the Windows workflows (GUI journeys, package, installer, update).
+The six Stage 37 journeys have been checked only in the harness and have not run on Windows.
