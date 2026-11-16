@@ -249,7 +249,8 @@ class SettingsPage:
         except Exception:
             chosen = None
         self.data_note = await data_ui.find_in_chosen_folder(
-            self.app.page, chosen, self.app.project_root.parent, language)
+            self.app.page, chosen, self.app.project_root.parent, language,
+            palette=self.app.ui.p)          # the workspace's own theme (Issue #80)
         self.app.render()
 
     def backups(self) -> list[ft.Control]:

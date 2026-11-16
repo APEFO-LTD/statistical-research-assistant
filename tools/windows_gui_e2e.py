@@ -2031,6 +2031,55 @@ def seed_preview_data() -> tuple[Path, str]:
     return folder, info.id
 
 
+def _luminance(rgb) -> float:
+    def channel(value: int) -> float:
+        c = value / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = rgb[:3]
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def measured_contrast(image) -> dict:
+    """WCAG contrast of the text in a screenshot ``image`` (a PIL image of
+    one text element): the background is the most frequent colour, the text
+    the colour of the core of its strokes, i.e. of the 1 % of the pixels
+    farthest from the background in luminance (anti-aliased edges lie
+    between the two; a stray pixel does not decide). Issue #80 (P1):
+    measured on the installed program's own pixels, not on the colours the
+    code asks for."""
+    pixels = list(image.convert("RGB").getdata())
+    if not pixels:
+        return {"ratio": 1.0, "background": None, "text": None}
+    counts: dict = {}
+    for pixel in pixels:
+        counts[pixel] = counts.get(pixel, 0) + 1
+    background = max(counts, key=counts.get)
+    base = _luminance(background)
+
+    def ratio(pixel) -> float:
+        a = _luminance(pixel)
+        return (max(a, base) + 0.05) / (min(a, base) + 0.05)
+
+    seen, text = 0, background
+    for colour in sorted(counts, key=ratio, reverse=True):
+        seen += counts[colour]
+        text = colour
+        if seen >= 0.01 * len(pixels):
+            break
+    return {"ratio": round(ratio(text), 2), "background": "#%02X%02X%02X" % background,
+            "text": "#%02X%02X%02X" % text}
+
+
+def element_contrast(gui: Gui, element) -> dict:
+    """:func:`measured_contrast` of ``element``'s rectangle on the screen."""
+    box = element.element_info.rectangle
+    left, top, right, bottom = gui.window_box()
+    crop = (max(box.left, left) - left, max(box.top, top) - top,
+            min(box.right, right) - left, min(box.bottom, bottom) - top)
+    return measured_contrast(gui.grab().crop(crop))
+
+
 def journey_legacy_migration(gui: Gui, work: Path, journey: Journey) -> None:
     """A researcher who used a preview build installs the application: the
     first start offers to copy the earlier data, copies and checks it, and
@@ -2048,6 +2097,19 @@ def journey_legacy_migration(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(PREVIEW_PROJECT, scroll=False)
         gui.wait_text(PREVIEW_SURVEY, scroll=False)
         gui.shot("earlier data offered")
+    with journey.step("the dialog's texts are readable (contrast measured on screen)"):
+        # Issue #80 (P1): light text stood on a near-white surface. The
+        # title, the body and the path are measured on the screenshot of
+        # their own rectangles: WCAG AA, 4.5:1.
+        measured = {}
+        for role, name in (("title", data_ui.t("en", "title")),
+                           ("body", data_ui.t("en", "found")),
+                           ("path", str(folder))):
+            element = gui.find(name, scroll=False)
+            measured[role] = element_contrast(gui, element)
+        journey.facts["migration_contrast"] = measured
+        low = {role: m for role, m in measured.items() if m["ratio"] < 4.5}
+        expect(not low, f"text below 4.5:1 in the migration dialog: {low}")
     with journey.step("copy it and see every copy checked"):
         gui.click(data_ui.t("en", "copy"), control_type="Button")
         gui.wait_text("Each copy was checked against its original", timeout=90, scroll=False)
