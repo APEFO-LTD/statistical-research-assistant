@@ -444,5 +444,105 @@ class PlanCardAfterResultsTests(Case):
         self.assertEqual((record["kind"], record["detail"]["what"]), ("deviation", "method"))
 
 
+from test_stage37_formats import Case as FormatsCase  # noqa: E402
+
+
+class EOlderCopyReturnsTests(FormatsCase):
+    """E: a copy made for 36.x that comes back says what it does not carry:
+    the protocol records left out, and the typed plan fields a 36.x plan
+    save dropped. Nothing is restored silently and nothing is invented."""
+
+    def round_trip(self, *, rc_plan_save: bool):
+        import json
+        from unittest import mock
+
+        import project_store as ps
+
+        info, hid, record, records = self.project_with_records()
+        with self.store.open(info.id) as project:          # a typed plan before the copy
+            plan = project.plan()["plan"]
+            plan["hypotheses"][0].update(question_id=plan["questions"][0]["id"],
+                                         method_key="batch_groups")
+            project.save_plan(plan, reasons={hid: "Fictional: the planned analysis."})
+            records = project.protocol_records()
+        package, left_out = self.store.export_for_format(info.id, self.base / "for-36x.sra")
+        self.assertEqual(left_out, len(records))
+        with mock.patch.object(ps, "SCHEMA_VERSION", 5):   # the release candidate
+            rc = self.restart("release-candidate")
+            restored, _ = rc.import_package(package)
+            if rc_plan_save:
+                with rc.open(restored.id) as project, project._write() as db:
+                    plan = json.loads(db.execute("SELECT plan FROM plan_versions ORDER BY id DESC"
+                                                 " LIMIT 1").fetchone()[0])
+                    plan.pop("plan_format", None)
+                    plan.pop("questions", None)      # what the RC's normalise_plan keeps
+                    plan["hypotheses"] = [{k: v for k, v in h.items() if k in (
+                        "id", "text", "h0", "direction", "priority", "alpha", "outcome",
+                        "predictors", "covariates", "method", "family", "exclusions")}
+                        for h in plan["hypotheses"]]
+                    plan["hypotheses"][0]["text"] += " (edited in 36.x)"
+                    db.execute("INSERT INTO plan_versions (saved_at, plan, runs_before, note)"
+                               " VALUES (?, ?, 1, '')", (ps.now(), json.dumps(plan)))
+        return info, hid, restored, left_out
+
+    def test_opening_the_returned_copy_names_what_is_not_carried(self):
+        info, hid, restored, left_out = self.round_trip(rc_plan_save=True)
+        with self.restart("release-candidate").open(restored.id) as project:
+            notice = project.older_copy_notice()
+            self.assertIsNotNone(notice, "the return is not silent")
+            self.assertEqual(notice["left_out"], left_out)
+            self.assertEqual(notice["format"], 5)
+            self.assertEqual([(n, sorted(fields)) for n, fields in notice["dropped"]],
+                             [(1, ["method_key", "question_id"])])
+            self.assertTrue(notice["questions_dropped"])
+            self.assertEqual(project.protocol_records(), [], "nothing is invented")
+            project.note_older_copy()
+            self.assertIsNone(project.older_copy_notice(), "said once the researcher read it")
+
+    def test_restoring_the_returned_copy_warns(self):
+        from unittest import mock
+
+        import project_store as ps
+
+        info, hid, restored, left_out = self.round_trip(rc_plan_save=False)
+        package = self.base / "back.sra"
+        with mock.patch.object(ps, "SCHEMA_VERSION", 5):   # a backup made by the RC
+            self.restart("release-candidate").export_package(restored.id, package)
+        _, warnings = self.restart("elsewhere").import_package(package)
+        self.assertTrue(any(str(left_out) in w and "older version" in w for w in warnings),
+                        warnings)
+
+    def test_the_project_page_names_what_the_returned_copy_lacks(self):
+        import shutil
+
+        info, hid, restored, left_out = self.round_trip(rc_plan_save=True)
+        from test_stage36_ux_baseline import CountingWorkspace
+
+        root = self.base / "workspace-root"
+        ws = CountingWorkspace(root=root)
+        self.addCleanup(ws.close)
+        target = Path(ws.app.projects._store().root) / restored.id
+        shutil.copytree(restored.path, target)
+        ws.app.projects.open(restored.id)
+        ws.app.navigate("project")
+        from test_stage37_ui import texts
+
+        text = texts(ws, "project-older-copy-back")
+        self.assertIn(str(left_out), text)
+        self.assertIn("H1: " + ws.app.t("project.older_copy_field.question_id"), text)
+        ws.click("project-older-copy-noted")
+        self.assertEqual(ws.find_all("project-older-copy-back"), [])
+
+    def test_the_project_page_shows_the_notice_in_three_languages(self):
+        import workspace_text as wt
+
+        for language in ("en", "lv", "ru"):
+            text = wt.t(language, "project.older_copy_back", when="2026-01-02 03:04", count=3,
+                        format=5)
+            self.assertIn("3", text)
+            self.assertNotIn("{", text)
+            self.assertNotIn("{", wt.t(language, "project.older_copy_fields", items="H1: x"))
+
+
 if __name__ == "__main__":
     unittest.main()

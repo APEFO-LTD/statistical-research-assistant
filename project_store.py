@@ -1132,6 +1132,22 @@ class ProjectStore:
                     _atomic_write(staging / name.removeprefix("project/"), data)
             migrate(staging / DB_NAME, self.root / BACKUPS)
             with closing(_connect(staging / DB_NAME)) as db, db:
+                # Review E: a copy made for an older version that comes back.
+                copied = db.execute("SELECT at, detail FROM events WHERE kind ="
+                                    " 'copied_for_format' ORDER BY id DESC LIMIT 1").fetchone()
+                if copied is not None:
+                    try:
+                        left_out = int(json.loads(copied["detail"]).get(
+                            "protocol_records_left_out") or 0)
+                    except (ValueError, TypeError, AttributeError):
+                        left_out = 0
+                    warnings.append(
+                        f"This project is a copy made for an older version on "
+                        f"{str(copied['at'])[:16].replace('T', ' ')}: the {left_out} protocol "
+                        "record(s) left out of that copy are not in it (the original project "
+                        "keeps them), and plan versions or results saved by the older version "
+                        "may have lost their typed fields. Open the project to see what is "
+                        "missing; nothing is restored automatically.")
                 if new_id != project_id:
                     title = db.execute("SELECT title FROM project").fetchone()["title"]
                     db.execute("UPDATE project SET id = ?, title = ?", (new_id, f"{title} (restored)"))
@@ -1561,6 +1577,70 @@ class Project:
                 except (KeyError, TypeError, ValueError):
                     continue
         return found
+
+    # Typed fields of a plan-format-2 hypothesis that a 36.x plan save drops.
+    TYPED_HYPOTHESIS_FIELDS = ("question_id", "method_key", "method_options", "roles", "expected")
+
+    def older_copy_notice(self) -> dict | None:
+        """Review E: this project is a copy made for an older version that has
+        come back. What it does not carry, as facts for a notice: when the copy
+        was made, its format, how many protocol records were left out of it,
+        and, per hypothesis (number in the current plan), the typed plan fields
+        that the last format-2 plan version saved before the copy had and the
+        current plan has lost (a 36.x plan save drops them); whether the typed
+        questions were dropped; how many results of a hypothesis's task saved
+        after the copy carry no hypothesis snapshot. Nothing is restored: the
+        researcher decides. None when this is no returned copy, or once the
+        notice was read (:meth:`note_older_copy`)."""
+        with self._db() as db:
+            rows = db.execute("SELECT id, at, kind, detail FROM events WHERE kind IN"
+                              " ('copied_for_format', 'older_copy_noted') ORDER BY id").fetchall()
+            copied = [r for r in rows if r["kind"] == "copied_for_format"]
+            if not copied or rows[-1]["kind"] == "older_copy_noted":
+                return None
+            event = copied[-1]
+            try:
+                detail = json.loads(event["detail"])
+            except ValueError:
+                detail = {}
+            runs = db.execute(
+                "SELECT r.provenance FROM runs r JOIN research_tasks t ON r.task_id = t.id"
+                " WHERE t.hypothesis_id IS NOT NULL AND t.hypothesis_id != ''"
+                " AND r.created_at > ?", (event["at"],)).fetchall()
+        missing_snapshot = 0
+        for row in runs:
+            try:
+                provenance = json.loads(row["provenance"] or "{}")
+            except ValueError:
+                provenance = {}
+            missing_snapshot += not provenance.get("hypothesis")
+        history = list(reversed(self.plan_history()))
+        typed = next((v["plan"] for v in reversed(history) if v["saved_at"] <= event["at"]
+                      and v["plan"].get("plan_format") == 2), None)
+        current = history[-1]["plan"] if history else {"hypotheses": []}
+        dropped = []
+        if typed is not None:
+            before = {h["id"]: h for h in typed.get("hypotheses", [])}
+            for number, hypothesis in enumerate(current.get("hypotheses", []), start=1):
+                old = before.get(hypothesis["id"])
+                if old is None:
+                    continue
+                lost = [f for f in self.TYPED_HYPOTHESIS_FIELDS
+                        if old.get(f) not in (None, "", {}, []) and
+                        hypothesis.get(f) in (None, "", {}, [])]
+                if lost:
+                    dropped.append((number, lost))
+        return {"at": event["at"], "format": int(detail.get("format") or 5),
+                "left_out": int(detail.get("protocol_records_left_out") or 0),
+                "dropped": dropped,
+                "questions_dropped": bool(typed is not None and typed.get("questions")
+                                          and not current.get("questions")),
+                "missing_snapshot": missing_snapshot}
+
+    def note_older_copy(self) -> None:
+        """The researcher has read the notice of a returned copy (review E)."""
+        with self._write() as db:
+            _log(db, "older_copy_noted", {})
 
     def hypothesis_status(self) -> dict[str, dict]:
         """For every hypothesis of the current plan: when it entered the plan

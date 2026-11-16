@@ -3462,19 +3462,76 @@ T.update({
         "Version 36.x reads projects up to format 5; this project has format 6. The copy is a "
         "backup file (.sra) that version 36.x restores. The {count} protocol record(s) of this "
         "project — the decisions and deviations about the plan — are not carried into the copy: "
-        "they stay only in this project, which is not changed.",
+        "they stay only in this project, which is not changed. If the copy comes back to this "
+        "version, it comes back without them, and what version 36.x saves drops the new fields "
+        "(typed questions, planned methods and variables, the hypothesis version of a "
+        "recalculated result); this version then names what is missing and restores nothing by "
+        "itself.",
         "Versija 36.x lasa projektus līdz 5. formātam; šim projektam ir 6. formāts. Kopija ir "
         "rezerves kopijas fails (.sra), ko versija 36.x atjauno. Šī projekta protokola ieraksti "
         "({count}) — lēmumi un novirzes no plāna — kopijā netiek pārnesti: tie paliek tikai šajā "
-        "projektā, kas netiek mainīts.",
+        "projektā, kas netiek mainīts. Ja kopija atgriežas šajā versijā, tā atgriežas bez tiem, "
+        "un tas, ko saglabā versija 36.x, zaudē jaunos laukus (tipizētos jautājumus, plānotās "
+        "metodes un mainīgos, pārrēķināta rezultāta hipotēzes versiju); šī versija tad nosauc, "
+        "kā trūkst, un pati neko neatjauno.",
         "Версия 36.x читает проекты до формата 5; у этого проекта формат 6. Копия — это файл "
         "резервной копии (.sra), который версия 36.x восстанавливает. Записи протокола этого "
         "проекта ({count}) — решения и отклонения от плана — в копию не переносятся: они "
-        "остаются только в этом проекте, который не изменяется."),
+        "остаются только в этом проекте, который не изменяется. Если копия вернётся в эту "
+        "версию, она вернётся без них, а то, что сохраняет версия 36.x, теряет новые поля "
+        "(типизированные вопросы, запланированные методы и переменные, версию гипотезы "
+        "пересчитанного результата); эта версия тогда назовёт, чего не хватает, и сама ничего "
+        "не восстановит."),
     "project.copy_older_confirm": ("Save the copy…", "Saglabāt kopiju…", "Сохранить копию…"),
     "project.copy_older_dialog": ("Save a copy for version 36.x",
                                   "Saglabāt kopiju versijai 36.x",
                                   "Сохранить копию для версии 36.x"),
+    # Review E: a copy for an older version that came back. LV/RU drafts — needs native review.
+    "project.older_copy_back": (
+        "This project is a copy made on {when} for an older version (format {format}) that has "
+        "come back. The {count} protocol record(s) left out of that copy are not in it; the "
+        "original project keeps them.",
+        "Šis projekts ir kopija, kas {when} izveidota agrākai versijai ({format}. formāts) un "
+        "atgriezusies. Tajā nav no kopijas izlaisto protokola ierakstu ({count}); tie ir "
+        "oriģinālajā projektā.",
+        "Этот проект — копия, созданная {when} для более ранней версии (формат {format}) и "
+        "вернувшаяся. В ней нет записей протокола, не вошедших в копию ({count}); они остаются "
+        "в исходном проекте."),
+    "project.older_copy_fields": (
+        "The older version saved the plan without these typed fields, which the plan had "
+        "before the copy: {items}.",
+        "Agrākā versija saglabāja plānu bez šiem laukiem, kas plānā bija pirms kopijas: {items}.",
+        "Более ранняя версия сохранила план без этих полей, которые были в плане до копии: "
+        "{items}."),
+    "project.older_copy_questions": (
+        "It also saved the plan without its typed research questions.",
+        "Tā saglabāja plānu arī bez tipizētajiem pētījuma jautājumiem.",
+        "Она также сохранила план без типизированных исследовательских вопросов."),
+    "project.older_copy_snapshots": (
+        "{count} result(s) calculated there for a hypothesis's analysis do not say which "
+        "version of the hypothesis they were calculated for.",
+        "{count} rezultāti, kas tur aprēķināti hipotēzes analīzei, nenorāda, kurai hipotēzes "
+        "versijai tie aprēķināti.",
+        "Результаты ({count}), рассчитанные там для анализа гипотезы, не указывают, для какой "
+        "версии гипотезы они рассчитаны."),
+    "project.older_copy_nothing_restored": (
+        "Nothing is restored automatically: the earlier plan versions are in the plan history; "
+        "enter what is needed again and save a plan version.",
+        "Nekas netiek atjaunots automātiski: agrākās plāna versijas ir plāna vēsturē; ievadiet "
+        "vajadzīgo vēlreiz un saglabājiet plāna versiju.",
+        "Ничего не восстанавливается автоматически: прежние версии плана есть в истории плана; "
+        "введите нужное заново и сохраните версию плана."),
+    "project.older_copy_noted": ("I have read this", "Esmu to izlasījis", "Я прочитал(а)"),
+    "project.older_copy_field.question_id": ("question link", "saite ar jautājumu",
+                                             "связь с вопросом"),
+    "project.older_copy_field.method_key": ("planned method", "plānotā metode",
+                                            "запланированный метод"),
+    "project.older_copy_field.method_options": ("method options", "metodes iestatījumi",
+                                                "параметры метода"),
+    "project.older_copy_field.roles": ("planned variables", "plānotie mainīgie",
+                                       "запланированные переменные"),
+    "project.older_copy_field.expected": ("expected group", "sagaidāmā grupa",
+                                          "ожидаемая группа"),
     "project.copy_older_saved": (
         "Copy for version 36.x saved: {path}. The protocol records are not in it.",
         "Kopija versijai 36.x saglabāta: {path}. Protokola ierakstu tajā nav.",

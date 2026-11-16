@@ -508,6 +508,7 @@ class ProjectPage:
         if binding.message:
             key, tone = binding.message
             body.append(wc.notice(ui, ui.t(key), tone, data="project-message"))
+        body += self._older_copy(binding.project)
         if hub.feedback:
             body.append(wc.notice(ui, hub.feedback[0], hub.feedback[1], data="project-feedback"))
         views = self.hypotheses.views()
@@ -518,6 +519,34 @@ class ProjectPage:
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
     # ------------------------------------------------------ question
+    def _older_copy(self, project) -> list[ft.Control]:
+        """Review E: a copy made for an older version that came back says what
+        it does not carry, until the researcher has read it."""
+        ui = self.app.ui
+        notice = project.older_copy_notice()
+        if notice is None:
+            return []
+        parts = [ui.t("project.older_copy_back", when=f"{_local_time(notice['at']):%Y-%m-%d %H:%M}",
+                      count=notice["left_out"], format=notice["format"])]
+        if notice["dropped"]:
+            items = "; ".join(f"H{number}: " + ", ".join(
+                ui.t(f"project.older_copy_field.{f}") for f in fields)
+                for number, fields in notice["dropped"])
+            parts.append(ui.t("project.older_copy_fields", items=items))
+        if notice["questions_dropped"]:
+            parts.append(ui.t("project.older_copy_questions"))
+        if notice["missing_snapshot"]:
+            parts.append(ui.t("project.older_copy_snapshots", count=notice["missing_snapshot"]))
+        parts.append(ui.t("project.older_copy_nothing_restored"))
+        return [ft.Column([
+            wc.notice(ui, " ".join(parts), "warning", data="project-older-copy-back"),
+            wc.button(ui, ui.t("project.older_copy_noted"), self._note_older_copy,
+                      kind="quiet", data="project-older-copy-noted")], spacing=tk.SPACE_1)]
+
+    def _note_older_copy(self, e=None):
+        self.app.projects.project.note_older_copy()
+        self.app.render()
+
     def _question(self) -> ft.Control:
         """The research question or hypothesis: the first step of the journey."""
         app, ui = self.app, self.app.ui

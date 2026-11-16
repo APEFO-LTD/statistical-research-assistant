@@ -657,8 +657,9 @@ Step statuses, checks and the next action are derived and not stored.
 2. **A copy for an older version** (37.0, *Settings → Your data*, or the project's *Back up…* menu). It duplicates the project and sets the copy's format to F.
    - The RC opens the copy and ignores what it does not know: the table, the plan's extra keys, the snapshot.
    - The RC drops the plan's extra keys only when it saves a new plan version.
-   - If the copy comes back to 37.0, the migration runs again. `IF NOT EXISTS` keeps the records.
-   - Typed fields missing from a plan version saved by the RC are carried forward by hypothesis id from the last version 2 plan. A notice names them; nothing is restored silently.
+   - The copy is made **without the protocol records** (the table is dropped from the copy; the copy's warning says how many, and the original keeps them).
+   - If the copy comes back to 37.0, the migration runs again and the copy has **no records** (corrected by the 0b fixes, review E: the earlier text said `IF NOT EXISTS` keeps them; there are none in the copy to keep).
+   - **Owner-visible limitation (review E).** Typed fields missing from a plan version saved by the RC, typed questions, and the hypothesis snapshot of a result the RC re-saved are **not** carried forward automatically. When the returned copy is opened, the Project page names them (records left out, per hypothesis the typed fields lost against the last version 2 plan before the copy, typed questions, results without a snapshot) until the researcher marks it read; restoring the `.sra` warns too. Nothing is restored silently and nothing is restored by the program: the earlier plan versions stay in the plan history, and the researcher saves a new version (after results, with a reason).
 
 Whether this copy ships in 37.0 or in 37.0.x is open question 2.
 
@@ -707,7 +708,7 @@ Each criterion is an automated test unless it says otherwise. The *Test* column 
 | AC-8 | A deviation needs a reason. The store has no update or delete for records. A withdrawal is a new record. Deviations appear in the hypothesis detail, the result card and the Word report. | `test_stage37_store`, `test_stage37_reports` |
 | AC-9 | Each next-action rule N1–N8 has a test. The bar never shows a disabled button. Its button performs exactly what its label names. A project with results and no plan does not get N1–N3 as its main action. | `test_stage37_workflow`, `test_stage37_ux` |
 | AC-10 | With `CountingWorkspace` plus typed fields and page changes: the beginner flow takes ≤ 20 interactions, ≤ 5 typed fields and ≤ 4 page changes; the professor flow ≤ 6 interactions and ≤ 2 page changes. The Stage 36 baselines are unchanged: 8, 2, 8, 8, 2, 1 and 3. | `test_stage37_ux`, `test_stage36_ux_baseline` |
-| AC-11 | Formats 1…F migrate to F+1 with a copy in `.backups/` in one transaction. An F+1 project is refused by a build of format F without any write (simulated by patching `SCHEMA_VERSION`). The copy for an older version opens at F and comes back to F+1 with its records. | `test_stage37_store` |
+| AC-11 | Formats 1…F migrate to F+1 with a copy in `.backups/` in one transaction. An F+1 project is refused by a build of format F without any write (simulated by patching `SCHEMA_VERSION`). The copy for an older version opens at F and comes back to F+1 **without the protocol records it never held**; on its return the program names what is not carried (§8.6, review E). | `test_stage37_store` |
 | AC-12 | The AI *plan* preview contains exactly the 36.x fields | `test_workspace_ai` (extended) |
 | AC-13 | Every new key exists in EN, LV and RU, with the same placeholders | `test_workspace_foundations` (`test_every_key_has_three_languages_with_the_same_placeholders`) |
 | AC-14 | New actions are labelled buttons, the hypothesis rows take keyboard focus, and typing in the hypothesis editor keeps the focus and every character | harness test; browser state check `plan-type-hypothesis` |
