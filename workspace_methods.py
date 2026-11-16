@@ -653,13 +653,22 @@ def confirmation_scope(confirmation: Confirmation, method: str, roles: dict, opt
                        session) -> dict:
     """What a confirmation is given for (Stage 36.8, K1), as plain JSON data.
 
-    Design: the variables of the roles it speaks about. Data: the table on
+    Design: the variables of the roles it speaks about (and, for one that
+    applies to an option value such as Model 7, that value). Data: the table on
     screen (the SHA-256 that results record), every variable of the
     analysis with its confirmed level, and the method with all its
     options. Multiple variables of one role are a set."""
     if confirmation.kind == "design":
-        return {"kind": "design", "variables": {
+        scope = {"kind": "design", "variables": {
             role: sorted(_names(roles.get(role))) for role in confirmation.about}}
+        if confirmation.applies_to:
+            # Review integration F1: a design confirmation of one option
+            # value (Model 7, Model 14) is given for that value too, so it
+            # does not hold after a switch to another model.
+            effective = {**default_options(METHODS[method]), **(options or {})}
+            scope["applies"] = sorted({str(v) for v in effective.values()}
+                                      & set(confirmation.applies_to))
+        return scope
     effective = {**default_options(METHODS[method]), **(options or {})}
     variables = {role: sorted(_names(value)) for role, value in sorted((roles or {}).items())
                  if _names(value)}

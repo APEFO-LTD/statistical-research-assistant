@@ -171,5 +171,80 @@ class S37Int3HC3Tests(unittest.TestCase):
             self.assertIn("HC3", note)
 
 
+class F1ModelBoundConfirmationTests(unittest.TestCase):
+    """Integration F1: the Model 7 / Model 14 design confirmations hold only
+    for the model they name (K1 scope), so a switch invalidates them on every
+    path (guided run, form, Run again, clone, Ctrl+Enter all settle the
+    confirmations with the same scope function)."""
+
+    def test_a_model_7_confirmation_does_not_hold_for_model_14(self):
+        from test_process_workspace import ROLES, session_for, synthetic
+        from workspace_methods import (METHODS, confirmation_scope, default_options,
+                                       holding_confirmations, settle_confirmations)
+
+        session = session_for(synthetic())
+        roles = ROLES["conditional_process"]
+        spec = METHODS["conditional_process"]
+        seven = {**default_options(spec), "method": "7"}
+        fourteen = {**default_options(spec), "method": "14"}
+        c7 = next(c for c in spec.confirmations if c.key == "model7_path")
+        scopes = {"model7_path": confirmation_scope(c7, "conditional_process", roles, seven,
+                                                    session)}
+        holding, kept = settle_confirmations("conditional_process", roles, fourteen,
+                                             {"model7_path": True}, scopes, session)
+        self.assertNotIn("model7_path", holding)
+        self.assertNotIn("model7_path", kept)
+        self.assertIn("model7_path", holding_confirmations(
+            "conditional_process", roles, seven, {"model7_path": True}, scopes, session))
+
+    def test_a_guided_model_14_run_records_no_model_7_sentence(self):
+        import tempfile
+
+        from test_process_workspace import LEVELS, synthetic
+        from workspace_harness import Workspace
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "synthetic_process.csv"
+            synthetic().to_csv(path, index=False)
+            ws = Workspace(root=Path(folder) / "data")
+            try:
+                ws.app.projects.create("Fictional conditional process")
+                self.assertTrue(ws.run(ws.app.load_path(str(path))))
+                for name, level in LEVELS.items():
+                    ws.app.session.confirm_level(name, level)
+                ws.click("nav-analyze")
+                ws.click("goal-process")
+                ws.choose("role-x", "x")
+                ws.choose("role-y", "y")
+                ws.check("role-mediators-m1")
+                ws.choose("role-w", "w")
+                ws.click("alt-conditional_process-7")
+                for key in ("mediators_a_priori", "model7_path", "cross_sectional",
+                            "assumptions"):
+                    ws.check(f"design-confirm-{key}")
+                ws.click("alt-conditional_process-14")
+                self.assertTrue(ws.find("guided-run").disabled or
+                                ws.find_all("design-confirm-model14_path"))
+                for key in ("model14_path", "assumptions"):
+                    if ws.find_all(f"design-confirm-{key}"):
+                        ws.check(f"design-confirm-{key}")
+                ws.click("guided-run")
+                entry = ws.app.session.results[-1]
+                self.assertEqual(entry.run.result.spec.model, "14")
+                self.assertFalse([c for c in entry.confirmations if "Model 7" in c],
+                                 entry.confirmations)
+                # Back to Model 7: its path confirmation is asked again.
+                if ws.app.route != "analyze":
+                    ws.click("nav-analyze")
+                if not ws.find_all("alt-conditional_process-7"):
+                    ws.click("task-change-variables")
+                ws.click("alt-conditional_process-7")
+                self.assertTrue(ws.find_all("design-confirm-model7_path"))
+                box = ws.find("design-confirm-model7_path")
+                self.assertFalse(box.value, "the Model 7 attestation is asked for again")
+            finally:
+                ws.close()
+
+
 if __name__ == "__main__":
     unittest.main()
