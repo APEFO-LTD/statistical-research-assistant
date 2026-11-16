@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 
 PREVIEW_ROWS = 5
 PREVIEW_REPORT_CHARS = 1200
@@ -218,17 +219,114 @@ def _prose(values) -> bool:
 
 
 def _codes(values) -> bool:
-    """Every value a different short code that holds a digit."""
+    """Short codes that hold a digit, (nearly) all different: a double
+    submission or two does not make a participant code a category."""
     texts = [str(value).strip() for value in values.dropna()]
-    return (len(texts) >= 5 and len(set(texts)) == len(texts)
+    return (len(texts) >= 5 and _mostly_unique(texts)
             and all(any(c.isdigit() for c in text) and len(text) <= 40 for text in texts))
+
+
+# Independent review verify-stage37-rag, privacy F1/F2: identifiers named in
+# other ways (camelCase, Latvian, Russian), numeric codes, phone numbers,
+# e-mail addresses and personal names are identifiers whatever their
+# measurement level, confirmed one by one or in bulk.
+UNIQUE_SHARE = 0.9
+_PERSON = ("participant", "respondent", "subject", "dalībniek", "dalibniek", "respondent",
+           "респондент", "участник", "испытуем", "patient", "pacient", "пациент", "person",
+           "персон")
+_IDENTITY = frozenset("""
+id uuid guid pid email mail epasts почта phone telephone tel mobile telefons tālrunis talrunis
+телефон name surname vārds uzvārds vards uzvards имя фамилия фио contact kontakts контакт
+address adrese адрес
+""".split())
+_CODE_WORDS = frozenset("code kods код number nr no num numurs номер e".split())
+_EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
+_PHONE = re.compile(r"\+?[\d\s().\-]{7,}")
+_NAME_WORD = re.compile(r"[^\W\d_][^\W\d_'’\-]*(?:[-'’][^\W\d_]+)*")
+
+
+def _mostly_unique(texts) -> bool:
+    return len(texts) >= 5 and len(set(texts)) >= UNIQUE_SHARE * len(texts)
+
+
+def _name_tokens(name: str) -> list[str]:
+    spaced = re.sub(r"(?<=[a-zа-яёāčēģīķļņšūž])(?=[A-ZА-ЯЁĀČĒĢĪĶĻŅŠŪŽ])", " ", str(name))
+    return [t for t in re.split(r"[\W_]+", spaced.lower()) if t]
+
+
+def _identity_name(name: str) -> str:
+    """"person" (ParticipantID, Respondenta kods, Код респондента, Phone,
+    E-mail, Respondent name), "code" (Code, Nr, Number) or "" (any other)."""
+    tokens = _name_tokens(name)
+    if not tokens:
+        return ""
+    strong = [t for t in tokens if t in _IDENTITY or t.startswith(_PERSON)]
+    if strong and all(t in _IDENTITY or t in _CODE_WORDS or t.startswith(_PERSON)
+                      for t in tokens):
+        return "person"
+    return "code" if all(t in _CODE_WORDS for t in tokens) else ""
+
+
+def _personal_values(values) -> bool:
+    """E-mail addresses, phone numbers or personal names (2-4 capitalised
+    words), whatever the column is called or confirmed as."""
+    clean = values.dropna()
+    texts = [str(value).strip() for value in clean.head(500)]
+    texts = [text for text in texts if text]
+    if not texts:
+        return False
+    if sum(1 for text in texts if _EMAIL.fullmatch(text)) * 2 >= len(texts):
+        return True
+    phones = [text for text in texts if _PHONE.fullmatch(text)
+              and sum(c.isdigit() for c in text) >= 8]
+    if len(phones) >= 0.8 * len(texts) and _mostly_unique(texts):
+        return True
+    if values.dtype == object and _mostly_unique(texts):
+        words = [text.split() for text in texts]
+        if all(2 <= len(w) <= 4 and all(_NAME_WORD.fullmatch(part) and part[0].isupper()
+                                         and not part[1:].isupper() for part in w)
+               for w in words):
+            return True
+    return False
+
+
+def _numeric_code(values) -> bool:
+    """Whole numbers, (nearly) all different: a numbered participant."""
+    import pandas as pd
+
+    numbers = pd.to_numeric(values.dropna(), errors="coerce")
+    if numbers.isna().any() or len(numbers) < 5:
+        return False
+    return bool((numbers == numbers.round()).all()) and _mostly_unique(list(numbers))
+
+
+def _identifier(name: str, info, values, level: str) -> bool:
+    from variable_rules import looks_like_identifier
+
+    if level == "id" or looks_like_identifier(name):
+        return True
+    if info.storage == "text" and _codes(values):
+        return True
+    kind = _identity_name(name)
+    if kind == "person" and _name_tokens(name) == ["subject"] and info.storage == "text" \
+            and not any(c.isdigit() for v in values.dropna().head(500) for c in str(v)):
+        kind = ""                  # "Subject": a school subject (Maths, Physics) is a category
+    if kind == "person" or (kind == "code" and (_numeric_code(values) or _codes(values))):
+        return True
+    if _personal_values(values):
+        return True
+    if info.storage == "number" and _numeric_code(values):
+        import pandas as pd
+
+        numbers = pd.to_numeric(values.dropna(), errors="coerce").abs()
+        if bool((numbers >= 10_000_000).all()):     # phone-like: eight digits or more
+            return True
+    return False
 
 
 def excluded_columns(session) -> list[tuple[str, str]]:
     """(column, reason) of every column left out of the data rows, in the
     dataset's order; reason is "identifier" or "free_text"."""
-    from variable_rules import looks_like_identifier
-
     if session is None or not session.has_data:
         return []
     found = []
@@ -239,8 +337,7 @@ def excluded_columns(session) -> list[tuple[str, str]]:
             continue
         level = info.confirmed if info.confirmed != "unknown" else info.suggested
         values = session.df[column]
-        if (level == "id" or looks_like_identifier(name)
-                or (info.storage == "text" and _codes(values))):
+        if _identifier(name, info, values, level):
             found.append((name, "identifier"))
         elif info.storage == "text" and (level not in ("nominal", "ordinal") or _prose(values)):
             found.append((name, "free_text"))
