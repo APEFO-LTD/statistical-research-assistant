@@ -71,8 +71,10 @@ def notes_value(ws) -> str:
 
 class JourneyOrderTests(unittest.TestCase):
     def test_the_review_journeys_follow_the_others(self):
-        self.assertEqual(list(e2e.JOURNEYS)[16:], ["confirmations", "report-composition"])
-        self.assertEqual(len(e2e.JOURNEYS), 18)
+        self.assertEqual(list(e2e.JOURNEYS)[16:18], ["confirmations", "report-composition"])
+        # Later stages append their journeys after these 18 (Stage 37:
+        # variable-picker, tests/test_stage37_variable_panel.py).
+        self.assertGreaterEqual(len(e2e.JOURNEYS), 18)
 
 
 class ConfirmationsJourneyTests(unittest.TestCase):
@@ -356,6 +358,97 @@ class ReportCompositionJourneyTests(unittest.TestCase):
                 self.assertEqual(again.find("reports-language").value, "en")
             finally:
                 again.close()
+
+
+class _Rect:
+    def __init__(self, left, top, right, bottom):
+        self.left, self.top, self.right, self.bottom = left, top, right, bottom
+
+    def width(self):
+        return self.right - self.left
+
+    def height(self):
+        return self.bottom - self.top
+
+
+class _ResultPage:
+    """The end of a result on the maximized Windows window, as UI Automation
+    shows it: the Interpretation header, the sections and the export card
+    below it, and (Stage 37) the Other results card at the very end. The
+    page scrolls 40 px per wheel click up to its end; a click on the header
+    opens the section only where a person's click reaches it (under the
+    context bar a click lands on the bar)."""
+
+    WINDOW = (-8, -8, 1928, 1040)
+    VIEW = 1000                          # px of the page between the bars
+    WHEEL_SECONDS = 1.0                  # UI Automation lists ~200 elements
+
+    def __init__(self, length: int):
+        self.length, self.offset, self.open = length, 0, False
+        page = self
+
+        class Element:
+            def __init__(self, name, top, height, *, kind="Text", header=False):
+                self.name, self.top, self.height, self.header = name, top, height, header
+                self.kind = kind
+
+            @property
+            def element_info(self):
+                y = self.top - page.offset
+                return SimpleNamespace(name=self.name, control_type=self.kind,
+                                       rectangle=_Rect(681, y, 1795, y + self.height))
+
+            def click_input(self, **_):
+                y = self.top - page.offset
+                if self.header and y >= -8 + 115 and y + self.height <= 1040 - 45:
+                    page.open = True
+
+            def invoke(self):
+                raise RuntimeError("no Invoke pattern")
+
+            def expand(self):
+                raise RuntimeError("no ExpandCollapse pattern")
+
+        self.header = Element(T("results.interpretation") + "\nConservative draft", 500, 72,
+                              header=True)
+        self.notes = Element(T("results.notes"), 590, 56, kind="Edit")
+
+    def rectangle(self):
+        return _Rect(*self.WINDOW)
+
+    def descendants(self):
+        return [self.header] + ([self.notes] if self.open else [])
+
+    def wheel(self, clicks, at=None):
+        import time
+
+        time.sleep(self.WHEEL_SECONDS)
+        end = max(0, self.length + (300 if self.open else 0) - self.VIEW)
+        self.offset = min(end, max(0, self.offset - 40 * clicks))
+
+
+class InterpretationDriverTests(unittest.TestCase):
+    """``open_interpretation`` (journey report-composition): the Windows runs
+    of Stage 37 UX 2/2 left the section closed."""
+
+    def gui(self, length):
+        page = _ResultPage(length)
+        gui = e2e.Gui(Path("program.exe"), Path("."), Path("."))
+        gui.win = page
+        gui.wheel = page.wheel
+        for name in ("dump", "shot", "log_screen"):
+            setattr(gui, name, lambda *a, **k: None)
+        gui.footer_top = lambda: None
+        gui.value = lambda element: ""
+        return gui, page
+
+    def test_the_section_opens_when_the_page_ends_soon_after_it(self):
+        # The page ends 1,500 px below its top (the Other results card at
+        # the end): the search for the note field scrolls to the end, and
+        # the header lies under the context bar there.
+        gui, page = self.gui(1500)
+        e2e.open_interpretation(gui)
+        self.assertTrue(page.open)
 
 
 if __name__ == "__main__":
