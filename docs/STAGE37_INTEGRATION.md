@@ -17,8 +17,15 @@ integration branch before the merge) and the second (the branch head).
 | 3 | `1dceef3` | `cdded4e`, `89e9e5a` | `claude/stage37-export` @ `89e9e5a` | data export (.xlsx, .csv, .sav), Results workbook, reproducibility bundle; pyreadstat |
 | 4 | `82be61a` | `1dceef3`, `16a0bdc` | `claude/stage37-rag` @ `16a0bdc` | research library, library questions, packaged FTS5 self-test |
 | – | `9218d7a` | `82be61a` | – | CI: Windows path filters for the Stage 37 modules |
+| – | `c733d2b` | `9218d7a` | – | this document (part 1) |
+| 5 | `8a58344` | `c733d2b`, `b4d9c0c` | `claude/stage37-ux` @ `b4d9c0c` | UX: the one settings file, the shell, the Settings hub, the variable panel and reuse |
+| – | `e57adb2` | `8a58344` | – | export defaults and library privacy in the one settings file and the Settings hub (§6) |
 
-All four branches start at `2f9af71` (each `git merge-base` with the base is `2f9af71`).
+All five branches start at `2f9af71` (each `git merge-base` with the base is
+`2f9af71`). `claude/stage37-ux` @ `b4d9c0c` already contains
+`claude/stage37-ux-shell` @ `6f4ced7` (merge `77cd26c`) and
+`claude/stage37-ux-vars` (merges `dcb9207` of `61fa4b8` and `b4d9c0c` of
+`c8418ad`). It was merged with one `--no-ff` merge.
 
 ## 2. Conflicts and how they were resolved
 
@@ -32,8 +39,20 @@ The rule for every conflict was to keep both sides' content.
 | 3, 4 | `tools/windows_gui_e2e.py` | Each branch appended a 19th journey: its docstring entry, its code after `report-composition` and its `JOURNEYS` entry. | Everything kept, in merge order. No top-level name is defined twice (checked; pyflakes clean). |
 | 3, 4 | `tests/test_stage368_review_journeys.py` | Each branch changed the count of journeys (19, or ≥ 18). | The exact combined order is asserted once: `STAGE37_JOURNEYS` after the 18 RC journeys. The branch tests check only their own journey's place: `test_stage37_journey.py` (index 18), and `test_stage37_export_journey.py` / `test_stage37_library_journey.py` (after the 18). |
 
-Journey order after part 1: the 18 RC journeys, then `stage37-hypothesis`,
-`export-data`, `research-library` (21).
+Merge 5 (`claude/stage37-ux`):
+
+| File | Conflict | Resolution |
+|---|---|---|
+| `workspace_text.py` | Two hunks: rag's `T.update` block against UX's (variable panel and reuse), and rag's `PLURALS` (documents, passages, pages, statements) against UX's (parts). | Both kept. No key overlap. The three-way check against the base and all five branches is clean. |
+| `workspace_analyze.py` | 0b moved `_task_title` to `research_workflow.task_title`, which also takes the run's options. UX added the reuse functions (`duplicate_task`, `repeat_result`, `_start_copy`, `_copy_notice`, state `copied_from`) and changed `_task_title` so that more than three variables read "first … last (N variables)". | UX's reuse functions and 0b's delegation are both kept. UX's naming rule moved into `research_workflow.task_title`, so a task and its results are named by one rule. |
+| `tools/windows_gui_e2e.py` | Docstring, journey code and `JOURNEYS` of both sides. Both sides also defined `master_fixture()`: export's writes into the folder given, UX's into `folder / "stage37-master"`. Both use the same generator. | Everything kept, with one `master_fixture()` (export's). The `variable-picker` journey now calls `master_fixture(work / "stage37-master")`, which gives the same files. `open_interpretation` is identical on both sides (export `8be2415`, UX `c8418ad`), so it appears once. |
+| `tests/test_stage368_review_journeys.py` | Both sides changed the journey count. | `STAGE37_JOURNEYS` lists the six Stage 37 journeys. `test_stage37_shell_journeys.py` now checks that its three journeys come in order after the 18, not the total count. |
+| `app_preferences.py` | UX split `save_preferences` into the settings file (without a path) and `_save_file` (with a path). Export made `save_preferences` keep the keys it does not manage. | UX's split, with export's key preservation inside `_save_file`. The export choices move to the settings file in the next commit (§6). |
+| `windows-gui-e2e.yml` (no textual conflict) | `app_preferences.py` was listed twice, once by export and once by UX. | Listed once. |
+
+Journey order: the 18 RC journeys, then `stage37-hypothesis`, `export-data`,
+`research-library`, `startup-workspace`, `settings-language`,
+`variable-picker` (24).
 
 Auto-merged files changed by more than one branch were reviewed as well:
 `project_session.py`, `project_store.py`, `research_workflow.py`,
@@ -86,6 +105,10 @@ Tool checks, in a fresh venv with both locks installed by hash:
 - `workspace_export.py` and `workspace_library.py` were already covered by `workspace_*.py`.
 - Every new top-level module of the four branches is now in a Windows path filter (checked by listing the `*.py` files missing at `2f9af71`).
 
+UX's workflow changes are kept. They include the settings and shell tests on
+Windows in `python-tests.yml`, the classic-interface start checks, and the
+`user_settings.py` and `window_state.py` path triggers. The UX branch changes neither lock.
+
 ## 5. Semantic checks (after each merge)
 
 New test module: `tests/test_stage37_integration.py`, which covers the seams between branches.
@@ -109,6 +132,8 @@ Targeted tests after each merge (integrated venv; the full suite was not run in 
 | merge 2 | 240 OK (with common) | 192 OK | – | – | 3 (integration) OK |
 | merge 3 | 174 OK | 192 OK | 84 OK | – | 66 OK |
 | merge 4 | 174 OK | 192 OK | 84 OK | 116 OK | 67 OK |
+| merge 5 (`8a58344`, merge only) | – | – | 84 OK | – | 68 OK; UX set 117 OK |
+| `e57adb2` (reconciled) | 174 OK | 192 OK | 84 OK | 116 OK | 72 OK; UX set 117 OK |
 
 \* common: `test_stage368_review_journeys`, `test_build_lock`, `test_locale_audit`,
 `test_localized_guides_apa7` and `test_stage37_integration`. Each branch set has the
@@ -121,3 +146,31 @@ branch's new and changed test modules. 0b: `test_stage37_*` of 0b and
 `test_stage37_csv_guard`, `test_stage37_dependency`, `test_stage37_export*` and
 `test_app_preferences`. rag: `test_library_*`, `test_research_library`,
 `test_stage37_ai_rows`, `test_stage37_library_journey` and `test_workspace_library`.
+UX: `test_stage37_settings`, `test_stage37_shell_journeys`, `test_stage37_ux_metrics`,
+`test_stage37_variable_panel`, `test_workspace_shell` and `test_app_startup`.
+After merge 5 the locale audit still shows missing 0 and placeholder 0. "identical" is 19:
+the 15 above plus 4 from the UX branch, none from the integration's own texts.
+
+## 6. Settings reconciliation (commit `e57adb2`)
+
+The two branches kept settings in different places:
+
+- UX keeps every setting in one file, `settings.json` in the data folder
+  (`user_settings`). It never writes the files of earlier versions, and it
+  keeps Russian.
+- Export remembered its choices in `preferences.json` under `"export"`.
+
+Before this commit, the merged program would have gone on writing the old
+file that UX promises never to change. What changed:
+
+| Part | Change |
+|---|---|
+| `user_settings` | New key `export`: `{"formats": {page: format}, "csv_layout", "csv_bom"}`, default `{}`. Its validator is `clean_export`: what this version knows is used, and anything else stays in the file as written, like UX's other keys. `migrate_legacy` copies an earlier build's `preferences.json` `"export"` as written. The language (Russian kept), recent files and style are copied as before. |
+| `app_preferences.export_preferences` / `remember_export` | Without a path, they read and write the settings file through `UserSettings` (`update(export=…)` writes only that key, after reading the file again). If the settings file holds no export choices yet, the ones an earlier build left in `preferences.json` are read and carried over at the next save. That covers a settings file made by a UX build before an export build wrote its choices. With an explicit path, the old single-file format works as before. |
+| Export cards (`workspace_export`) | They use `app.settings`. `forget_choices(app)` makes them read the choices again after Settings changes them or after *Reset settings*. Export defaults are settings, so a reset clears them. Research data is not touched. |
+| Settings → *Export defaults* (order 65) | The format each card (Data, Results, Reports) starts with, the CSV separator (while none is chosen, the caption names the language default) and the byte-order mark. These are the same values the cards remember: a change on a card shows here, and the other way round. A caption says that exports are written only where you save them and never include a research library. |
+| Settings → *Research library and privacy* (order 85, after *AI privacy*) | Shows that search is local only, and which backend this SQLite offers (FTS5, or the slower built-in search). Shows the real state of *Ask with sources*: which provider and model are ready (`ai_context.readiness`), or that it is off. For the open project it has the same backup-and-copy choice as the Library page (`research_library.travels`, off by default, with the same note); a change here shows there, and the other way round. Without an open project it says to open one. |
+| Texts | 15 new EN/LV/RU keys (LV and RU are drafts for native review). The locale audit shows missing 0 and placeholder 0. |
+| e2e | The `export-data` journey and its harness test read the remembered format from the data folder's `settings.json`. |
+| Tests | `test_stage37_settings`: the hub's section list now includes `export` and `library`. Its "another feature" test registers its own key instead of replacing the real export section. `tests/test_stage37_integration.py` (`SettingsFileTests`) checks five things. Migration loses nothing and keeps Russian, and the old file stays byte-identical. Remembering a choice leaves the language as it was. The fallback read works. The hub's export section matches the cards' choices in both directions and after a reset. The library section shows and changes the real backup choice. |
+
