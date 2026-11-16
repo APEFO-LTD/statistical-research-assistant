@@ -167,17 +167,17 @@ class MeterTests(unittest.TestCase):
 
 
 class ToolRunTests(unittest.TestCase):
-    """One full run of the eight tasks (about half a minute)."""
+    """One full run of the ten tasks (about a minute)."""
 
     @classmethod
     def setUpClass(cls):
         cls.results = um.measure()
 
-    def test_eight_tasks_four_of_each_persona(self):
+    def test_ten_tasks_five_of_each_persona(self):
         tasks = self.results["tasks"]
-        self.assertEqual([t["task"] for t in tasks], [f"T{n}" for n in range(1, 9)])
-        self.assertEqual(sorted(t["persona"] for t in tasks), ["novice"] * 4 + ["supervisor"] * 4)
-        self.assertEqual(sorted(t["run_order"] for t in tasks), list(range(1, 9)))
+        self.assertEqual([t["task"] for t in tasks], [f"T{n}" for n in range(1, 11)])
+        self.assertEqual(sorted(t["persona"] for t in tasks), ["novice"] * 5 + ["supervisor"] * 5)
+        self.assertEqual(sorted(t["run_order"] for t in tasks), list(range(1, 11)))
 
     def test_the_numbers_are_consistent(self):
         counts = ("interactions", "typed", "page_changes", "dialogs", "repeated_selections",
@@ -211,11 +211,17 @@ class ToolRunTests(unittest.TestCase):
         self.assertEqual(facts["T8"]["language"], "lv")
         self.assertGreaterEqual(len(self.results["tasks"][7]["segments"]), 2,
                                 "T8 goes on at the next start")
+        # Stage 37: the four scales, scored and checked (the register), and
+        # their four results read after a restart.
+        self.assertEqual(facts["T9"]["scores"], [s[0] for s in um.FOUR_SCALES])
+        self.assertEqual(len(facts["T9"]["alpha"]), 4)
+        self.assertEqual(facts["T9"]["path"], "scales register (Data page)")
+        self.assertEqual(facts["T10"]["results"], 4)
 
     def test_the_reports(self):
         json.dumps(self.results)
         table = um.markdown(self.results)
-        self.assertEqual(sum(line.startswith("| T") for line in table.splitlines()), 8)
+        self.assertEqual(sum(line.startswith("| T") for line in table.splitlines()), 10)
         self.assertIn("**novice**", table)
         self.assertIn("**supervisor**", table)
         self.assertIn("Scroll px (est.)", um.text_report(self.results))

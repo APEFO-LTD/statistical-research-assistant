@@ -1,4 +1,4 @@
-"""Stage 37 (Issue #68): the measured interaction cost of eight research tasks.
+"""Stage 37 (Issue #68): the measured interaction cost of ten research tasks.
 
 A reproducible measurement aid, not part of the application or of the
 installer. It starts the program the way a researcher does (the real
@@ -57,6 +57,12 @@ UCLA/SACS-shaped CSV (``tests/fixtures/stage36``).
       T6 export the Word report
       T8 change the language and the text size, and continue
     Session 3, the next start: T8 continues (are the choices kept?)
+    Session 4, novice, a second project (Stage 37, Fable review item 2)
+      -- set-up, not counted: the master CSV with its levels confirmed
+      T9 define, score and check the four scales of the master study
+         (SYN_LON sum, SYN_SUP mean, SYN_WELL sum, SYN_COPE_01–07 mean)
+    Session 5, supervisor, after a restart
+      T10 reopen that project and read each reliability result in full
 
 Every task checks that it produced what it names (the project, the levels,
 the score and its α, the batch, the new run, the Word file, the language),
@@ -109,7 +115,8 @@ LON_ITEMS = tuple(f"{LON_STEM}{n:02d}" for n in range(1, 21))
 LON_SCORE = "SYN_LON_MEAN"
 STATUS_BAR = 30.0          # the status line under the page (13-px text, 6-px padding)
 PERSONAS = {"T1": "novice", "T2": "novice", "T3": "novice", "T4": "novice",
-            "T5": "supervisor", "T6": "supervisor", "T7": "supervisor", "T8": "supervisor"}
+            "T5": "supervisor", "T6": "supervisor", "T7": "supervisor", "T8": "supervisor",
+            "T9": "novice", "T10": "supervisor"}
 TASKS = {
     "T1": "First start to an open project with data",
     "T2": "Confirm the measurement levels of the 98-variable file",
@@ -119,8 +126,25 @@ TASKS = {
     "T6": "Export the Word report",
     "T7": "Reopen the project after a restart, review every result",
     "T8": "Change the language and the text size, continue",
+    # Stage 37 (Fable review §4 item 2): a second chain, in its own project.
+    "T9": "Define, score and check the four scales of the master study",
+    "T10": "Reopen the four-scale project after a restart, review each reliability result",
 }
-ORDER = ("T1", "T2", "T3", "T4", "T7", "T5", "T6", "T8")     # the order they run in
+ORDER = ("T1", "T2", "T3", "T4", "T7", "T5", "T6", "T8", "T9", "T10")   # the order they run in
+# T9: the scales of the master fixture (synthetic_construct_mapping.json):
+# name, items, scoring rule, minimum answered (the rule the fixture's own
+# scores use: LON and WELL sums, SUP and coping dimension 1 means).
+FOUR_SCALES = (
+    ("LON_SUM", tuple(f"SYN_LON_{n:02d}" for n in range(1, 21)), "sum", 20, None),
+    ("SUP_AVG", tuple(f"SYN_SUP_{n:02d}" for n in range(1, 13)), "mean", 10, None),
+    ("WELL_SUM", tuple(f"SYN_WELL_{n:02d}" for n in range(1, 6)), "sum", 5, None),
+    ("COPE1_AVG", tuple(f"SYN_COPE_{n:02d}" for n in range(1, 8)), "mean", 6,
+     "SYN_COPE_01..SYN_COPE_07"),        # a range: the group SYN_COPE_* has 52 items
+)
+
+
+def task_number(key: str) -> int:
+    return int(key[1:])
 
 
 def commit() -> str:
@@ -581,7 +605,7 @@ class Recorder:
 
     def results(self, *, width: int, height: int, viewport: float, measured: str) -> dict:
         tasks = []
-        for key in sorted(TASKS):
+        for key in sorted(TASKS, key=task_number):
             parts = [s for s in self.segments if s.task == key]
             if not parts:
                 continue
@@ -1067,6 +1091,10 @@ def _preparation(ws: Meter) -> dict:
         elif isinstance(control, ft.Button) and _label(control.content) == \
                 "Use working copy in analysis":
             found["use"] = control
+        elif isinstance(control, ft.Dropdown) and control.label == "Scale score":
+            found["score_method"] = control
+        elif isinstance(control, ft.TextField) and control.label == "Minimum answered items":
+            found["min_answered"] = control
         elif isinstance(control, ft.Checkbox) and isinstance(control.label, str):
             found.setdefault("items", {})[control.label] = control
     missing = {"method", "target", "apply", "use", "items"} - set(found)
@@ -1318,6 +1346,157 @@ def supervisor(rec: Recorder, root: Path, facts: dict, *, width: int, height: in
         ws.close()
 
 
+def scales_student(rec: Recorder, root: Path, files: dict, *, width: int, height: int) -> dict:
+    """Session 4 (a new project): the four scales of the master study (T9).
+
+    Set-up, not counted: the project with the master CSV, its levels
+    confirmed as in T2. Counted: every scale defined, scored, its score's
+    level confirmed and its reliability checked (item diagnostics). With the
+    scales register (Stage 37) on the Data page; without it, Data → Prepare
+    four times and the Analyze page's "quality of a scale" four times."""
+    facts: dict = {}
+    ws = Meter(root, rec, width=width, height=height)
+    try:
+        ws.start()
+        ws.type("project-new-title", "Fictional four-scale study")
+        ws.click("project-create")
+        ensure(ws.run(ws.app.load_path(str(files["master"]))), "the master CSV did not open")
+        session = ws.app.session
+        wanted = master_levels(session.df.columns)
+        for name, level in wanted.items():
+            session.confirm_level(name, level)
+        ws.app.navigate("data")
+        ws.page_seen()
+        facts["project_id"] = ws.app.projects.info().id
+        with rec.task(ws, "T9") as seg:
+            seg.facts["fixture"] = "Stage 37 master: SYN_LON, SYN_SUP, SYN_WELL, SYN_COPE 1–7"
+            before = len(session.results)
+            if present(ws, "scales-add"):
+                seg.facts["path"] = "scales register (Data page)"
+                _register_path(ws)
+            else:
+                seg.facts["path"] = "Data → Prepare, then Analyze, once per scale"
+                _single_scale_path(ws)
+            results = [e for e in session.results[before:] if e.method == "item_diagnostics"]
+            ensure([list(e.roles["items"]) for e in results]
+                   == [list(s[1]) for s in FOUR_SCALES], "not the four scales' reliability")
+            for name, items, method, minimum, _ in FOUR_SCALES:
+                values = session.df[list(items)]
+                answered = values.notna().sum(axis=1)
+                expected = (values.sum(axis=1) if method == "sum" else values.mean(axis=1)) \
+                    .where(answered >= minimum)
+                ensure(((session.df[name] - expected).abs().max() or 0) < 1e-12
+                       and session.df[name].isna().equals(expected.isna()),
+                       f"a wrong score: {name}")
+                ensure(session.level(name) == "scale", f"the level of {name} is not confirmed")
+            seg.facts["alpha"] = [e.run.result.alpha.text() for e in results]
+            seg.facts["scores"] = [s[0] for s in FOUR_SCALES]
+            facts["results"] = [e.id for e in results]
+    finally:
+        ws.close()
+    return facts
+
+
+def _register_path(ws: Meter) -> None:
+    for name, items, method, minimum, by_range in FOUR_SCALES:
+        ws.click("scales-add")
+        ws.type("scales-name", name)
+        if by_range is None:
+            ws.click(f"scales-items:group:{items[0][:-2]}")
+        else:
+            ws.type("scales-items:search", by_range)
+            ws.click("scales-items:select-shown")
+        ws.segment_click("scales-method", method)
+        ws.type("scales-min", str(minimum))
+        ws.check("scales-confirm-one_construct")       # the scale's own confirmation
+    ws.click("scales-score-all")
+    if present(ws, "scales-levels"):
+        ws.click("scales-levels")
+    ws.click("scales-check-all")
+
+
+def _single_scale_path(ws: Meter) -> None:
+    session = ws.app.session
+    ws.click("data-prepare")
+    prep = _preparation(ws)
+    ws.choose_control(prep["method"], "Transformation", "scale")
+    for name, items, method, minimum, by_range in FOUR_SCALES:
+        prep = _preparation(ws)
+        group = f"prep-items:group:{items[0][:-2]}"
+        if by_range is None and present(ws, group):
+            ws.click(group)
+        elif present(ws, "prep-items:search"):
+            ws.type("prep-items:search", by_range or f"{items[0]}..{items[-1]}")
+            ws.click("prep-items:select-shown")
+        else:
+            for item in items:
+                ws.check_control(prep["items"][item], item)
+        prep = _preparation(ws)
+        if prep["score_method"].value != method:
+            ws.choose_control(prep["score_method"], "Scale score", method)
+        ws.type_control(prep["min_answered"], "Minimum answered items", str(minimum))
+        ws.type_control(prep["target"], "New variable name", name)
+        ws.click_control(prep["apply"], "Apply transformation")
+    ws.click_control(_preparation(ws)["use"], "Use working copy in analysis")
+    scores = [s[0] for s in FOUR_SCALES]
+    if present(ws, "data-accept") and all(session.variables[n].suggested == "scale"
+                                          for n in scores):
+        ws.check("data-accept-confirm")
+        ws.click("data-accept")
+    for name in scores:
+        if session.level(name) != "scale":
+            ws.choose(f"level-{name}", "scale")
+    for name, items, _, _, by_range in FOUR_SCALES:
+        if ws.app.route != "analyze":
+            ws.click("nav-analyze")
+        if not ws.find_all("goal-scale"):
+            ws.click("task-new" if ws.find_all("task-new") else "goal-change")
+        ws.click("goal-scale")
+        for quick in (f"role-items:score:{name}",
+                      None if by_range else f"role-items:group:{items[0][:-2]}"):
+            if quick and present(ws, quick):
+                ws.click(quick)
+                break
+        else:
+            ws.type("role-items:search", by_range or f"{items[0]}..{items[-1]}")
+            ws.click("role-items:select-shown")
+        for control in ws.find_all("design-confirm-"):
+            if not control.value:
+                ws.check(control.data)
+        ws.click("guided-run")
+
+
+def scales_professor(rec: Recorder, root: Path, facts: dict, *, width: int,
+                     height: int) -> None:
+    """Session 5, after a restart: the supervisor reopens the four-scale
+    project and reads each reliability result in full (T10)."""
+    ws = Meter(root, rec, width=width, height=height)
+    try:
+        with rec.task(ws, "T10") as seg:
+            seg.facts["fixture"] = "the project of T9"
+            ws.start()
+            open_project(ws, facts["project_id"])
+            seg.facts["page_after_open"] = ws.app.route
+            results = [e for e in ws.app.session.results if e.method == "item_diagnostics"]
+            ensure(len(results) == 4, "the four reliability results did not come back")
+            names = {tuple(s[1]): s[0] for s in FOUR_SCALES}
+            for entry in results:
+                if not ws.find_all(f"result-detail-{entry.id}"):
+                    score = names.get(tuple(entry.roles["items"]), "")
+                    route, _ = ws.nearest(f"scales-result-{score}", f"result-other-{entry.id}",
+                                          f"result-{entry.id}")
+                    if route is not None:
+                        ws.click(route)
+                    elif ws.app.route != "results":
+                        ws.click("nav-results")
+                    if not ws.find_all(f"result-detail-{entry.id}"):
+                        ws.choose("results-picker", str(entry.id))
+                ws.read(f"result-detail-{entry.id}")
+            seg.facts["results"] = len(results)
+    finally:
+        ws.close()
+
+
 def present(ws: Meter, data: str) -> bool:
     """Whether a control with exactly this data key is on screen."""
     return ws.find_where(lambda c: getattr(c, "data", None) == data) is not None
@@ -1392,6 +1571,9 @@ def measure(*, width: int = 1440, height: int = 800, keep: Path | None = None) -
         data = folder / "data"
         facts = novice(recorder, data, files, width=width, height=height)
         supervisor(recorder, data, facts, width=width, height=height)
+        scales = scales_student(recorder, folder / "data-scales", files, width=width,
+                                height=height)
+        scales_professor(recorder, folder / "data-scales", scales, width=width, height=height)
     viewport = float(height) - (tk.CONTEXT_BAR_HEIGHT + 8) - STATUS_BAR - 2 * tk.SPACE_5
     return recorder.results(width=width, height=height, viewport=viewport, measured=commit())
 

@@ -343,3 +343,58 @@ Measured with the same command and fixtures on the merge of `claude/stage37-ux-s
 - **T3, T5.** As in §9: the variable panel and *Repeat with changes*.
 - **Confirmations.** `data-accept-confirm` (T2) and `design-confirm-one_construct` (T3) are still counted in every run.
 
+
+## 11. Re-measured: the scales register and Continue (branch `claude/stage37-productivity`)
+
+Fable review §4 items 2, 5 and 6 (`docs/STAGE37_FABLE_NARROW_REVIEW.md` on `claude/stage37-review`). Same command and fixtures. "Before" is `8c6afb3` (the integration branch) measured with **this branch's** `tools/ux_metrics.py`, which adds two tasks in a second project; on `8c6afb3` the tool takes the paths that exist there. "After" is `c2d9e85` plus the tool. Scroll is an estimate (§4.5).
+
+New tasks (a second chain, its own project and data folder, so T1–T8 keep their numbers):
+
+- **T9** (novice, session 4). Set-up, not counted: a new project with the master CSV and its levels confirmed as in T2. Counted: the four scales of the master study defined, scored, their scores' level confirmed and their reliability checked (item diagnostics): `LON_SUM` (SYN_LON_01–20, sum, all 20 answered), `SUP_AVG` (SYN_SUP_01–12, mean, ≥ 10), `WELL_SUM` (SYN_WELL_01–05, sum, all 5), `COPE1_AVG` (SYN_COPE_01–07 by the range `SYN_COPE_01..SYN_COPE_07`, mean, ≥ 6). The task checks every score against pandas and every result's items.
+- **T10** (supervisor, session 5, a restart). Reopen that project from Home and read each of the four reliability results in full.
+
+### 11.1 At 1440 × 800
+
+| # | Task | Interactions (click · box · dropdown) | Typed | Pages | Dialogs | Scroll px (est.) |
+|---|---|---|---|---|---|---|
+| T9 | Define, score and check the four scales | 45 (30 · 5 · 5) → **19 (15 · 4 · 0)** | 9 → 9 | 8 → **0** | 0 | 13,070 → **8,768** |
+| T10 | Reopen after a restart, review each reliability result | 5 (5 · 0 · 0) → 5 (5 · 0 · 0) | 0 | 1 → **2** | 0 | 23,594 → 29,970 |
+| T3 | Define and score one 20-item scale, check its reliability | 13 → 13 | 1 | 2 | 0 | 4,000 → 4,400 |
+| T1, T2, T4–T8 | unchanged | 2 · 4 · 10 · 4 · 2 · 3 · 5 | | | | unchanged |
+| | **novice** (T1–T4, T9) | 74 → **48** | 11 | 13 → **5** | 1 | 24,342 → 20,440 |
+| | **supervisor** (T5–T8, T10) | 19 → 19 | 0 | 8 → 9 | 1 | 41,059 → 47,435 |
+
+### 11.2 At 1200 × 720
+
+| # | Task | Interactions (click · box · dropdown) | Typed | Pages | Dialogs | Scroll px (est.) |
+|---|---|---|---|---|---|---|
+| T9 | Define, score and check the four scales | 45 (30 · 5 · 5) → **19 (15 · 4 · 0)** | 9 → 9 | 8 → **0** | 0 | 14,881 → **10,648** |
+| T10 | Reopen after a restart, review each reliability result | 5 → 5 | 0 | 1 → **2** | 0 | 21,002 → 30,270 |
+| T3 | Define and score one 20-item scale, check its reliability | 13 → 13 | 1 | 2 | 0 | 4,518 → 4,958 |
+| T1, T2, T4–T8 | unchanged | 2 · 4 · 10 · 4 · 2 · 3 · 5 | | | | unchanged |
+| | **novice** | 74 → **48** | 11 | 13 → **5** | 1 | 27,159 → 23,366 |
+| | **supervisor** | 19 → 19 | 0 | 8 → 9 | 1 | 38,843 → 48,111 |
+
+### 11.3 What changed
+
+- **T9, before (45).** Data → Prepare four times (the name group or the range in the item panel, the scoring rule's dropdown when it changes, the minimum and the name typed, Apply), *Use working copy*, the bulk level confirmation (box and button), then on Analyze four times: the goal, the items (the score's items, or the name group), the one-construct confirmation, Run, and back (*New analysis*). Eight page changes.
+- **T9, after (19).** The **Scales** card of the Data page: per scale *Add a scale*, the name, the items (name group 1, or the range typed and *Select shown* 2), the rule (mean/sum, one click: no default), the minimum (typed: no default), the scale's own one-construct confirmation; then *Score all*, *Confirm as quantitative: …* (the scores' level, named on the button) and *Check reliability of all*. No page change. Per scale 4 (or 5 with a range) plus 3 for all: 11 scales would take ≈ 52.
+- **Confirmations.** Every confirmation of the single-scale path is still given, once per scale and for that scale's items: `one_construct` (its scope: the items, the reverse-keyed items and their range; a change clears it), and `items_not_totals` where an item looks like a total. Reverse-keyed items are ticked one by one, each tick the researcher's statement for that item; the program ticks none (the master fixture has no reversed items, so T9 ticks none). The scores' level is confirmed by a button that names them; nothing is confirmed by default.
+- **Same numbers.** Scores are made by Data → Prepare's `reverse_item` and `score_scale` and equal a NumPy oracle exactly; α is `item_diagnostics` through `run_method` and equals a NumPy oracle to 1e-9 (`tests/test_stage37_scales_register.py`). The four results are normal stored results (provenance, Results, Word report).
+- **T10 (5 → 5, one page more).** Continue opens the page the researcher last used. After T9 that is Data (the register, which shows α, ω and n of each scale and a link to each result); before, it was Results. Reading the four results in full still takes four clicks. Continue now also reopens the research task open in Analyze, or the result selected in Results (`last_task`, `last_result` in the settings file; `tests/test_stage37_continue.py`); neither T7 nor T10 counts change from it, because both go on to read every result.
+- **T3 scroll (+400 px, estimate).** The Scales card sits between the variable list and *Prepare data*.
+
+### 11.4 Descriptives of many variables and the correlation matrix (Fable item 5)
+
+Not in the ten tasks. `tests/test_stage37_variable_tables.py`: 12 variables of the master fixture described in All methods with *Descriptive statistics of many variables*: Analyze, *All methods*, the method, the 12 names typed in the panel's search, *Select shown*, Run — **5 interactions, 1 typed field, 2 page changes (Analyze, then Results)**. Before, one analysis per variable (≈ 50–72 interactions, 24 page changes, review §2.2). The values equal pandas (N, missing, M, SD, Mdn, Q1, Q3, min, max); *Correlation matrix with CIs and adjusted p* equals SciPy (r, Fisher z CI, p; ρ and its p) with Holm or Benjamini–Hochberg over the whole table.
+
+### 11.5 AC-10 (`docs/stage37/measure_baseline.py`)
+
+Re-run on `8c6afb3` and on `5239c09` (and unchanged by `c2d9e85`, which touches neither flow): the same numbers.
+
+| Flow | Interactions | Typed | Pages | Target | Met |
+|---|---:|---:|---:|---|---|
+| Beginner, Stage 37.0 | 21 | 5 | 4 | ≤ 20 · ≤ 5 · ≤ 4 | **no** (21 > 20) |
+| Professor, Stage 37.0 | 5 | 0 | 2 | ≤ 6 · ≤ 2 | yes |
+
+This increment does not change the beginner flow (one research question, one batch of correlations, its review and the report); the 21st interaction is the dropdown of Q1's kind (`docs/STAGE37_UX_RESULTS.md`).

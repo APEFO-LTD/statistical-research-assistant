@@ -342,6 +342,8 @@ class ScalesCard:
             actions.append(wc.button(ui, ui.t("scales.report_all"), self._report_all,
                                      kind="quiet", icon=ft.Icons.POST_ADD,
                                      data="scales-report-all"))
+        if not self.definitions:
+            actions = actions[:1]          # nothing to score or check yet: "Add a scale"
         if self.definitions and not to_score and not to_check:
             content.append(wc.caption(ui, ui.t("scales.nothing_ready"), data="scales-why"))
         return wc.card(ui, content, title=ui.t("scales.title"),
