@@ -332,5 +332,165 @@ class DamagedLibraryTests(StoreCase):
         self.assertTrue(warnings)
 
 
+# ============================================ injection F2-F5: hostile documents
+def deflated(size: int, byte: bytes = b" ") -> bytes:
+    """``size`` bytes of ``byte``, deflated (about 1000:1), without holding them."""
+    packer, chunk, parts = zlib.compressobj(6), byte * (8 << 20), []
+    for _ in range(size // len(chunk)):
+        parts.append(packer.compress(chunk))
+    parts.append(packer.compress(byte * (size % len(chunk))))
+    parts.append(packer.flush())
+    return b"".join(parts)
+
+
+def raw_pdf(stream: bytes, pages: int = 1, *, deflate: bool = True) -> bytes:
+    """A PDF of ``pages`` pages that all draw one shared content stream."""
+    objects = [b"<< /Type /Catalog /Pages 2 0 R >>",
+               b"<< /Type /Pages /Kids [" + b" ".join(b"%d 0 R" % (4 + i) for i in range(pages))
+               + b"] /Count %d >>" % pages,
+               b"<< /Length %d%s >>\nstream\n" % (len(stream), b" /Filter /FlateDecode"
+                                                   if deflate else b"") + stream
+               + b"\nendstream"]
+    objects += [b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 3 0 R"
+                b" /Resources << >> >>"] * pages
+    out, offsets = [b"%PDF-1.4\n"], []
+    for number, body in enumerate(objects, start=1):
+        offsets.append(sum(len(part) for part in out))
+        out.append(b"%d 0 obj\n" % number + body + b"\nendobj\n")
+    start = sum(len(part) for part in out)
+    out.append(b"xref\n0 %d\n0000000000 65535 f \n" % (len(objects) + 1))
+    out += [b"%010d 00000 n \n" % offset for offset in offsets]
+    out.append(b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n"
+               % (len(objects) + 1, start))
+    return b"".join(out)
+
+
+PEAK = textwrap.dedent("""
+    import json, resource, sys
+    sys.path.insert(0, sys.argv[1])
+    import pypdf, pypdfium2, research_library as rl
+    before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    data = open(sys.argv[2], "rb").read()
+    try:
+        rl.extract(data, "pdf")
+        outcome = "read"
+    except rl.LibraryError as error:
+        outcome = error.reason
+    after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    print(json.dumps({"grew_mb": (after - before) / 1024, "outcome": outcome}))
+""")
+
+
+class HostileFileTests(unittest.TestCase):
+    def setUp(self):
+        temp = TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.base = Path(temp.name)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "ru_maxrss in KiB")
+    def test_a_content_stream_bomb_is_not_inflated_by_pdfium(self):
+        path = self.base / "bomb.pdf"
+        path.write_bytes(raw_pdf(deflated(600 << 20)))
+        self.assertLess(path.stat().st_size, 2 << 20)
+        run = subprocess.run([sys.executable, "-I", "-c", PEAK, str(ROOT), str(path)],
+                             capture_output=True, text=True, timeout=300,
+                             env={**os.environ, "MPLBACKEND": "Agg"})
+        self.assertEqual(run.returncode, 0, run.stderr[-2000:])
+        report = json.loads(run.stdout.strip().splitlines()[-1])
+        self.assertLess(report["grew_mb"], 250, report)
+
+    def test_cancel_is_honoured_after_reading_the_pages(self):
+        data = raw_pdf(deflated(200 << 20), pages=8)
+        cancel = threading.Event()
+
+        def progress(stage, done, total):
+            if stage == "read" and done == total:
+                cancel.set()
+
+        started = time.monotonic()
+        with self.assertRaises(rl.LibraryError) as stopped:
+            rl.extract(data, "pdf", progress=progress, cancel=cancel)
+        self.assertEqual(stopped.exception.reason, "cancelled")
+        self.assertLess(time.monotonic() - started, 3.0)
+
+    def test_pages_sharing_one_huge_stream_are_read_in_bounded_time(self):
+        data = raw_pdf(deflated(200 << 20), pages=16)
+        started = time.monotonic()
+        try:
+            rl.extract(data, "pdf")
+        except rl.LibraryError:
+            pass
+        self.assertLess(time.monotonic() - started, 6.0)
+
+    def test_the_viewer_refuses_a_page_it_cannot_draw_safely(self):
+        with self.assertRaises(rl.LibraryError) as refused:
+            rl.render_pdf_page(raw_pdf(deflated(600 << 20)), 1)
+        self.assertEqual(refused.exception.reason, "page_too_large")
+        self.assertTrue(rl.render_pdf_page(fx.pdf(fx.EN_NOTES), 1)[0].startswith(b"\x89PNG"))
+
+    def test_a_docx_zip_bomb_is_refused_before_it_is_inflated(self):
+        import docx
+
+        stream = io.BytesIO()
+        docx.Document().save(stream)
+        source = zipfile.ZipFile(io.BytesIO(stream.getvalue()))
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as target:
+            for item in source.infolist():
+                data = source.read(item.filename)
+                if item.filename == "word/_rels/document.xml.rels":
+                    data = data.replace(b"</Relationships>", (
+                        b'<Relationship Id="rIdBomb" Type="http://schemas.openxmlformats.org/'
+                        b'officeDocument/2006/relationships/image" Target="media/image1.png"/>'
+                        b"</Relationships>"))
+                target.writestr(item, data)
+            with target.open("word/media/image1.png", "w", force_zip64=True) as member:
+                chunk = b"\0" * (8 << 20)
+                for _ in range(16):
+                    member.write(chunk)
+        data = out.getvalue()
+        self.assertLess(len(data), 1 << 20)
+        with mock.patch("docx.Document", side_effect=AssertionError("inflated")):
+            with self.assertRaises(rl.LibraryError) as refused:
+                rl.extract(data, "docx")
+        self.assertEqual(refused.exception.reason, "unpacks_too_large")
+        self.assertTrue(rl.extract(fx.docx(fx.LV_MANUAL_V1), "docx").segments[0].text)
+
+    def test_a_markdown_heading_with_a_long_run_of_spaces_is_read_at_once(self):
+        line = ("# x" + " " * 1600 + "y\n").encode()
+        started = time.monotonic()
+        extracted = rl.extract(line, "md")
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertEqual(extracted.segments[0].text.split()[:2], ["x", "y"])
+        for text, level in (("# Title #", 1), ("## Method ##   ", 2), ("### C#", 3),
+                            ("####### seven", 0), ("#notaheading", 0), ("   # Indented", 1)):
+            with self.subTest(text=text):
+                blocks = rl._plain_blocks(text + "\n\nBody text.", markdown=True)
+                self.assertEqual(blocks[0][1], level, blocks)
+        self.assertEqual(rl._plain_blocks("# Title #", markdown=True)[0][0], "Title")
+        self.assertEqual(rl._plain_blocks("### C#", markdown=True)[0][0], "C#")
+
+    def test_cancel_stops_reading_a_long_text(self):
+        cancel = threading.Event()
+        cancel.set()
+        for kind in ("md", "txt"):
+            with self.subTest(kind=kind), self.assertRaises(rl.LibraryError) as stopped:
+                rl.extract(b"A synthetic line of notes.\n" * 120_000, kind, cancel=cancel)
+            self.assertEqual(stopped.exception.reason, "cancelled")
+
+    def test_dehyphenation_is_linear_and_unchanged(self):
+        started = time.monotonic()
+        blocks = rl._pdf_blocks([("abcdefgh-", 0.0)] * 8000)
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual(sum(len(text) for text, _ in blocks), 8 * 8000 + 1)
+        self.assertEqual(rl._dehyphenate(["The investi-", "gation was done"]),
+                         ["The investigation", "was done"])
+        self.assertEqual(rl._dehyphenate(["self-", "Esteem"]), ["self-", "Esteem"])
+        self.assertEqual(rl._dehyphenate(["a range --", "of values"]), ["a range --", "of values"])
+        self.assertEqual(rl._dehyphenate(["page 2-", "three"]), ["page 2-", "three"])
+        self.assertEqual(rl._dehyphenate(["x-", "y-", "z"]), ["xyz"])
+        self.assertEqual(rl._dehyphenate(["a-", "-b"]), ["a-", "-b"])
+
+
 if __name__ == "__main__":
     unittest.main()

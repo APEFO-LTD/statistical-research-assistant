@@ -3611,6 +3611,23 @@ T.update({
         "Pages {pages} are beyond the OCR limit of {limit} pages and were not read.",
         "Lappuses {pages} pārsniedz OCR ierobežojumu ({limit} lappuses) un netika nolasītas.",
         "Страницы {pages} превышают предел OCR ({limit} страниц) и не прочитаны."),
+    "library.note.too_complex": (
+        "Pages {pages} draw more than the library reads safely from one page and were left out.",
+        "Lappuses {pages} satur vairāk zīmējuma datu, nekā bibliotēka droši nolasa no vienas "
+        "lappuses, un tika izlaistas.",
+        "Страницы {pages} содержат больше графических данных, чем библиотека безопасно читает с "
+        "одной страницы, и пропущены."),
+    "library.error.page_too_large": (
+        "page {page} draws more than the viewer can safely show.",
+        "{page}. lappusē ir vairāk zīmējuma datu, nekā skatītājs var droši parādīt.",
+        "на странице {page} больше графических данных, чем просмотрщик может безопасно показать."),
+    "library.error.unpacks_too_large": (
+        "it unpacks to more than the library reads from one document; it may be damaged or "
+        "deliberately inflated.",
+        "tas atarhivējas lielāks, nekā bibliotēka nolasa no viena dokumenta; tas var būt bojāts "
+        "vai apzināti uzpūsts.",
+        "в распакованном виде он больше, чем библиотека читает из одного документа; возможно, он "
+        "повреждён или намеренно раздут."),
     "library.note.ocr_read": (
         "Page {pages} was read with local OCR: compare its passages with the page.",
         "Lappuse {pages} nolasīta ar lokālo OCR: salīdziniet tās fragmentus ar lappusi.",

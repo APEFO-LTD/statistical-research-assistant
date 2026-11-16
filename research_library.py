@@ -60,6 +60,8 @@ import sqlite3
 import tempfile
 import threading
 import unicodedata
+import zipfile
+import zlib
 
 SCHEMA_VERSION = 1
 FOLDER = "library"
@@ -91,6 +93,14 @@ SNIPPET_TOKENS = 28
 MARK_OPEN, MARK_CLOSE = "\x02", "\x03"     # around matched words in a snippet
 ELLIPSIS = "…"
 K1, B = 1.2, 0.75                         # the FTS5 bm25() defaults
+# Hostile files (independent review injection F2/F3): what a page may draw
+# before PDFium is asked to parse it (decoded content streams, forms, Type 3
+# glyphs, patterns and annotation appearances; images and fonts are not
+# counted), and what a DOCX may unpack to before python-docx reads it.
+MAX_PAGE_CONTENT = 32 * 1024 * 1024
+MAX_DOCX_UNPACKED = 256 * 1024 * 1024
+MAX_DOCX_RATIO = 200                  # per part above 1 MiB (compressed : unpacked)
+CANCEL_EVERY = 2048                   # lines or paragraphs between two looks at Cancel
 MAX_QUERY_TERMS = 24
 MAX_QUERY_CHARS = 500
 OCR_LANGUAGE = re.compile(r"^(eng|lav|rus)(\+(eng|lav|rus)){0,2}$")
@@ -420,19 +430,41 @@ def heading_level(line: str) -> int:
     return 0
 
 
+def _last_two(parts: list[str]) -> str:
+    tail = ""
+    for part in reversed(parts):
+        tail = part[-2:] + tail
+        if len(tail) >= 2:
+            return tail[-2:]
+    return tail
+
+
 def _dehyphenate(lines: list[str]) -> list[str]:
-    """Join a word broken over two lines ("investi-" + "gation")."""
-    joined: list[str] = []
+    """Join a word broken over two lines ("investi-" + "gation").
+
+    Linear in the number of lines (injection F5): a joined line is kept as
+    its pieces and only its last two characters are looked at, where a
+    regular expression over the growing line and string concatenation made
+    a long run of hyphenated lines quadratic."""
+    joined: list[list[str]] = []
+    tails: list[str] = []
     for line in lines:
-        if (joined and re.search(r"[^\W\d_]-$", joined[-1]) and line[:1].islower()
-                and not joined[-1].endswith("--")):
-            head, _, tail = line.partition(" ")
-            joined[-1] = joined[-1][:-1] + head
-            if tail:
-                joined.append(tail)
-            continue
-        joined.append(line)
-    return joined
+        if joined and line[:1].islower():
+            tail = tails[-1]
+            if (len(tail) == 2 and tail[1] == "-" and tail[0].isalnum()
+                    and not tail[0].isdecimal()):
+                head, _, rest = line.partition(" ")
+                parts = joined[-1]
+                parts[-1] = parts[-1][:-1]
+                parts.append(head)
+                tails[-1] = _last_two(parts)
+                if rest:
+                    joined.append([rest])
+                    tails.append(rest[-2:])
+                continue
+        joined.append([line])
+        tails.append(line[-2:])
+    return ["".join(parts) for parts in joined]
 
 
 _PAGE_NUMBER = re.compile(r"(?i)^(?:[\s\-–—|]*\d{1,4}[\s\-–—|]*|(?:page|p\.|lpp\.|стр\.?|"
@@ -546,7 +578,25 @@ def _pdf_blocks(lines: list[tuple[str, float]], levels: dict[float, int] | None 
     return blocks
 
 
-def _plain_blocks(text: str, *, markdown: bool) -> list[tuple[str, int]]:
+_ATX_OPEN = re.compile(r"\s{0,3}(#{1,6})\s")
+
+
+def _atx_heading(line: str) -> tuple[int, str] | None:
+    """(level, text) of a Markdown ``#`` heading, or None. Linear: the
+    optional closing ``#``s are stripped with ``rstrip`` (a lazy group in
+    one regular expression backtracked cubically on a long run of spaces,
+    injection F4)."""
+    match = _ATX_OPEN.match(line)
+    if match is None:
+        return None
+    text = line[match.end():].strip()
+    closed = text.rstrip("#")
+    if closed != text and (not closed or closed[-1].isspace()):
+        text = closed.rstrip()
+    return len(match.group(1)), text
+
+
+def _plain_blocks(text: str, *, markdown: bool, cancel=None) -> list[tuple[str, int]]:
     """TXT or Markdown: paragraphs separated by blank lines; ``#`` and
     underlined headings (Markdown) or likely titles (TXT) start sections."""
     blocks: list[tuple[str, int]] = []
@@ -562,16 +612,18 @@ def _plain_blocks(text: str, *, markdown: bool) -> list[tuple[str, int]]:
 
     lines = clean_text(text).split("\n")
     for index, line in enumerate(lines):
+        if not index % CANCEL_EVERY:
+            _check(cancel)
         stripped = line.strip()
         if markdown:
             if stripped.startswith(("```", "~~~")):
                 fence = not fence
                 flush()
                 continue
-            atx = None if fence else re.match(r"^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$", line)
-            if atx and atx.group(2).strip():
+            atx = None if fence else _atx_heading(line)
+            if atx and atx[1]:
                 flush()
-                blocks.append((atx.group(2).strip(), len(atx.group(1))))
+                blocks.append((atx[1], atx[0]))
                 continue
             if (not fence and paragraph and len(paragraph) == 1 and stripped
                     and re.fullmatch(r"=+|-+", stripped)):
@@ -617,14 +669,33 @@ def _heading_style_level(paragraph) -> int:
     return 0
 
 
-def _docx_blocks(data: bytes) -> tuple[list[tuple[str, int]], str]:
+def _check_docx_package(data: bytes) -> None:
+    """Refuse a DOCX that unpacks to more than the library reads (a zip bomb,
+    injection F3) before python-docx inflates any part of it."""
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(data))
+    except (zipfile.BadZipFile, ValueError) as error:
+        raise LibraryError("unreadable", str(error)) from error
+    with archive:
+        infos = archive.infolist()
+        total = sum(info.file_size for info in infos)
+        inflated = any(info.file_size > 1024 ** 2
+                       and info.file_size > MAX_DOCX_RATIO * max(info.compress_size, 1)
+                       for info in infos)
+    if inflated or total > MAX_DOCX_UNPACKED or len(infos) > 20_000:
+        raise LibraryError("unpacks_too_large", size=total, limit=MAX_DOCX_UNPACKED)
+
+
+def _docx_blocks(data: bytes, cancel=None) -> tuple[list[tuple[str, int]], str]:
     from docx import Document
     from docx.table import Table
 
     document = Document(io.BytesIO(data))
     blocks: list[tuple[str, int]] = []
     title = ""
-    for item in document.iter_inner_content():
+    for index, item in enumerate(document.iter_inner_content()):
+        if not index % CANCEL_EVERY:
+            _check(cancel)
         if isinstance(item, Table):
             for row in item.rows:
                 cells: list[str] = []
@@ -649,7 +720,129 @@ def _docx_blocks(data: bytes) -> tuple[list[tuple[str, int]], str]:
     return blocks, title
 
 
-def _pdf_image_share(data: bytes, pages: list[int]) -> dict[int, float]:
+def _decoded_size(stream, limit: int) -> int:
+    """How many bytes a PDF stream decodes to, counted up to ``limit`` + 1
+    without holding them (Flate) or with pypdf's own output limits."""
+    try:
+        filters = stream.get("/Filter")
+        names = ([] if filters is None else [str(filters)] if not isinstance(filters, list)
+                 else [str(f) for f in filters])
+        raw = stream._data if hasattr(stream, "_data") else b""
+        if not names:
+            return len(raw or b"")
+        if names in (["/FlateDecode"], ["/Fl"]):
+            inflater, pending, total = zlib.decompressobj(), raw, 0
+            try:
+                while pending and not inflater.eof:
+                    total += len(inflater.decompress(pending, 1 << 20))
+                    if total > limit:
+                        return limit + 1
+                    pending = inflater.unconsumed_tail
+            except zlib.error:
+                pass                           # damaged: what decoded before it counts
+            return total
+        return len(stream.get_data())
+    except Exception as error:
+        return limit + 1 if type(error).__name__ == "LimitReachedError" else 0
+
+
+def _page_content_size(page, limit: int = MAX_PAGE_CONTENT, cache: dict | None = None) -> int:
+    """Decoded bytes a PDF page asks a renderer to parse: its content
+    streams, form XObjects, Type 3 glyph procedures, tiling patterns and
+    annotation appearances, each stream once (``cache`` keeps the size of a
+    stream shared by many pages). Images and font programs are not counted.
+    Stops counting above ``limit``."""
+    from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject, StreamObject
+
+    cache = {} if cache is None else cache
+    seen: set = set()
+    total = 0
+
+    def resolve(item):
+        try:
+            return item.get_object() if isinstance(item, IndirectObject) else item
+        except Exception:
+            return None
+
+    def values(item) -> list:
+        item = resolve(item)
+        if isinstance(item, DictionaryObject):
+            return list(item.values())
+        if isinstance(item, ArrayObject):
+            return list(item)
+        return []
+
+    pending: list = []                  # (kind, object) still to look at
+
+    def count(reference) -> None:
+        nonlocal total
+        key = ((reference.idnum, reference.generation)
+               if isinstance(reference, IndirectObject) else None)
+        if key is not None:
+            if key in seen:
+                return
+            seen.add(key)
+        stream = resolve(reference)
+        if not isinstance(stream, StreamObject):
+            return
+        if key is not None and key in cache:
+            size = cache[key]
+        else:
+            size = _decoded_size(stream, limit)
+            if key is not None:
+                cache[key] = size
+        total += size
+        pending.append(stream.get("/Resources"))
+
+    contents = resolve(page.get("/Contents"))
+    for item in (contents if isinstance(contents, ArrayObject) else [page.get("/Contents")]):
+        count(item)
+    pending.append(page.get("/Resources"))
+    for annotation in values(page.get("/Annots")):
+        appearance = resolve((resolve(annotation) or {}).get("/AP")) or {}
+        normal = appearance.get("/N") if isinstance(appearance, DictionaryObject) else None
+        if isinstance(resolve(normal), StreamObject):
+            count(normal)
+        else:
+            for state in values(normal):
+                count(state)
+    visited: set = set()
+    while pending and total <= limit:
+        resources = resolve(pending.pop())
+        if not isinstance(resources, DictionaryObject) or id(resources) in visited:
+            continue
+        visited.add(id(resources))
+        for reference in values(resources.get("/XObject")):
+            target = resolve(reference)
+            if isinstance(target, StreamObject) and str(target.get("/Subtype", "")) == "/Form":
+                count(reference)
+        for reference in values(resources.get("/Pattern")):
+            if isinstance(resolve(reference), StreamObject):
+                count(reference)
+        for reference in values(resources.get("/Font")):
+            font = resolve(reference)
+            if isinstance(font, DictionaryObject) and str(font.get("/Subtype", "")) == "/Type3":
+                for procedure in values(font.get("/CharProcs")):
+                    count(procedure)
+                pending.append(font.get("/Resources"))
+    return total
+
+
+def _drawable_pages(reader, numbers, cancel=None) -> set[int]:
+    """The pages (1-based) whose content PDFium may parse safely."""
+    cache: dict = {}
+    safe = set()
+    for number in numbers:
+        _check(cancel)
+        try:
+            if _page_content_size(reader.pages[number - 1], cache=cache) <= MAX_PAGE_CONTENT:
+                safe.add(number)
+        except Exception:
+            continue
+    return safe
+
+
+def _pdf_image_share(data: bytes, pages: list[int], cancel=None) -> dict[int, float]:
     """Share of each page covered by the images it draws (PDFium)."""
     try:
         import pypdfium2 as pdfium
@@ -660,6 +853,7 @@ def _pdf_image_share(data: bytes, pages: list[int]) -> dict[int, float]:
     pdf = pdfium.PdfDocument(data)
     try:
         for number in pages:
+            _check(cancel)
             page = pdf[number - 1]
             try:
                 width, height = page.get_size()
@@ -678,9 +872,22 @@ def _pdf_image_share(data: bytes, pages: list[int]) -> dict[int, float]:
 
 def render_pdf_page(data: bytes, page_number: int, *, scale: float = 1.4,
                     max_width: int = 1300, max_pixels: int = 5_000_000) -> tuple[bytes, float]:
-    """A PDF page as PNG (bounded size) and the DPI it was drawn at."""
+    """A PDF page as PNG (bounded size) and the DPI it was drawn at. A page
+    that draws more than MAX_PAGE_CONTENT is refused (``page_too_large``)
+    before PDFium parses it (injection F2)."""
     import pypdfium2 as pdfium
+    from pypdf import PdfReader
 
+    try:
+        with _quiet_pypdf():
+            reader = PdfReader(io.BytesIO(data))
+            if 1 <= page_number <= len(reader.pages):
+                if _page_content_size(reader.pages[page_number - 1]) > MAX_PAGE_CONTENT:
+                    raise LibraryError("page_too_large", page=page_number)
+    except LibraryError:
+        raise
+    except Exception:
+        pass                                  # pypdf cannot read it; PDFium may
     pdf = pdfium.PdfDocument(data)
     try:
         if not 1 <= page_number <= len(pdf):
@@ -778,8 +985,19 @@ def _read_pdf_pages(data: bytes, *, ocr: bool, ocr_language: str, progress,
     if count > MAX_PAGES:
         raise LibraryError("too_many_pages", pages=count, limit=MAX_PAGES)
     pages: list[list[tuple[str, float]]] = []
+    cache: dict = {}
+    too_large: list[int] = []
     for number, page in enumerate(reader.pages, start=1):
         _check(cancel)
+        try:
+            if _page_content_size(page, cache=cache) > MAX_PAGE_CONTENT:
+                too_large.append(number)        # neither pypdf nor PDFium reads it
+                pages.append([])
+                if progress is not None:
+                    progress("read", number, count)
+                continue
+        except Exception:
+            pass
         try:
             pages.append(_pdf_lines(page))
         except Exception:
@@ -789,8 +1007,11 @@ def _read_pdf_pages(data: bytes, *, ocr: bool, ocr_language: str, progress,
                 pages.append([])
         if progress is not None:
             progress("read", number, count)
+    _check(cancel)
     texts = ["\n".join(text for text, _ in lines) for lines in pages]
     extracted = Extracted([], count)
+    if too_large:
+        extracted.notes.append(("too_complex", {"pages": too_large}))
     try:
         title = str((reader.metadata or {}).get("/Title") or "").strip()
         placeholder = re.search(r"(?i)\.(pdf|docx?)$|^untitled|^microsoft", title)
@@ -798,9 +1019,10 @@ def _read_pdf_pages(data: bytes, *, ocr: bool, ocr_language: str, progress,
             extracted.title = title
     except Exception:
         pass
-    low = [n for n, text in enumerate(texts, start=1) if _letters(text) < OCR_MIN_LETTERS]
+    low = [n for n, text in enumerate(texts, start=1)
+           if _letters(text) < OCR_MIN_LETTERS and n not in too_large]
     if low:
-        shares = _pdf_image_share(data, low)
+        shares = _pdf_image_share(data, low, cancel)
         images = [n for n in low if shares.get(n, 0.0) >= OCR_MIN_IMAGE_SHARE]
         if images and not ocr:
             extracted.notes.append(("ocr_off", {"pages": images}))
@@ -839,8 +1061,11 @@ def _read_pdf_pages(data: bytes, *, ocr: bool, ocr_language: str, progress,
         if candidates:
             largest = max(size for size, _ in candidates)
             extracted.title = next(text for size, text in candidates if size == largest)[:200]
-    extracted.segments = [_assemble(_pdf_blocks(lines, levels), number)
-                          for number, lines in enumerate(pages, start=1)]
+    segments = []
+    for number, lines in enumerate(pages, start=1):
+        _check(cancel)
+        segments.append(_assemble(_pdf_blocks(lines, levels), number))
+    extracted.segments = segments
     return extracted
 
 
@@ -851,13 +1076,17 @@ def extract(data: bytes, kind: str, *, ocr: bool = False, ocr_language: str = "e
         extracted = _read_pdf(data, ocr=ocr, ocr_language=ocr_language, progress=progress,
                               cancel=cancel)
     elif kind == "docx":
+        _check_docx_package(data)
         try:
-            blocks, title = _docx_blocks(data)
+            blocks, title = _docx_blocks(data, cancel)
+        except LibraryError:
+            raise
         except Exception as error:
             raise LibraryError("unreadable", str(error)) from error
         extracted = Extracted([_assemble(blocks, None)], 0, title)
     elif kind in ("txt", "md"):
-        blocks = _plain_blocks(_decode_text(data), markdown=kind == "md")
+        _check(cancel)
+        blocks = _plain_blocks(_decode_text(data), markdown=kind == "md", cancel=cancel)
         title = ""
         if kind == "md":
             title = next((text for text, level in blocks if level == 1), "")

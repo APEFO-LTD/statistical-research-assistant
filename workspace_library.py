@@ -710,7 +710,7 @@ class LibraryPage:
             pages = _pages(values.get("pages", ()))
             if key == "versioned":
                 parts.append(app.t("library.note.versioned", label=values["label"]))
-            elif key in ("ocr_off", "ocr_unavailable", "ocr_failed", "ocr_limit"):
+            elif key in ("ocr_off", "ocr_unavailable", "ocr_failed", "ocr_limit", "too_complex"):
                 parts.append(app.t(f"library.note.{key}", pages=pages,
                                    limit=values.get("limit", "")))
                 tone = "warning"
