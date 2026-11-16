@@ -626,5 +626,61 @@ class W3PostHocTitleTests(unittest.TestCase):
                 self.assertEqual(calc, rr.calculation(language, "omnibus", options))
 
 
+class SmallMinorTests(unittest.TestCase):
+    """R5, R6, R7 and G of the 0b verification."""
+
+    def test_r5_headings_use_times_new_roman_not_the_theme_font(self):
+        from docx.oxml.ns import qn
+
+        import report_docx
+
+        document = report_docx.build_research_docx(
+            rr.plan_report(rr.ReportInputs(title="F", question="Q?")), version="t")
+        for name in ("Title", "Heading 1", "Heading 2", "Heading 3"):
+            with self.subTest(style=name):
+                fonts = document.styles[name].element.rPr.find(qn("w:rFonts"))
+                for attribute in ("w:asciiTheme", "w:hAnsiTheme"):
+                    self.assertIsNone(fonts.get(qn(attribute)))
+                self.assertEqual(fonts.get(qn("w:ascii")), "Times New Roman")
+
+    def test_r6_no_spearman_option_on_a_pearson_or_kendall_batch(self):
+        import workspace_methods as wm
+
+        spec = wm.METHODS["batch_correlation"]
+        for method in ("pearson", "kendall"):
+            opts = {**wm.default_options(spec), "method": method}
+            self.assertNotIn("Spearman p-value", rr.calculation(
+                "en", "batch_correlation", opts, label_en="Pearson’s r", tests=8,
+                correction="holm"))
+        opts = {**wm.default_options(spec), "method": "spearman"}
+        self.assertIn("Spearman p-value", rr.calculation("en", "batch_correlation", opts))
+
+    def test_r7_every_justifiable_check_is_named_in_the_report(self):
+        import research_workflow as rw
+
+        for language in ("en", "lv", "ru"):
+            for key in rw.RECORD_KIND:
+                self.assertIn("about." + key, rr.TEXT[language], (language, key))
+
+    def test_g_replace_cannot_rewrite_a_protocol_record(self):
+        import sqlite3
+        from tempfile import TemporaryDirectory
+
+        import project_store as ps
+
+        with TemporaryDirectory() as folder:
+            store = ps.ProjectStore(Path(folder))
+            with store.open(store.create("Fictional").id) as project:
+                project.save_plan({"hypotheses": [{"id": "bbbbbbbbbbb1", "text": "H"}]})
+                record = project.add_protocol_record("deviation", hypothesis_id="bbbbbbbbbbb1",
+                                                     detail={"what": "sample"}, reason="Kept.")
+                with self.assertRaises(sqlite3.DatabaseError):
+                    with project._write() as db:
+                        db.execute("REPLACE INTO protocol_records (id, at, kind, reason)"
+                                   " VALUES (?, ?, 'deviation', 'REWRITTEN')",
+                                   (record["id"], ps.now()))
+                self.assertEqual(project.protocol_records()[0]["reason"], "Kept.")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -171,6 +171,7 @@ TEXT = {
         "about.H-SPEC-CHANGED": "the analysis changed after its first result",
         "about.H-ADDED-AFTER": "added after results",
         "about.H-DESIGNATION-CHANGED": "designation changed after results",
+        "about.H-PLAN-CHANGED": "the plan changed after results",
         "about.other": "a recorded decision",
         "limits_title": "Limitations of the evidence for H{number}: {items}",
         "others": "{count} other result(s) of the analyses of H{number} are not in this "
@@ -304,6 +305,7 @@ TEXT = {
         "about.H-SPEC-CHANGED": "analīze mainīta pēc pirmā rezultāta",
         "about.H-ADDED-AFTER": "pievienota pēc rezultātiem",
         "about.H-DESIGNATION-CHANGED": "prioritāte mainīta pēc rezultātiem",
+        "about.H-PLAN-CHANGED": "plāns mainīts pēc rezultātiem",
         "about.other": "ierakstīts lēmums",
         "limits_title": "Hipotēzes H{number} pierādījumu ierobežojumi: {items}",
         "others": "Citi H{number} analīžu rezultāti, kas nav šajā atskaitē: {count}.",
@@ -438,6 +440,7 @@ TEXT = {
         "about.H-SPEC-CHANGED": "анализ изменён после первого результата",
         "about.H-ADDED-AFTER": "добавлена после результатов",
         "about.H-DESIGNATION-CHANGED": "приоритет изменён после результатов",
+        "about.H-PLAN-CHANGED": "план изменён после результатов",
         "about.other": "записанное решение",
         "limits_title": "Ограничения данных по H{number}: {items}",
         "others": "Других результатов анализов H{number}, которых нет в этом отчёте: "
@@ -801,6 +804,8 @@ def calculation(language: str, method: str, options: dict | None, *, label_en: s
             if adjust:
                 parts.append(text(language, "calc.correction",
                                   adjust=label(language, choices.get(adjust, adjust))))
+        elif option.key == "spearman_p" and options.get("method") != "spearman":
+            continue       # review R6: it has no effect on a Pearson or Kendall run
         elif option.key not in _TITLE_OPTIONS and option.key in options:
             value = str(options[option.key])
             parts.append(f"{label(language, option.label)} = "

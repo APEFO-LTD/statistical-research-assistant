@@ -68,6 +68,14 @@ def _style(document: Document):
     third.paragraph_format.space_before = Pt(6)
     third.paragraph_format.space_after = Pt(2)
     third.paragraph_format.keep_with_next = True
+    # Review R5: the theme font attributes take precedence over w:ascii and
+    # w:hAnsi in Word, so the headings would show the theme's Calibri.
+    for style_name in ("Title", "Heading 1", "Heading 2", "Heading 3"):
+        fonts = document.styles[style_name].element.rPr.find(qn("w:rFonts"))
+        if fonts is not None:
+            for attribute in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+                fonts.attrib.pop(qn(attribute), None)
+            fonts.set(qn("w:cs"), "Times New Roman")
 
 
 def _table_borders(table):

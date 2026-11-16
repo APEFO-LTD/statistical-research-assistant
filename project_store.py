@@ -326,6 +326,22 @@ def _migrate_v6(db: sqlite3.Connection) -> None:
         db.execute(f"CREATE TRIGGER IF NOT EXISTS protocol_records_no_{action.lower()}"
                    f" BEFORE {action} ON protocol_records"
                    " BEGIN SELECT RAISE(ABORT, 'protocol records are append-only'); END")
+    _guard_replace(db)
+
+
+def _guard_replace(db: sqlite3.Connection) -> None:
+    """Review G: ``REPLACE INTO`` (or ``INSERT OR REPLACE``) with an existing
+    id would rewrite a record in place, since SQLite fires no DELETE trigger
+    for it; an INSERT of an id that exists is refused. Idempotent, and added
+    to format-6 projects made before it when they are opened (no new
+    format)."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                  " AND name = 'protocol_records'").fetchone() is None:
+        return                      # a format the program does not write records in
+    db.execute("CREATE TRIGGER IF NOT EXISTS protocol_records_no_replace"
+               " BEFORE INSERT ON protocol_records"
+               " WHEN EXISTS (SELECT 1 FROM protocol_records WHERE id = NEW.id)"
+               " BEGIN SELECT RAISE(ABORT, 'protocol records are append-only'); END")
 
 
 MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5,
@@ -933,6 +949,7 @@ class ProjectStore:
         project = Project(self, folder, read_only=False)
         with project._db() as db:
             db.execute("UPDATE project SET last_opened_at = ?", (now(),))
+            _guard_replace(db)
             if recovered:
                 _log(db, "recovered", {"detail": recovered})
         project.recovered = recovered
@@ -1075,6 +1092,7 @@ class ProjectStore:
                 left_out = int(db.execute("SELECT COUNT(*) FROM protocol_records").fetchone()[0])
                 for statement in ("DROP TRIGGER IF EXISTS protocol_records_no_update",
                                   "DROP TRIGGER IF EXISTS protocol_records_no_delete",
+                                  "DROP TRIGGER IF EXISTS protocol_records_no_replace",
                                   "DROP INDEX IF EXISTS protocol_records_hypothesis",
                                   "DROP TABLE IF EXISTS protocol_records"):
                     db.execute(statement)

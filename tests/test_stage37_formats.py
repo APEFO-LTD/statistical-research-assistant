@@ -125,7 +125,8 @@ class MigrationTests(Case):
                                                 task_id="t1")
                 self.assertEqual(version(path), 6)
                 self.assertEqual(objects(path)["trigger"],
-                                 {"protocol_records_no_update", "protocol_records_no_delete"})
+                                 {"protocol_records_no_update", "protocol_records_no_delete",
+                                  "protocol_records_no_replace"})   # review G
                 backups = list((self.store.root / ps.BACKUPS).glob(f"{project_id}-v{found}-*"))
                 self.assertEqual(len(backups), 1, "one copy before the migration")
                 self.assertEqual(version(backups[0]), found)
