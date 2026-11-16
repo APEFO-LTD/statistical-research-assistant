@@ -205,6 +205,9 @@ class HypothesisFacts:
     # Stage 37.0b (review S16): the facts beside the standing.
     planned_version: int | None = None  # the plan version it entered
     results_then: int = 0              # every result the project held then
+    # Review C-S16/W2: False for a version saved before 37.0b with results
+    # then: which of them were inferential was not recorded.
+    standing_known: bool = True
 
 
 @dataclass(frozen=True)
@@ -1005,7 +1008,8 @@ def plan_facts(plan: dict, status: dict) -> list[HypothesisFacts]:
             roles=dict(h.get("roles") or {}), standing=info.get("standing", "new"),
             runs_before=int(info.get("inferential_before", info.get("runs_before", 0))),
             question_type=(questions.get(h.get("question_id", "")) or {}).get("type", ""),
-            planned_version=info.get("version"), results_then=int(info.get("runs_before", 0))))
+            planned_version=info.get("version"), results_then=int(info.get("runs_before", 0)),
+            standing_known=bool(info.get("inferential_known", True))))
     return facts
 
 

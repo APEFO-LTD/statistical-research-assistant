@@ -1923,7 +1923,9 @@ class ReportsPage:
             inputs.project = app.projects.info().title
             plan = project.plan()
             status = project.hypothesis_status() if plan else {}
-            inputs.hypotheses = [{**h, "standing": status.get(h.get("id"), {}).get("standing")}
+            inputs.hypotheses = [{**h, "standing": status.get(h.get("id"), {}).get("standing"),
+                                  "standing_known": status.get(h.get("id"), {}).get(
+                                      "inferential_known", True)}
                                  for h in (plan or {}).get("plan", {}).get("hypotheses", [])]
             # Stage 37.0b: per hypothesis, the analyses and results that test
             # it, the recorded decisions and the open checks (saved data only).

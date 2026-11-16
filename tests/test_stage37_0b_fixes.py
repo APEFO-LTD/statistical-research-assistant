@@ -113,5 +113,98 @@ class R2EngineNTests(unittest.TestCase):
         self.assertEqual(rr._n(entry_of(run, {"complete": 48})), "—")
 
 
+class S16LegacyVersionTests(unittest.TestCase):
+    """C-S16 / W2: a plan version saved before 37.0b (no stored
+    ``inferential_before``) is never upgraded to confirmatory, also after the
+    program's own post-hoc replacement of an earlier result."""
+
+    def legacy(self, folder, *, methods=("omnibus",)):
+        import json
+        import time
+
+        import analysis_runs as runs
+        import project_store as ps
+
+        store = ps.ProjectStore(Path(folder))
+        info = store.create("Fictional")
+        project = store.open(info.id)
+        dataset = project.import_dataset(ROOT / "examples" / "sample_scale.csv", mode="copy")
+        run = runs.run_groups(project.load_frame(dataset.id), "group", "stress_q1",
+                              "mannwhitney", "ordinal", True, False)
+        roles = {"group": "group", "outcome": "stress_q1"}
+        old = [project.record_run(run, method=m, dataset_id=dataset.id, roles=roles, options={},
+                                  confirms={}) for m in methods]
+        time.sleep(1.1)
+        plan = ps.normalise_plan({"hypotheses": [{"id": "bbbbbbbbbbb1",
+                                                  "text": "Group B reports more stress",
+                                                  "priority": "primary"}]})
+        with project._write() as db:          # a version as 36.x / 37.0a saved it
+            cur = db.execute("INSERT INTO plan_versions (saved_at, plan, runs_before, note)"
+                             " VALUES (?, ?, ?, '')",
+                             (ps.now(), json.dumps(plan, sort_keys=True), len(methods)))
+            ps._log(db, "plan_saved", {"version": cur.lastrowid, "hypotheses": 1,
+                                       "runs_before": len(methods)})
+        return project, run, dataset, roles, old
+
+    def test_post_hoc_tests_keep_a_legacy_hypothesis_added_after_results(self):
+        import time
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as folder:
+            project, run, dataset, roles, old = self.legacy(folder)
+            try:
+                self.assertEqual(project.hypothesis_status()["bbbbbbbbbbb1"]["standing"],
+                                 "added_after_results")
+                time.sleep(1.1)
+                project.record_run(run, method="posthoc", dataset_id=dataset.id, roles=roles,
+                                   options={}, confirms={})
+                project.delete_run(old[0].id)     # what _save_results does after post-hoc tests
+                status = project.hypothesis_status()["bbbbbbbbbbb1"]
+                self.assertEqual(status["standing"], "added_after_results")
+                self.assertFalse(status["inferential_known"])
+            finally:
+                project.close()
+
+    def test_a_legacy_version_after_descriptions_only_is_not_upgraded_but_flagged(self):
+        from tempfile import TemporaryDirectory
+
+        import research_workflow as rw
+        from workspace_text import t
+
+        with TemporaryDirectory() as folder:
+            project, *_ = self.legacy(folder, methods=("descriptive",))
+            try:
+                status = project.hypothesis_status()["bbbbbbbbbbb1"]
+                self.assertEqual(status["standing"], "added_after_results",
+                                 "never upgraded to confirmatory automatically")
+                self.assertFalse(status["inferential_known"])
+                facts = rw.plan_facts(project.plan()["plan"], project.hypothesis_status())
+                self.assertFalse(facts[0].standing_known)
+                for language in ("en", "lv", "ru"):
+                    self.assertIn("1", t(language, "hyp.standing_facts_unknown", version=1,
+                                         total=1, h=1))
+            finally:
+                project.close()
+
+    def test_a_legacy_version_saved_before_any_result_stays_confirmatory(self):
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as folder:
+            project, *_ = self.legacy(folder, methods=())
+            try:
+                status = project.hypothesis_status()["bbbbbbbbbbb1"]
+                self.assertEqual(status["standing"], "confirmatory")
+                self.assertTrue(status["inferential_known"])
+            finally:
+                project.close()
+
+    def test_the_report_says_the_standing_of_a_legacy_version_needs_review(self):
+        plan = rr.plan_report(rr.ReportInputs(title="F", hypotheses=[{
+            "id": "bbbbbbbbbbb1", "text": "Group B reports more stress", "priority": "primary",
+            "standing": "added_after_results", "standing_known": False}]))
+        text = "\n".join(i.text or "" for i in plan.section("hypotheses").items)
+        self.assertIn(rr.text("en", "standing_unknown", number=1), text)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -71,6 +71,9 @@ TEXT = {
         "post_hoc": "H{number} was added after results were calculated: exploratory (post hoc), "
                     "not a confirmatory test.",
         "planned": "H{number} was planned before the results.",
+        "standing_unknown": "H{number} entered the plan in a version saved by an earlier release, "
+                            "which did not record whether the results that existed then were "
+                            "inferential tests; its standing is kept as saved and needs review.",
         "priority.primary": "primary", "priority.secondary": "secondary",
         "priority.exploratory": "exploratory",
         "data_columns": ("Result", "Dataset", "Version", "Complete cases", "Rows"),
@@ -197,6 +200,9 @@ TEXT = {
         "post_hoc": "H{number} pievienota pēc rezultātu aprēķina: pētnieciska (post hoc), nevis "
                     "apstiprinoša pārbaude.",
         "planned": "H{number} plānota pirms rezultātiem.",
+        "standing_unknown": "H{number} iekļauta plāna versijā, ko saglabāja agrāka programmas "
+                            "versija, kas nepierakstīja, vai tolaik esošie rezultāti bija "
+                            "secinājumu testi; tās statuss paliek, kā saglabāts, un ir jāpārskata.",
         "priority.primary": "galvenā", "priority.secondary": "papildu",
         "priority.exploratory": "pētnieciska",
         "data_columns": ("Rezultāts", "Datu kopa", "Versija", "Pilnie gadījumi", "Rindas"),
@@ -322,6 +328,10 @@ TEXT = {
         "post_hoc": "H{number} добавлена после расчёта результатов: разведочная (post hoc), а не "
                     "подтверждающая проверка.",
         "planned": "H{number} запланирована до получения результатов.",
+        "standing_unknown": "H{number} вошла в версию плана, сохранённую более ранней версией "
+                            "программы, которая не записала, были ли существовавшие тогда "
+                            "результаты статистическими проверками; её статус остаётся "
+                            "сохранённым и требует проверки.",
         "priority.primary": "основная", "priority.secondary": "дополнительная",
         "priority.exploratory": "разведочная",
         "data_columns": ("Результат", "Набор данных", "Версия", "Полные наблюдения", "Строк"),
@@ -1065,6 +1075,9 @@ def plan_report(inputs: ReportInputs) -> ReportPlan:
         if hypothesis.get("standing") == "added_after_results":
             post_hoc += 1
             hypotheses.append(Item("warning", text(language, "post_hoc", number=number)))
+            if hypothesis.get("standing_known") is False:
+                hypotheses.append(Item("warning", text(language, "standing_unknown",
+                                                       number=number)))
         elif hypothesis.get("standing") == "confirmatory":
             hypotheses.append(Item("note", text(language, "planned", number=number)))
         evidence = inputs.evidence.get(str(hypothesis.get("id") or ""))

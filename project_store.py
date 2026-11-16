@@ -1525,7 +1525,9 @@ class Project:
         description, a reliability or item check, a factor analysis or a
         correlation matrix before the plan does not make a hypothesis "added
         after results" (``inferential_before``; ``runs_before`` keeps every
-        result)."""
+        result). A version saved before 37.0b has no such count: when results
+        existed then, its standing stays "added after results" with
+        ``inferential_known`` False (review C-S16/W2)."""
         history = list(reversed(self.plan_history()))
         counted = self._inferential_before()
         first: dict[str, dict] = {}
@@ -1534,14 +1536,20 @@ class Project:
                 if hypothesis["id"] in first:
                     continue
                 inferential = counted.get(version["version"])
+                known = inferential is not None or not int(version["runs_before"] or 0)
                 if inferential is None:
-                    with self._db() as db:
-                        inferential = _inferential_count(db, until=version["saved_at"])
-                    inferential = min(inferential, int(version["runs_before"]))
+                    # A version saved before 37.0b (review C-S16/W2) recorded
+                    # only how many results existed, not which were
+                    # inferential. Today's runs cannot tell (a post-hoc step
+                    # replaces a result with a new one), so the standing is
+                    # kept as that version decided it and flagged for review:
+                    # never upgraded to confirmatory automatically.
+                    inferential = int(version["runs_before"] or 0)
                 first[hypothesis["id"]] = {"version": version["version"],
                                            "saved_at": version["saved_at"],
                                            "runs_before": version["runs_before"],
-                                           "inferential_before": inferential}
+                                           "inferential_before": inferential,
+                                           "inferential_known": known}
         current = history[-1]["plan"]["hypotheses"] if history else []
         status = {}
         for hypothesis in current:

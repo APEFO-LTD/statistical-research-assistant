@@ -3395,6 +3395,20 @@ T.update({
                              "Kāpēc šī hipotēze mainās (obligāti: rezultāti jau ir)",
                              "Почему меняется эта гипотеза (обязательно: результаты уже есть)"),
 
+    # A plan version saved before 37.0b (review C-S16/W2). LV/RU drafts — needs native review.
+    "hyp.standing_facts_unknown": (
+        "When it entered the plan (version {version}), the project held {total} result(s). That "
+        "version was saved by an earlier release, which did not record which of them were "
+        "inferential tests, so the standing is kept as it was saved and needs review: if H{h} "
+        "was planned before any inferential result, record a justification.",
+        "Kad tā tika iekļauta plānā ({version}. versija), projektā bija rezultāti: {total}. Šo "
+        "versiju saglabāja agrāka programmas versija, kas nepierakstīja, kuri no tiem bija "
+        "secinājumu testi, tāpēc statuss paliek, kā saglabāts, un ir jāpārskata: ja H{h} tika "
+        "plānota pirms jebkura secinājumu testa, ierakstiet pamatojumu.",
+        "Когда она вошла в план (версия {version}), в проекте было результатов: {total}. Эту "
+        "версию сохранила более ранняя версия программы, которая не записала, какие из них были "
+        "статистическими проверками, поэтому статус остаётся сохранённым и требует проверки: "
+        "если H{h} была запланирована до любой статистической проверки, запишите обоснование."),
     # The facts beside a hypothesis's standing (review S16).
     "hyp.standing_facts": (
         "When it entered the plan (version {version}), the project held {total} result(s); "

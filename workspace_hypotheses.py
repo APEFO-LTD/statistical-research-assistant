@@ -372,7 +372,10 @@ class HypothesisPanel:
         if f.planned_version is not None:
             # Stage 37.0b (review S16): what the standing was decided on.
             out.append(wc.caption(ui, ui.t("hyp.standing_facts", version=f.planned_version,
-                                           total=f.results_then, counted=f.runs_before),
+                                           total=f.results_then, counted=f.runs_before)
+                                  if f.standing_known else
+                                  ui.t("hyp.standing_facts_unknown", version=f.planned_version,
+                                       total=f.results_then, h=n),
                                   data=f"hyp-{n}-standing-facts"))
         plan_ids = frozenset(v.facts.id for v in self._views)
         if view.tasks:
