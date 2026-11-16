@@ -240,8 +240,8 @@ class ProjectBinding:
             finally:
                 self._restoring = False
 
-    def duplicate(self, project_id: str) -> ProjectInfo:
-        return self._store().duplicate(project_id)
+    def duplicate(self, project_id: str, warnings: list[str] | None = None) -> ProjectInfo:
+        return self._store().duplicate(project_id, warnings=warnings)
 
     def set_archived(self, project_id: str, archived: bool) -> ProjectInfo:
         if self.project is not None and self.project.id == project_id:
@@ -257,9 +257,11 @@ class ProjectBinding:
     def restore_deleted(self, path: Path) -> ProjectInfo:
         return self._store().restore_deleted(path)
 
-    def export(self, project_id: str, destination: Path, survey_root: Path | None) -> Path:
+    def export(self, project_id: str, destination: Path, survey_root: Path | None,
+               warnings: list[str] | None = None) -> Path:
         """A ``.sra`` backup; uses its own database connections (worker-thread safe)."""
-        return self._store().export_package(project_id, destination, survey_root=survey_root)
+        return self._store().export_package(project_id, destination, survey_root=survey_root,
+                                            warnings=warnings)
 
     def restore(self, source: Path, survey_root: Path | None) -> tuple[ProjectInfo, list[str]]:
         """Restore a ``.sra`` backup as a project (worker-thread safe)."""

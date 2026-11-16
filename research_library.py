@@ -1082,9 +1082,21 @@ def _document(row: sqlite3.Row) -> Document:
     return Document(row["id"], row["doc_key"], row["title"], row["file_name"], row["sha256"],
                     row["size"], row["type"], row["language"], row["version_label"],
                     row["page_count"], row["imported_at"], row["source_path"],
-                    row["stored_name"], tuple(json.loads(row["ocr_pages"] or "[]")),
+                    row["stored_name"], _page_list(row["ocr_pages"]),
                     row["ocr_language"], row["chunker"], row["indexed_at"],
                     row["passages"] if "passages" in row.keys() else 0)
+
+
+def _page_list(value) -> tuple[int, ...]:
+    """The OCR pages of a row; a malformed value (a restored database is not
+    trusted) reads as none rather than breaking the whole list."""
+    try:
+        pages = json.loads(value or "[]")
+    except (TypeError, ValueError):
+        return ()
+    if not isinstance(pages, list):
+        return ()
+    return tuple(p for p in pages if isinstance(p, int) and not isinstance(p, bool))
 
 
 def _passage(row: sqlite3.Row) -> Passage:
@@ -1100,6 +1112,58 @@ def _title_from(file_name: str) -> str:
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+# A stored copy is named by its SHA-256 and the suffix of its type, and
+# nothing else: the name comes from the library database, which a restored
+# backup supplies, so it is checked before it is ever joined to a path
+# (independent review storage F1 / injection F1). The pattern leaves no room
+# for "..", separators, drive letters, UNC paths, ":" (NTFS streams) or
+# reserved device names.
+_STORED_NAME = re.compile(r"[0-9a-f]{64}\.(?:pdf|docx|txt|md|markdown)")
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+
+
+def stored_name_ok(stored_name, sha256, kind) -> bool:
+    """Whether ``stored_name`` is the content-addressed name of a copy with
+    this ``sha256`` and document type."""
+    name, digest = str(stored_name or ""), str(sha256 or "")
+    return bool(_STORED_NAME.fullmatch(name) and _SHA256.fullmatch(digest)
+                and name.startswith(digest + ".")
+                and SUFFIX_TYPES.get(name[len(digest):]) == kind)
+
+
+def restorable(relative: str, data: bytes) -> bool:
+    """Whether a backup entry ``library/...`` (relative to the project folder)
+    may be written on restore: the database, the backup choice, or a stored
+    copy whose name is the SHA-256 of its bytes. Anything else is dropped."""
+    if relative in (f"{FOLDER}/{DB_NAME}", f"{FOLDER}/{CHOICE_FILE}"):
+        return True
+    prefix = f"{FOLDER}/{SOURCES}/"
+    name = relative[len(prefix):] if relative.startswith(prefix) else ""
+    return bool(_STORED_NAME.fullmatch(name) and name[:64] == sha256_bytes(data))
+
+
+def restored_problems(project_folder: Path) -> tuple[int, bool]:
+    """(documents without a valid stored copy, database unreadable) of a
+    restored library, read-only. Such documents stay listed but can never
+    be opened or read again (``Library.verified_source``)."""
+    folder = library_folder(project_folder)
+    path = folder / DB_NAME
+    if not path.is_file():
+        return 0, False
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+            rows = db.execute("SELECT stored_name, sha256, type FROM documents").fetchall()
+    except sqlite3.Error:
+        return 0, True
+    bad = 0
+    for name, digest, kind in rows:
+        copy = folder / SOURCES / str(name)
+        if (not stored_name_ok(name, digest, kind) or copy.is_symlink() or not copy.is_file()
+                or sha256_bytes(copy.read_bytes()) != digest):
+            bad += 1
+    return bad, False
 
 
 # ================================================================= schema
@@ -1153,6 +1217,7 @@ def library_folder(project_folder: Path) -> Path:
 # the researcher's to pass on (GDPR data minimisation; independent review §7).
 # The choice is a file of the library, so it travels with it when on.
 CHOICE_FILE = "backup.json"
+ORPHANS_KEY = "orphaned_copies"      # meta: copies of removed documents still to delete
 
 
 def travels(project_folder: Path) -> bool:
@@ -1176,24 +1241,49 @@ def set_travels(project_folder: Path, include: bool) -> None:
 def travelling_files(project_folder: Path) -> list[tuple[str, bytes]]:
     """(path inside the project folder, bytes) of the library for a backup or
     a copy: a consistent snapshot of its database, the choice and the stored
-    documents. Empty unless the researcher chose to include the library."""
+    copies the database refers to. Empty unless the researcher chose to
+    include the library.
+
+    Only copies of documents still in the library travel: a removed
+    document's copy that could not be deleted yet (held open on Windows)
+    stays behind (privacy F4). The snapshot is rewritten without free pages,
+    so nothing of a removed document travels in it either (privacy F5).
+    Raises LibraryError ``damaged`` when the database cannot be read; the
+    caller then leaves the library out (``project_store``)."""
     if not travels(project_folder):
         return []
     folder = library_folder(project_folder)
     files: list[tuple[str, bytes]] = []
     database = folder / DB_NAME
+    rows: list = []
     if database.is_file():
         with tempfile.TemporaryDirectory(prefix="sra-library-") as temp:
             copy = Path(temp) / DB_NAME
-            with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as db, \
-                    closing(sqlite3.connect(copy)) as out:
-                db.backup(out)
+            try:
+                with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro",
+                                             uri=True)) as db, \
+                        closing(sqlite3.connect(copy)) as out:
+                    db.backup(out)
+                with closing(sqlite3.connect(copy, isolation_level=None)) as snapshot:
+                    rows = snapshot.execute(
+                        "SELECT stored_name, sha256, type FROM documents").fetchall()
+                    try:
+                        snapshot.execute("PRAGMA journal_mode=DELETE")
+                        snapshot.execute("VACUUM")
+                    except sqlite3.Error:
+                        pass        # secure_delete already zeroed the freed pages
+            except sqlite3.Error as error:
+                raise LibraryError("damaged", str(error), detail=str(error)[:200]) from error
             files.append((f"{FOLDER}/{DB_NAME}", copy.read_bytes()))
     files.append((f"{FOLDER}/{CHOICE_FILE}", (folder / CHOICE_FILE).read_bytes()))
     sources = folder / SOURCES
-    for path in sorted(sources.iterdir()) if sources.is_dir() else []:
-        if path.is_file() and not path.name.startswith("."):
-            files.append((f"{FOLDER}/{SOURCES}/{path.name}", path.read_bytes()))
+    for name, digest, kind in sorted(rows):
+        path = sources / str(name)
+        if not stored_name_ok(name, digest, kind) or path.is_symlink() or not path.is_file():
+            continue
+        data = path.read_bytes()
+        if sha256_bytes(data) == digest:
+            files.append((f"{FOLDER}/{SOURCES}/{name}", data))
     return files
 
 
@@ -1211,6 +1301,23 @@ def peek(project_folder: Path) -> tuple[int, int]:
                     db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0])
     except sqlite3.Error:
         return 0, 0
+
+
+def unreadable(project_folder: Path) -> bool:
+    """Whether the project has a library database this version cannot read
+    (damaged, or written by a newer version): its Project card says so
+    instead of "no documents yet"."""
+    path = library_folder(project_folder) / DB_NAME
+    if not path.is_file():
+        return False
+    try:
+        with closing(sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)) as db:
+            if db.execute("PRAGMA user_version").fetchone()[0] > SCHEMA_VERSION:
+                return True
+            db.execute("SELECT COUNT(*) FROM documents").fetchone()
+    except sqlite3.Error:
+        return path.stat().st_size > 0
+    return False
 
 
 # ================================================================ library
@@ -1262,6 +1369,9 @@ class Library:
             db = sqlite3.connect(self.path, isolation_level=None, timeout=15)
             db.execute("PRAGMA journal_mode=WAL")
             db.execute("PRAGMA synchronous=FULL")
+            # Freed pages are overwritten: the text of a removed document does
+            # not stay in the file, nor in a snapshot of it (privacy F5).
+            db.execute("PRAGMA secure_delete=ON")
         db.execute("PRAGMA foreign_keys=ON")
         db.row_factory = sqlite3.Row
         return db
@@ -1284,7 +1394,28 @@ class Library:
             yield db
 
     def _prepare(self) -> None:
-        """Create or check the database; build the index the backend needs."""
+        """Create or check the database; build the index the backend needs.
+
+        A database that is not one (damaged, overwritten) or cannot be opened
+        (locked, no permission) raises LibraryError ``damaged``, ``locked``
+        or ``unwritable``: never another library in its place, and no stored
+        copy is touched (storage F2, F3, F5)."""
+        try:
+            self._open()
+        except LibraryError:
+            raise
+        except sqlite3.OperationalError as error:
+            text = str(error).lower()
+            reason = ("locked" if "locked" in text or "busy" in text else
+                      "unwritable" if "readonly" in text or "unable to open" in text
+                      or "read-only" in text else "damaged")
+            raise LibraryError(reason, str(error), detail=str(error)[:200]) from error
+        except sqlite3.DatabaseError as error:
+            raise LibraryError("damaged", str(error), detail=str(error)[:200]) from error
+        except PermissionError as error:
+            raise LibraryError("unwritable", str(error), detail=str(error)[:200]) from error
+
+    def _open(self) -> None:
         self.folder.mkdir(parents=True, exist_ok=True)
         (self.folder / SOURCES).mkdir(exist_ok=True)
         if self.path.exists():
@@ -1292,22 +1423,34 @@ class Library:
                 found = db.execute("PRAGMA user_version").fetchone()[0]
             if found > SCHEMA_VERSION:
                 raise LibraryError("newer_format", found=found, supported=SCHEMA_VERSION)
-        with self._transaction() as db:
-            found = db.execute("PRAGMA user_version").fetchone()[0]
-            if found == 0:
-                for statement in _SCHEMA:
-                    db.execute(statement)
-                db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
-                db.execute("INSERT INTO meta VALUES ('created_at', ?)", (now(),))
-            meta = {r["key"]: r["value"] for r in db.execute("SELECT key, value FROM meta")}
-            wanted = {"backend": self.backend, "tokenizer": self.tokenizer,
-                      "fold": "yo" if self.fold else ""}
-            if any(meta.get(key) != value for key, value in wanted.items()):
-                self._build_index(db)
-                for key, value in wanted.items():
-                    db.execute("INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE"
-                               " SET value = excluded.value", (key, value))
-        self._remove_unreferenced()      # a copy a removal could not delete before
+        wanted = {"backend": self.backend, "tokenizer": self.tokenizer,
+                  "fold": "yo" if self.fold else ""}
+        if self.path.exists():
+            # The usual case needs no write: a library another window is
+            # indexing into opens at once instead of waiting for its lock.
+            with self._reading() as db:
+                found = db.execute("PRAGMA user_version").fetchone()[0]
+                meta = ({r["key"]: r["value"] for r in db.execute("SELECT key, value FROM meta")}
+                        if found == SCHEMA_VERSION else {})
+            ready = found == SCHEMA_VERSION and all(meta.get(k) == v for k, v in wanted.items())
+        else:
+            ready, meta = False, {}
+        if not ready:
+            with self._transaction() as db:
+                found = db.execute("PRAGMA user_version").fetchone()[0]
+                if found == 0:
+                    for statement in _SCHEMA:
+                        db.execute(statement)
+                    db.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+                    db.execute("INSERT INTO meta VALUES ('created_at', ?)", (now(),))
+                meta = {r["key"]: r["value"] for r in db.execute("SELECT key, value FROM meta")}
+                if any(meta.get(key) != value for key, value in wanted.items()):
+                    self._build_index(db)
+                    for key, value in wanted.items():
+                        db.execute("INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE"
+                                   " SET value = excluded.value", (key, value))
+        if meta.get(ORPHANS_KEY):
+            self._remove_orphans()       # a copy a removal could not delete before
 
     def _view_sql(self) -> str:
         text = "replace(replace(text, 'ё', 'е'), 'Ё', 'Е')" if self.fold else "text"
@@ -1401,8 +1544,39 @@ class Library:
                     db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0])
 
     def source_file(self, document: Document) -> Path:
-        """The stored copy of the document (the file the researcher added)."""
-        return self.folder / SOURCES / document.stored_name
+        """The stored copy of the document (the file the researcher added).
+
+        Its name comes from the database, which may come from someone else's
+        backup: anything but ``<sha256><suffix of its type>`` directly in
+        this library's ``sources`` folder (no link, no way out) is refused
+        with LibraryError ``unsafe_source`` (storage F1 / injection F1)."""
+        if not stored_name_ok(document.stored_name, document.sha256, document.type):
+            raise LibraryError("unsafe_source", name=document.file_name)
+        sources = self.folder / SOURCES
+        path = sources / document.stored_name
+        try:
+            linked = (sources.is_symlink() or path.is_symlink()
+                      or getattr(sources, "is_junction", lambda: False)())
+            inside = (path.resolve().parent == sources.resolve()
+                      and sources.resolve().parent == self.folder.resolve())
+        except (OSError, RuntimeError):
+            linked, inside = True, False
+        if linked or not inside:
+            raise LibraryError("unsafe_source", name=document.file_name)
+        return path
+
+    def verified_source(self, document: Document) -> tuple[Path, bytes]:
+        """The stored copy and its bytes, checked against the document's
+        SHA-256: the only form in which a copy is opened, shown or read
+        again. LibraryError ``unsafe_source``, ``missing`` or ``changed``."""
+        path = self.source_file(document)
+        try:
+            data = path.read_bytes()
+        except OSError as error:
+            raise LibraryError("missing", str(error), name=document.file_name) from error
+        if sha256_bytes(data) != document.sha256:
+            raise LibraryError("changed", name=document.file_name)
+        return path, data
 
     def outdated(self) -> list[Document]:
         """Documents read by another chunker version (``reindex`` them)."""
@@ -1460,7 +1634,7 @@ class Library:
         target = self.folder / SOURCES / stored_name
         detected = language or detect_language(" ".join(s.text for s in extracted.segments))
         notes = list(extracted.notes)
-        with self._lock:          # the copy and its row together (see _remove_unreferenced)
+        with self._lock:          # the copy and its row together (see _remove_orphans)
             with self._reading() as db:
                 row = db.execute(self._DOCUMENTS + " WHERE d.sha256 = ?", (digest,)).fetchone()
             if row is not None:   # added meanwhile, e.g. from another window of the page
@@ -1537,31 +1711,82 @@ class Library:
     def remove_document(self, document_id: int) -> Document:
         """Remove a document: its passages, their index rows, its extracted
         text and its stored copy. One action; the file the researcher added
-        from stays where it was."""
+        from stays where it was.
+
+        Nothing of it stays behind in the library file: the search index is
+        merged so its words leave the FTS5 segments, and freed pages are
+        overwritten (``secure_delete``); the write-ahead log is emptied
+        (privacy F5). Its copy is recorded as to be deleted, in the same
+        transaction, so that a copy held open by another program is deleted
+        later; only copies the library recorded this way are ever deleted
+        (storage F3)."""
         document = self.document(document_id)
         with self._transaction() as db:
             self._unindex_document(db, document.id)
             db.execute("DELETE FROM documents WHERE id = ?", (document.id,))
-        self._remove_unreferenced()
+            if stored_name_ok(document.stored_name, document.sha256, document.type):
+                pending = self._orphan_names(db)
+                if document.stored_name not in pending:
+                    self._set_orphans(db, [*pending, document.stored_name])
+            if self.backend == "fts5":
+                db.execute("INSERT INTO chunk_index (chunk_index) VALUES ('optimize')")
+        self._remove_orphans()
+        self._checkpoint()
         return document
 
-    def _remove_unreferenced(self) -> list[str]:
-        """Delete stored copies no document refers to. A copy another program
-        holds open (Windows refuses to delete it) stays until the next time
-        the library is opened; it is never searchable, since its passages
-        are gone."""
+    def _checkpoint(self) -> None:
+        try:
+            with closing(self._connect()) as db:
+                db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass                          # a reader holds it; the next write ends it
+
+    @staticmethod
+    def _orphan_names(db) -> list[str]:
+        row = db.execute("SELECT value FROM meta WHERE key = ?", (ORPHANS_KEY,)).fetchone()
+        try:
+            names = json.loads(row[0]) if row else []
+        except (TypeError, ValueError):
+            return []
+        return [n for n in names if isinstance(n, str) and _STORED_NAME.fullmatch(n)] \
+            if isinstance(names, list) else []
+
+    @staticmethod
+    def _set_orphans(db, names) -> None:
+        if names:
+            db.execute("INSERT INTO meta VALUES (?, ?) ON CONFLICT(key) DO UPDATE"
+                       " SET value = excluded.value", (ORPHANS_KEY, json.dumps(sorted(names))))
+        else:
+            db.execute("DELETE FROM meta WHERE key = ?", (ORPHANS_KEY,))
+
+    def _remove_orphans(self) -> list[str]:
+        """Delete the stored copies of removed documents that are still on
+        disk. A copy another program holds open (Windows refuses to delete
+        it) stays recorded and goes the next time the library is opened or
+        a document is removed; it is never searchable and never travels in a
+        backup or a copy (``travelling_files``). A copy that is not on this
+        record (an older or empty database put back, a copy being stored by
+        another window) is never deleted."""
         removed = []
-        with self._lock:                  # never while a document is being stored
-            with self._reading() as db:
-                wanted = {row[0] for row in db.execute("SELECT stored_name FROM documents")}
-            folder = self.folder / SOURCES
-            for path in folder.iterdir() if folder.is_dir() else []:
-                if path.is_file() and not path.name.startswith(".") and path.name not in wanted:
-                    try:
+        with self._lock, self._transaction() as db:   # never while a document is stored
+            pending = self._orphan_names(db)
+            if not pending:
+                return removed
+            wanted = {row[0] for row in db.execute("SELECT stored_name FROM documents")}
+            left = []
+            for name in pending:
+                path = self.folder / SOURCES / name
+                if name in wanted:
+                    continue                 # added again since
+                try:
+                    if path.is_symlink() or path.is_file():
                         path.unlink()
-                        removed.append(path.name)
-                    except OSError:
-                        continue
+                        removed.append(name)
+                except FileNotFoundError:
+                    pass
+                except OSError:
+                    left.append(name)
+            self._set_orphans(db, left)
         return removed
 
     def reindex(self, document_id: int, *, progress=None, cancel=None,
@@ -1570,12 +1795,7 @@ class Library:
         wanted now). Pages read with OCR before keep their recognised text
         unless ``ocr`` asks for OCR again. Same text, same cite IDs."""
         document = self.document(document_id)
-        try:
-            data = self.source_file(document).read_bytes()
-        except OSError as error:
-            raise LibraryError("missing", str(error), name=document.file_name) from error
-        if sha256_bytes(data) != document.sha256:
-            raise LibraryError("changed", name=document.file_name)
+        _path, data = self.verified_source(document)
         previous = {segment.page: segment for segment in self.segments(document.id)}
         redo_ocr = bool(ocr)
         extracted = extract(data, document.type, ocr=redo_ocr,
@@ -1788,10 +2008,7 @@ class Library:
     def render_page(self, document: Document, page: int, **options) -> bytes:
         if document.type != "pdf":
             raise LibraryError("no_page", page=page)
-        try:
-            data = self.source_file(document).read_bytes()
-        except OSError as error:
-            raise LibraryError("missing", str(error), name=document.file_name) from error
+        _path, data = self.verified_source(document)
         return render_pdf_page(data, int(page), **options)[0]
 
     # -------------------------------------------------------- AI audit
@@ -1815,7 +2032,7 @@ def _hit_document(row: sqlite3.Row) -> Document:
     return Document(row["doc_id"], row["doc_key"], row["title"], row["file_name"], row["sha256"],
                     row["size"], row["type"], row["language"], row["version_label"],
                     row["page_count"], row["imported_at"], row["source_path"],
-                    row["stored_name"], tuple(json.loads(row["ocr_pages"] or "[]")),
+                    row["stored_name"], _page_list(row["ocr_pages"]),
                     row["ocr_language"], row["chunker"], row["indexed_at"])
 
 
