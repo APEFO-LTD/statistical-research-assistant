@@ -859,12 +859,16 @@ class ProjectStore:
         project.recovered = recovered
         return project
 
-    def duplicate(self, project_id: str, title: str | None = None) -> ProjectInfo:
+    def duplicate(self, project_id: str, title: str | None = None, *,
+                  warnings: list[str] | None = None) -> ProjectInfo:
+        """A copy of the project. A research library that cannot be read is
+        left out of the copy (the note is added to ``warnings``) instead of
+        blocking it."""
         source = self._folder(project_id)
         new_id = str(uuid.uuid4())
         staging = self.root / f".new-{new_id}"
         try:
-            _copy_project_folder(source, staging)
+            _copy_project_folder(source, staging, warnings)
             with closing(_connect(staging / DB_NAME)) as db, db:
                 old = db.execute("SELECT title FROM project").fetchone()["title"]
                 stamp = now()
@@ -913,8 +917,12 @@ class ProjectStore:
 
     # ------------------------------------------------------------- backups
     def export_package(self, project_id: str, destination: Path, *,
-                       survey_root: Path | None = None) -> Path:
-        """Write a self-contained ``.sra`` backup (optionally with linked questionnaires)."""
+                       survey_root: Path | None = None,
+                       warnings: list[str] | None = None) -> Path:
+        """Write a self-contained ``.sra`` backup (optionally with linked
+        questionnaires). A research library that cannot be read is left out
+        of the backup, with a note in ``warnings``, instead of blocking it
+        (independent review storage F5)."""
         folder = self._folder(project_id)
         destination = Path(destination)
         if destination.suffix.lower() != ".sra":
@@ -931,6 +939,9 @@ class ProjectStore:
             for path in sorted((folder / sub).glob("*")) if (folder / sub).is_dir() else []:
                 if path.is_file():
                     files.append((f"project/{sub}/{path.name}", path.read_bytes()))
+        # Stage 37.3: the research library, only when the researcher chose so.
+        files += [(f"project/{name}", data) for name, data in _library_files(
+            folder, warnings, "backup")]
         included = []
         if survey_root is not None:
             for survey_id in surveys:
@@ -970,9 +981,31 @@ class ProjectStore:
         staging = self.root / f".new-{new_id}"
         staging.mkdir(parents=True)
         try:
+            from research_library import restorable, restored_problems
+
+            dropped = 0
             for name, data in entries.items():
                 if name.startswith("project/"):
-                    _atomic_write(staging / name.removeprefix("project/"), data)
+                    relative = name.removeprefix("project/")
+                    # A library file is written only as the library itself
+                    # names it (storage F1): its database, its choice and
+                    # copies named by their own SHA-256.
+                    if relative.startswith("library/") and not restorable(relative, data):
+                        dropped += 1
+                        continue
+                    _atomic_write(staging / relative, data)
+            if dropped:
+                warnings.append(f"{dropped} file(s) of the research library in the backup were "
+                                "not restored: their names or contents are not those of a "
+                                "stored document.")
+            unsafe, unreadable = restored_problems(staging)
+            if unsafe:
+                warnings.append(f"{unsafe} document(s) of the research library in the backup "
+                                "have no valid stored copy; they are listed but can never be "
+                                "opened or read again.")
+            if unreadable:
+                warnings.append("The research library in the backup could not be read; the "
+                                "Library page will say so.")
             migrate(staging / DB_NAME, self.root / BACKUPS)
             with closing(_connect(staging / DB_NAME)) as db, db:
                 if new_id != project_id:
@@ -1070,13 +1103,35 @@ def _ensure_unlocked(folder: Path) -> None:
         raise ProjectLocked("Close the project before archiving, deleting or moving it.")
 
 
-def _copy_project_folder(source: Path, target: Path) -> None:
+def _copy_project_folder(source: Path, target: Path, warnings: list[str] | None = None) -> None:
     target.mkdir(parents=True)
     with closing(_connect(source / DB_NAME)) as db, closing(sqlite3.connect(target / DB_NAME)) as out:
         db.backup(out)
     for sub in ("datasets", "figures"):
         if (source / sub).is_dir():
             shutil.copytree(source / sub, target / sub)
+    for name, data in _library_files(source, warnings, "copy"):
+        _atomic_write(target / name, data)
+
+
+def _library_files(folder: Path, warnings: list[str] | None = None,
+                   what: str = "backup") -> list[tuple[str, bytes]]:
+    """The project's research library for a backup or a copy (Stage 37.3):
+    nothing unless the researcher chose to include it (``research_library.
+    travels``; off by default, since notes may hold personal data). The
+    library is a separate database in the project folder; the project's own
+    format is unchanged. A library that cannot be read is left out, with a
+    note, so that it never blocks a backup or a copy of the project."""
+    from research_library import LibraryError, travelling_files
+
+    try:
+        return travelling_files(folder)
+    except (LibraryError, OSError) as error:
+        if warnings is not None:
+            warnings.append(f"The research library of this project could not be read "
+                            f"({error}), so it was left out of this {what}; everything else "
+                            f"is in it. The library itself was not changed.")
+        return []
 
 
 def _read_consistent(path: Path) -> bytes:
