@@ -128,3 +128,31 @@ All new texts have LV and RU written as drafts, marked in the code ("LV/RU draft
 - **"No duplicated paragraph"** is proved for hypotheses tested by different methods; two results of one method repeat their assumption lines, each under its own result title.
 - **Review findings outside the coordinator's list:** D1, D2, D6, D7, D8, D10, D11, S1–S7, S9–S13, S15 (tamper evidence, note history), the usability and missing-feature items. Notes and review ticks are still overwritten without history (S15).
 - **Native review** of the LV and RU texts (§7); **AC-17** (manual).
+
+## 9. Fixes after the 0b verification (`verify-stage37-0b.json`, reviewed `a8663ce`)
+
+Every confirmed major is fixed. Each fix has a red test in `tests/test_stage37_0b_fixes.py` (30 tests): run against a clean export of `a8663ce`, 28 fail or error there (32 failures and 5 errors counted per subtest; the 2 that pass are controls: a removal before any result needs no reason, and the SQLite guard keeps UPDATE/DELETE refused), and all pass on this branch.
+
+| ID | Severity | Status | Fix | Proved by (`test_stage37_0b_fixes`) |
+|---|---|---|---|---|
+| R1 | major | done | the hypothesis block prints, per test of a batch, the engine's saved adjusted p labelled with its correction (*p (Holm)*, *p (Benjamini–Hochberg)*, *p (Bonferroni)*) and the raw p labelled *p (unadjusted)*, EN/LV/RU | `R1AdjustedPTests` |
+| R2 | major | done | n of a two-group batch = sum of the engine's group sizes per test, also after a restore; no listwise fallback | `R2EngineNTests` |
+| C-S16 / W2 | major | done | a plan version saved before 0b (no `inferential_before`) is never recounted from today's runs: with results then, it stays *added after results* with `inferential_known: False`; the hypothesis detail and the Word report say the standing needs review and how to justify it | `S16LegacyVersionTests` |
+| A | major | done | removing a saved hypothesis after results (Remove, or clearing H1) needs a reason; it is recorded as an append-only `withdrawal` of the hypothesis (`detail.what = "hypothesis"`, its last saved form, no `supersedes`); the plan card keeps it aside with a reason field and *Keep*; the hypothesis panel and the Word report list it with every earlier decision | `ARemovalAfterResultsTests`, `PlanCardAfterResultsTests` |
+| B | major | done | after results, the planned method/options, planned variables and question kind need a reason and are recorded as deviations (`what` = method / variables / question, from, to); the report names them | `BPlanChangedAfterResultsTests`, `PlanCardAfterResultsTests` |
+| E | major | done (limitation documented) | a returned copy names what it does not carry (records left out, typed fields lost per hypothesis, typed questions, results without a snapshot) on the Project page until marked read, and on restore; nothing restored automatically; design §8.6 and AC-11 corrected | `EOlderCopyReturnsTests` |
+| W1 | major | done | on Analyze the footer treats the analysis on screen as *done here*; *Create the analysis* acts on the analysis set up on screen; opening the open task keeps the on-screen choices | `W1FooterKeepsTheAnalysisOnScreenTests` |
+| W3 | major | done | `posthoc` is named as its omnibus test in titles, headings and calculation texts (EN/LV/RU) | `W3PostHocTitleTests` |
+| R5 | minor | done | headings drop the theme font attributes (Times New Roman in Word) | `SmallMinorTests` |
+| R6 | minor | done | no *Spearman p-value* option on a Pearson or Kendall batch | `SmallMinorTests` |
+| R7 | minor | done | `about.H-PLAN-CHANGED` in three languages | `SmallMinorTests` |
+| G | minor | done | `BEFORE INSERT` trigger refuses an existing id (REPLACE); added on open, no new format | `SmallMinorTests`; trigger sets in `test_stage37_formats`, `test_stage37_store` updated deliberately |
+
+**Deferred minors, with reasons.**
+- R3, R4 (repeated paragraphs for identical re-runs / same-title results): need the merged-result set inside `hypothesis_evidence` and a unique data line; touches the #8 metric, not a small change.
+- R8 (H-NO-TASK hidden when a result remains), R9 (missing-rows limitation lost after restore; `provenance.complete` is not restored, also Stage 36): need a decision on which line covers the check, and restoring `complete` with the run.
+- D (`run_id` dangles after the post-hoc replacement): needs the replacement to keep the run id or a forward pointer; changes the post-hoc save path.
+- H (deviation detail > 8000 chars): needs a shortened detail format that the report can still read.
+- F (an H0-only change is not checked by H-PLAN-CHANGED): needs H0 in the result snapshot.
+- W4–W10 (meaning of "after results" for S8, strip/row/bar task choice, Data page notice, in-task review binding, task-title language): workflow decisions beyond a small fix; W11 is a policy question (unconfirmed).
+- Windows W1–W3 (driver footer geometry and cache, CI path triggers): the driver and the workflows were outside this fix task; W4 unconfirmed.
