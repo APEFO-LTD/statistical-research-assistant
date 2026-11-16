@@ -346,7 +346,7 @@ Measured with the same command and fixtures on the merge of `claude/stage37-ux-s
 
 ## 11. Re-measured: the scales register and Continue (branch `claude/stage37-productivity`)
 
-Fable review §4 items 2, 5 and 6 (`docs/STAGE37_FABLE_NARROW_REVIEW.md` on `claude/stage37-review`). Same command and fixtures. "Before" is `8c6afb3` (the integration branch) measured with **this branch's** `tools/ux_metrics.py`, which adds two tasks in a second project; on `8c6afb3` the tool takes the paths that exist there. "After" is `c2d9e85` plus the tool. Scroll is an estimate (§4.5).
+Fable review §4 items 2, 5 and 6 (`docs/STAGE37_FABLE_NARROW_REVIEW.md` on `claude/stage37-review`). Same command and fixtures. "Before" is `8c6afb3` (the integration branch) measured with **this branch's** `tools/ux_metrics.py`, which adds two tasks in a second project; on `8c6afb3` the tool takes the paths that exist there. "After" is the application code of `8bfaf44` (measured on `c2d9e85` with the working tree `8bfaf44` commits). Scroll is an estimate (§4.5).
 
 New tasks (a second chain, its own project and data folder, so T1–T8 keep their numbers):
 
@@ -398,3 +398,7 @@ Re-run on `8c6afb3` and on `5239c09` (and unchanged by `c2d9e85`, which touches 
 | Professor, Stage 37.0 | 5 | 0 | 2 | ≤ 6 · ≤ 2 | yes |
 
 This increment does not change the beginner flow (one research question, one batch of correlations, its review and the report); the 21st interaction is the dropdown of Q1's kind (`docs/STAGE37_UX_RESULTS.md`).
+
+### 11.6 Full suite
+
+`SRA_REQUIRE_REAL_OCR=1 MPLBACKEND=Agg PYTHONUTF8=1 python -m unittest discover -s tests` on `5f6ebb4`: **1,847 tests, OK (10 skipped)**, 1,681 s. The run before it, on `8bfaf44`, had one failure: `test_the_scenario_reproduces_exactly`, which fails whenever its two runs straddle a minute. It fails the same way on `8c6afb3`, and `5f6ebb4` fixes it in the test.
