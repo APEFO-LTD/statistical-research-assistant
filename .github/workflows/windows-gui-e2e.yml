@@ -40,6 +40,8 @@ on:
       - "export_bundle.py"
       - "csv_safety.py"
       - "data_loader.py"
+      - "app_preferences.py"
+      - "import_workflow.py"
       - "tests/fixtures/stage37/generate_master_fixture.py"
       - ".github/workflows/windows-gui-e2e.yml"
 

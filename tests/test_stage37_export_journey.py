@@ -49,9 +49,177 @@ def save_to(ws, target: Path):
 class JourneyOrderTests(unittest.TestCase):
     def test_export_data_follows_the_eighteen_unchanged(self):
         self.assertEqual(list(e2e.JOURNEYS)[:18], THE_EIGHTEEN)
-        self.assertEqual(list(e2e.JOURNEYS)[18:], ["export-data"])
+        # Merge-tolerant (review integration F1): other Stage 37 branches append
+        # their journeys after the eighteen too, in an order the merge decides.
+        self.assertIn("export-data", list(e2e.JOURNEYS)[18:])
+        self.assertGreaterEqual(len(e2e.JOURNEYS), 19)
         self.assertIs(e2e.JOURNEYS["export-data"], e2e.journey_export_data)
         self.assertNotIn("export-data", e2e.STARTS_ITSELF)
+
+
+class _Rect:
+    def __init__(self, left, top, right, bottom):
+        self.left, self.top, self.right, self.bottom = left, top, right, bottom
+
+    def width(self):
+        return self.right - self.left
+
+    def height(self):
+        return self.bottom - self.top
+
+
+class _Clock:
+    """Driver time without waiting: a look at the screen takes a second, as
+    a UI Automation scan of the Results page does on the Windows runner."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
+
+
+class _ResultsPage:
+    """A scrolling page as the driver sees it through UI Automation: only
+    what is inside the window is listed, a rectangle is where the element
+    is now, and a click lands where it points. ``tail`` is the height below
+    the Interpretation section's header; the Export card of Stage 37 adds
+    its height to it (about 240 px, two rows and its folded options)."""
+
+    VIEW_TOP, VIEW_BOTTOM = 115, 1005       # below the context bar, above the status line
+    # A wheel notch scrolls 60 px: with it the first search for the note
+    # (two wheel moves of five notches in its six seconds) scrolls the header
+    # out of view on the longer page, as the failing run's screenshots show
+    # (gui-e2e/steps/235-…: "Full report" at the top, the header above it).
+    HEADER_AT, HEADER_HEIGHT, OPEN_HEIGHT, NOTCH = 400, 60, 700, 60
+
+    def __init__(self, tail: int):
+        self.tail, self.offset, self.open, self.clicks = tail, 0, False, []
+
+    def length(self) -> int:
+        return self.HEADER_AT + self.HEADER_HEIGHT + self.tail + \
+            (self.OPEN_HEIGHT if self.open else 0)
+
+    def items(self) -> list[tuple[str, str, int, int]]:
+        found = [(e2e.T("results.interpretation") + "\n" + e2e.T("results.interpretation_hint"),
+                  "Group", self.HEADER_AT, self.HEADER_HEIGHT)]
+        if self.open:
+            found.append((e2e.T("results.notes"), "Edit",
+                          self.HEADER_AT + self.HEADER_HEIGHT + self.OPEN_HEIGHT - 80, 60))
+        return found
+
+    def screen_top(self, page_y: int) -> int:
+        return self.VIEW_TOP + page_y - self.offset
+
+    def wheel(self, clicks: int) -> None:
+        most = max(0, self.length() - (self.VIEW_BOTTOM - self.VIEW_TOP))
+        self.offset = min(most, max(0, self.offset - clicks * self.NOTCH))
+
+    def click(self, x: int, y: int) -> None:
+        self.clicks.append(y)
+        top = self.screen_top(self.HEADER_AT)
+        if self.VIEW_TOP <= y < self.VIEW_BOTTOM and top <= y < top + self.HEADER_HEIGHT:
+            self.open = not self.open
+
+
+class _Element:
+    def __init__(self, page: _ResultsPage, name: str, kind: str, page_y: int, height: int):
+        self.page, self.page_y, self.height = page, page_y, height
+        self.element_info = self
+        self.name, self.control_type = name, kind
+
+    @property
+    def rectangle(self):
+        top = self.page.screen_top(self.page_y)
+        return _Rect(700, top, 1800, top + self.height)
+
+    def click_input(self):
+        rect = self.rectangle
+        self.page.click((rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2)
+
+    def expand(self):
+        raise RuntimeError("no ExpandCollapse pattern")
+
+    def invoke(self):
+        raise RuntimeError("no Invoke pattern")
+
+
+class _ModelGui(e2e.Gui):
+    def __init__(self, page: _ResultsPage, clock: _Clock):
+        self.page, self.clock = page, clock
+
+    def window_box(self):
+        return 0, 0, 1900, 1050
+
+    def footer_top(self):
+        return None
+
+    def elements(self):
+        self.clock.now += 1.0
+        listed = []
+        for name, kind, page_y, height in self.page.items():
+            top = self.page.screen_top(page_y)
+            if top + height > self.page.VIEW_TOP and top < self.page.VIEW_BOTTOM:
+                listed.append(_Element(self.page, name, kind, page_y, height))
+        return listed
+
+    def wheel(self, clicks: int, at=None) -> None:
+        self.page.wheel(clicks)
+        self.clock.now += 0.35
+
+    @staticmethod
+    def value(element) -> str:
+        return ""
+
+    def dump(self, name):
+        return None
+
+    def shot(self, name):
+        return None
+
+    def log_screen(self, title):
+        return None
+
+
+class OpenInterpretationTests(unittest.TestCase):
+    """PR #78's Windows failure, report-composition: "the Interpretation
+    section did not open". The driver looked for the note first, which
+    scrolls the page down, then clicked the header it had found before: on
+    a page long enough to scroll the header out of view (the Results page
+    with the Export card) the click landed above the content. A person sees
+    the header and opens the section (the harness walk of the journey does
+    that on the real page); the driver now finds the header again, scrolled
+    into view, right before it presses it."""
+
+    def walk(self, tail: int) -> _ResultsPage:
+        from unittest import mock
+
+        page, clock = _ResultsPage(tail), _Clock()
+        with mock.patch.object(e2e, "time", clock):
+            e2e.open_interpretation(_ModelGui(page, clock))
+        return page
+
+    def test_the_section_opens_on_the_page_without_the_export_card(self):
+        self.assertTrue(self.walk(tail=800).open)
+
+    def test_the_section_opens_on_the_longer_page_with_the_export_card(self):
+        page = self.walk(tail=800 + 240)
+        self.assertTrue(page.open)
+        self.assertTrue(all(page.VIEW_TOP <= y < page.VIEW_BOTTOM for y in page.clicks),
+                        f"every click inside the content: {page.clicks}")
+
+    def test_an_open_section_is_not_closed(self):
+        from unittest import mock
+
+        page, clock = _ResultsPage(tail=1040), _Clock()
+        page.open = True
+        with mock.patch.object(e2e, "time", clock):
+            e2e.open_interpretation(_ModelGui(page, clock))
+        self.assertTrue(page.open)
+        self.assertEqual(page.clicks, [])
 
 
 class ExportDataJourneyTests(unittest.TestCase):
