@@ -307,5 +307,101 @@ class JourneyListTests(unittest.TestCase):
             self.assertEqual(gui.environment()["SRA_DATA_DIR"], folder)
 
 
+class _Rect:
+    def __init__(self, left, top, right, bottom):
+        self.left, self.top, self.right, self.bottom = left, top, right, bottom
+
+    def width(self):
+        return self.right - self.left
+
+    def height(self):
+        return self.bottom - self.top
+
+
+class _Element:
+    """An element as UI Automation lists it (name, type and rectangle)."""
+
+    def __init__(self, kind, name, rect):
+        self.element_info = SimpleNamespace(name=name, control_type=kind,
+                                            rectangle=_Rect(*rect))
+        self.clicks = 0
+
+    def click_input(self, **_):
+        self.clicks += 1
+
+
+class _Window:
+    def __init__(self, rect, elements):
+        self._rect, self._elements = _Rect(*rect), elements
+
+    def rectangle(self):
+        return self._rect
+
+    def descendants(self):
+        return list(self._elements)
+
+
+# The maximized window and elements of the Windows CI run (run 43497797412):
+# UI Automation's own names and rectangles.
+MAXIMIZED = (-8, -8, 1928, 1040)
+RUSSIAN_SETTINGS = [
+    _Element("Group", "Язык. English", (1708, 35, 1848, 74)),
+    _Element("Button", "EN", (1711, 38, 1777, 71)),
+    _Element("Button", "LV", (1781, 38, 1845, 71)),
+    _Element("Group", "Язык: Русский. Все языки", (1856, 34, 1896, 75)),
+    _Element("Button", "Настройки", (10, 896, 221, 936)),
+    _Element("Text", "Внешний вид", (621, 256, 746, 286)),
+    _Element("Text", "Язык", (913, 256, 985, 286)),          # the hub's index
+    _Element("Text", "Язык", (621, 1300, 660, 1324)),        # the section, below
+    _Element("Button", "Язык", (621, 1336, 881, 1389)),
+    _Element("Button", "Классический интерфейс", (10, 980, 221, 1020)),
+]
+
+
+class DriverGeometryTests(unittest.TestCase):
+    """The driver finds what a researcher sees on the Windows screen (the
+    failures of the first Windows run of the Stage 37 journeys)."""
+
+    def gui(self, window, elements):
+        gui = e2e.Gui(Path("program.exe"), Path("."), Path("."))
+        gui.win = _Window(window, elements)
+        for name in ("dump", "shot", "log_screen", "wheel"):
+            setattr(gui, name, lambda *a, **k: None)
+        gui.footer_top = lambda: None
+        return gui
+
+    def test_the_last_sidebar_entry_is_on_screen_at_any_window_size(self):
+        # Maximized: the classic interface ends 20 px above the window's
+        # outer edge (12 px sidebar padding, 8 px overhang), fully visible.
+        classic = _Element("Button", "Classic interface", (10, 980, 221, 1020))
+        gui = self.gui(MAXIMIZED, [classic])
+        self.assertIs(gui.find("Classic interface", control_type=("Button", "Text"),
+                               scroll=False, timeout=0.3), classic)
+        # 1200 x 720 at (100, 100): the same 20 px.
+        classic = _Element("Button", "Classic interface", (108, 760, 319, 800))
+        gui = self.gui((100, 100, 1300, 820), [classic])
+        self.assertTrue(gui.on_screen(classic))
+        # Below the window it is not on screen.
+        hidden = _Element("Button", "Classic interface", (108, 800, 319, 840))
+        self.assertFalse(gui.on_screen(hidden))
+        # The page keeps its margin above the status line.
+        content = _Element("Button", "Create project", (700, 1000, 900, 1020))
+        self.assertFalse(self.gui(MAXIMIZED, [content]).on_screen(content))
+
+    def test_a_settings_chip_is_not_the_top_bar_language_group(self):
+        gui = self.gui(MAXIMIZED, RUSSIAN_SETTINGS)
+        e2e.click_chip(gui, "Язык")
+        self.assertEqual(RUSSIAN_SETTINGS[6].clicks, 1)
+        self.assertEqual(RUSSIAN_SETTINGS[0].clicks, 0)
+
+    def test_the_top_bar_language_buttons_are_clickable(self):
+        gui = self.gui(MAXIMIZED, RUSSIAN_SETTINGS)
+        gui.click(regex=e2e.segment("LV"), control_type="Button", settle=0)
+        self.assertEqual(RUSSIAN_SETTINGS[2].clicks, 1)
+        # Not anything else that scrolled under the context bar.
+        under = _Element("Button", "Run", (700, 60, 800, 100))
+        self.assertFalse(self.gui(MAXIMIZED, [under]).clickable(under))
+
+
 if __name__ == "__main__":
     unittest.main()

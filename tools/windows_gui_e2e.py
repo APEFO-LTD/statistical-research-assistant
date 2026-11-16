@@ -669,8 +669,31 @@ class Gui:
         except Exception:
             return False
         left, top, right, bottom = self.window_box()
-        return (rect.width() > 0 and rect.height() > 0 and rect.top >= top + 60
-                and rect.bottom <= bottom - 30 and rect.left >= left and rect.right <= right)
+        # The sidebar reaches the bottom of the window's client area: its last
+        # entry (the classic interface) ends about 20 px above the window's
+        # outer edge, whatever the window's size. Only the window frame
+        # (WINDOW_FRAME, also the overhang of a maximized window) hides it.
+        limit = bottom - (self.WINDOW_FRAME if rect.right <= left + 260 else 30)
+        # The context bar's own controls sit right under the title bar.
+        upper = top + (self.TITLE_BAR if self.top_bar_control(element) else 60)
+        return (rect.width() > 0 and rect.height() > 0 and rect.top >= upper
+                and rect.bottom <= limit and rect.left >= left and rect.right <= right)
+
+    def in_top_bar(self, element) -> bool:
+        """In the context bar above the page (project, dataset, theme,
+        languages): it never scrolls."""
+        try:
+            rect = element.element_info.rectangle
+        except Exception:
+            return False
+        left, top, _, _ = self.window_box()
+        return rect.left >= left + 240 and rect.bottom <= top + self.CONTEXT_BAR
+
+    def top_bar_control(self, element) -> bool:
+        """One of the context bar's controls a journey clicks (EN, LV)."""
+        return self.in_top_bar(element) and any(
+            re.search(pattern, element.element_info.name or "")
+            for pattern in TOP_BAR_CONTROLS)
 
     def wheel(self, clicks: int, at=None) -> None:
         from pywinauto import mouse
@@ -684,6 +707,8 @@ class Gui:
     # import review, by its sticky footer: a click there lands on them.
     STATUS_LINE = 45
     CONTEXT_BAR = 115
+    WINDOW_FRAME = 8
+    TITLE_BAR = 30
     _footer_cache = (0.0, None)
 
     def footer_top(self):
@@ -721,6 +746,8 @@ class Gui:
             return True                       # the sticky footer itself
         if (info.name or "") in self.banner_actions():
             return True                       # the update banner sits above the context bar
+        if self.top_bar_control(element):
+            return True                       # the context bar's own controls (EN, LV)
         limit = bottom - self.STATUS_LINE
         footer = self.footer_top()
         if footer is not None:
@@ -746,17 +773,22 @@ class Gui:
         return element
 
     def find(self, name=None, *, regex=None, control_type=None, timeout: float = 15,
-             scroll: bool = True, index: int = 0, visible: bool = True):
+             scroll: bool = True, index: int = 0, visible: bool = True,
+             page_only: bool = False):
         """The ``index``-th element with this name (or regex), on screen.
 
         Waits for it; then scrolls the page down, then up, the way a person
-        looks for a control below or above the visible part.
+        looks for a control below or above the visible part. ``page_only``
+        leaves out the context bar above the page (its language group is
+        named "Language" too: "Язык. English").
         """
         deadline = time.monotonic() + timeout
         settle_until = time.monotonic() + min(4.0, timeout)
         moves, direction = 0, -1
         while True:
             found = self.query(name, regex=regex, control_type=control_type)
+            if page_only:
+                found = [e for e in found if not self.in_top_bar(e)]
             if len(found) > index:
                 element = found[index]
                 if not visible or self.clickable(element):
@@ -782,9 +814,9 @@ class Gui:
 
     # ------------------------------------------------------------- actions
     def click(self, name=None, *, regex=None, control_type=None, index: int = 0,
-              timeout: float = 15, settle: float = 0.8):
+              timeout: float = 15, settle: float = 0.8, page_only: bool = False):
         element = self.find(name, regex=regex, control_type=control_type, index=index,
-                            timeout=timeout)
+                            timeout=timeout, page_only=page_only)
         info = element.element_info
         if info.control_type in ("RadioButton", "CheckBox"):
             # On the button itself: its row spans the page (see check()).
@@ -2137,6 +2169,9 @@ STAGE36_PROJECT = "Fictional Stage 36 study"
 # UI Automation names a chip by its label, then ". " and its tooltip (or a
 # new line and its explanation), e.g. "5. Method. The recommended method…".
 CHIP_END = r"(\.|\n|$)"
+# The context bar's own controls a journey clicks: the EN and LV quick
+# choices (Stage 37), with or without their tooltip.
+TOP_BAR_CONTROLS = (r"^(EN|LV)(\.|\n|$)",)
 
 
 def stage36_options() -> list[str]:
@@ -2226,7 +2261,7 @@ STAGE36_CHARTS_PROJECT = "Fictional Stage 36 charts"
 def click_chip(gui: Gui, label: str) -> None:
     """A chip or tile: named by its label, sometimes followed by a tooltip."""
     gui.click(regex="^" + re.escape(label) + CHIP_END,
-              control_type=("Button", "Text", "Group", "Custom"))
+              control_type=("Button", "Text", "Group", "Custom"), page_only=True)
 
 
 def journey_stage36_charts(gui: Gui, work: Path, journey: Journey) -> None:
