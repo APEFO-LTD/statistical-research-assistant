@@ -155,12 +155,14 @@ class MeterTests(unittest.TestCase):
 
         with self.rec.task(ws, "T1") as segment:
             state["where"] = 10_000             # appended at the end: the field stays
-            ws.find("project-new-title").on_change = typed
+            # The handler is swapped as the test's instrument (a rendered
+            # control is frozen on Flet 1.1: Issue #80).
+            ws.client_sets(ws.find("project-new-title"), on_change=typed)
             ws.type("project-new-title", "Fictional")
             self.assertEqual(segment.focus_losses, [])
             state["notice"], state["where"] = False, 0
             ws.app.render()
-            ws.find("project-new-title").on_change = typed
+            ws.client_sets(ws.find("project-new-title"), on_change=typed)
             ws.type("project-new-title", "Fictional study")   # inserted above: moved
         self.assertEqual(segment.focus_losses, ["project-new-title"])
         self.assertEqual(segment.typed, 2)

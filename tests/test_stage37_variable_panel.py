@@ -71,7 +71,7 @@ def text_of(ws, data: str) -> str:
 def submit(ws, data: str, value: str):
     """Enter in a text field: Flet's on_submit with the field's value."""
     field = ws.find(data, ft.TextField)
-    field.value = value
+    ws.client_sets(field, value=value)
     return ws.dispatch(field.on_submit, SimpleNamespace(control=field, data=value))
 
 
@@ -581,7 +581,7 @@ class ScoreItemsTests(MasterFixture, unittest.TestCase):
         panel = ws.app.pages["data"]._preparation[0]
         method = next(c for c in ws.controls(panel)
                       if isinstance(c, ft.Dropdown) and c.label == "Transformation")
-        method.value = "scale"
+        ws.client_sets(method, value="scale")
         ws.dispatch(method.on_select, SimpleNamespace(control=method, data="scale"))
         picker = ws.app.pages["data"].items_picker
         self.assertEqual(text_of(ws, "prep-items:count"), T("vars.count", selected=0, total=96))
@@ -595,7 +595,7 @@ class ScoreItemsTests(MasterFixture, unittest.TestCase):
         self.assertEqual(text_of(ws, "prep-items:count"), T("vars.count", selected=20, total=96))
         target = next(c for c in ws.controls(panel)
                       if isinstance(c, ft.TextField) and c.label == "New variable name")
-        target.value = "SYN_LON_MEAN"
+        ws.client_sets(target, value="SYN_LON_MEAN")
         for label_text in ("Apply transformation", "Use working copy in analysis"):
             button = next(c for c in ws.controls(panel)
                           if isinstance(c, ft.Button) and c.content == label_text)
@@ -612,7 +612,7 @@ class ScoreItemsTests(MasterFixture, unittest.TestCase):
         panel = ws.app.pages["data"]._preparation[0]
         method = next(c for c in ws.controls(panel)
                       if isinstance(c, ft.Dropdown) and c.label == "Transformation")
-        method.value = "scale"
+        ws.client_sets(method, value="scale")
         ws.dispatch(method.on_select, SimpleNamespace(control=method, data="scale"))
         picker = ws.app.pages["data"].items_picker
         field, listing = ws.find("prep-items:search"), ws.find("prep-items:list")
@@ -778,6 +778,37 @@ class VariablePickerJourneyTests(MasterFixture, unittest.TestCase):
             self.assertEqual(tasks[1][3].get("copied_from"), tasks[0][0])
             self.assertEqual(tasks[1][2], {"one_construct": True})
             self.assertEqual(tasks[0][2], {"one_construct": True})
+
+            # Issue #80: the scales register, 22 clicks on its item boxes
+            # (the harness diffs every update as Flet 1.1 does, frozen
+            # controls included), then the register saved in the project.
+            ws.click("nav-data")
+            self.assertEqual(label(ws, "scales-add"), T("scales.add"))
+            ws.click("scales-add")
+            self.assertEqual(ws.find("scales-name").label, T("scales.name"))
+            ws.type("scales-name", e2e.SCALES_NAME)
+            searches = [c for c in ws.controls() if isinstance(c, ft.TextField)
+                        and c.label == T("vars.search")]
+            self.assertEqual([c.data for c in searches], ["scales-items:search"],
+                             "the journey's search field is the only one of that name")
+            ws.type("scales-items:search", e2e.SCALES_SEARCH)
+            self.assertEqual(text_of(ws, "scales-items:count"), e2e.scales_count(0, offered))
+            requests = len(ws.page.focus_requests())
+            for item, value, selected in e2e.scales_clicks():
+                box = ws.find(f"scales-items-{item}", ft.Checkbox)
+                self.assertEqual(box.label, e2e.option_label(item, e2e.SCALES_LEVEL))
+                self.assertEqual(bool(box.value), not value)
+                ws.check(f"scales-items-{item}", value)
+                self.assertEqual(text_of(ws, "scales-items:count"),
+                                 e2e.scales_count(selected, offered))
+            self.assertEqual(len(ws.page.focus_requests()), requests,
+                             "no click moved the keyboard focus")
+            rows = e2e.project_query(folder_of(root), e2e.VARIABLE_PANEL_PROJECT,
+                                     e2e.SCALES_REGISTER_SQL)
+            scales = json.loads(rows[0][0])["scales"]
+            self.assertEqual([d["name"] for d in scales], [e2e.SCALES_NAME])
+            self.assertEqual(scales[0]["items"], e2e.scales_expected())
+            self.assertEqual(len(e2e.scales_clicks()), 22)
 
 
 if __name__ == "__main__":

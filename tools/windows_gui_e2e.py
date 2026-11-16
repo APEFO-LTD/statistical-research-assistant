@@ -4764,6 +4764,91 @@ PANEL_ACTIONS = {
 }
 
 
+# Issue #80 (P0): the scales register crashed on the installed Flet 1.1.2
+# program at the first item box clicked after "Add a scale" (RuntimeError:
+# Frozen controls cannot be updated). The journey clicks its item boxes with
+# the mouse, as a person does: 22 clicks, ticking and unticking, then reads
+# the register the program saved in the project.
+SCALES_NAME = "SUP_AVG"
+SCALES_SEARCH = "SYN_SUP_??"           # the twelve items (not the fixture's own score)
+SCALES_ITEMS = tuple(f"SYN_SUP_{n:02d}" for n in range(1, 13))
+SCALES_LEVEL = "ordinal"               # the level the fixture's items are confirmed with
+SCALES_REGISTER_SQL = ("SELECT detail FROM events WHERE kind = 'scale_register' "
+                       "ORDER BY id DESC LIMIT 1")
+
+
+def scales_clicks() -> list[tuple[str, bool, int]]:
+    """(item, ticked after the click, items selected after it): all twelve
+    ticked, every second one unticked, two ticked again, one unticked and
+    ticked again (22 clicks)."""
+    chosen: list[str] = []
+    plan = [(item, True) for item in SCALES_ITEMS]
+    plan += [(item, False) for item in SCALES_ITEMS[1::2]]
+    plan += [("SYN_SUP_04", True), ("SYN_SUP_08", True)]
+    plan += [("SYN_SUP_01", False), ("SYN_SUP_01", True)]
+    out = []
+    for item, value in plan:
+        if value:
+            chosen.append(item)
+        else:
+            chosen.remove(item)
+        out.append((item, value, len(chosen)))
+    return out
+
+
+def scales_expected() -> list[str]:
+    """The items of the scale after :func:`scales_clicks`, in data order."""
+    chosen: set[str] = set()
+    for item, value, _ in scales_clicks():
+        (chosen.add if value else chosen.discard)(item)
+    return [item for item in SCALES_ITEMS if item in chosen]
+
+
+def scales_count(selected: int, offered: int) -> str:
+    return T("vars.count_shown", selected=selected, total=offered,
+             shown=len(SCALES_ITEMS))
+
+
+def scales_register_steps(gui: Gui, journey: Journey, offered: int) -> None:
+    """The scales register on the Data page, clicked with the mouse."""
+    with journey.step("scales register: a scale added, named and its items searched"):
+        nav(gui, "nav.data")
+        find_text(gui, T("scales.add"), exact=True, control_type="Button", timeout=60,
+                  moves=80)
+        gui.click(T("scales.add"), control_type="Button")
+        gui.type_into(T("scales.name"), SCALES_NAME)
+        gui.type_into(T("vars.search"), SCALES_SEARCH)
+        gui.wait_text(scales_count(0, offered))
+    clicks = []
+    with journey.step("22 mouse clicks on the item boxes of the scale"):
+        for item, value, selected in scales_clicks():
+            box = gui.find(option_label(item, SCALES_LEVEL), control_type="CheckBox")
+            expect(toggle_state(box) in (int(not value), None),
+                   f"{item} is already {'ticked' if value else 'clear'}")
+            rect = box.element_info.rectangle
+            box.click_input(coords=(min(20, rect.width() // 2), rect.height() // 2))
+            # The program's own count follows each click (a click whose
+            # handler raised leaves it as it was).
+            gui.wait_text(scales_count(selected, offered), timeout=20, scroll=False)
+            clicks.append(item)
+        focused = gui.focused()
+        journey.facts["scales_clicks"] = len(clicks)
+        journey.facts["scales_focus_after_clicks"] = f"{focused.control_type}: {focused.name}"
+        expect((focused.name or "") != T("scales.name"),
+               "a click on an item box moved the keyboard focus to the scale's name")
+        gui.shot("scales register after 22 clicks")
+    with journey.step("the register saved in the project is the one on screen"):
+        rows = project_query(gui, VARIABLE_PANEL_PROJECT, SCALES_REGISTER_SQL)
+        expect(rows, "no scales register in the project")
+        register = json.loads(rows[0][0])
+        scales = register.get("scales") or []
+        journey.facts["scales_register"] = scales
+        expect(len(scales) == 1 and scales[0].get("name") == SCALES_NAME,
+               f"the register holds {[d.get('name') for d in scales]}")
+        expect(scales[0].get("items") == scales_expected(),
+               f"saved items {scales[0].get('items')}, expected {scales_expected()}")
+
+
 # master_fixture(): the export journey's (above), the same generator; the
 # integration keeps one definition (docs/STAGE37_INTEGRATION.md).
 
@@ -4818,8 +4903,9 @@ def journey_variable_picker(gui: Gui, work: Path, journey: Journey) -> None:
     is found by typing and left out with the keyboard (Tab, Space); the
     construct is confirmed again; α of the 19 items agrees with numpy; the
     project holds two tasks, the first unchanged. The researcher's actions
-    are counted (PANEL_ACTIONS). tests/test_stage37_variable_panel.py walks
-    the same flow."""
+    are counted (PANEL_ACTIONS). Issue #80: then 22 mouse clicks on the item
+    boxes of the scales register, and the register saved in the project.
+    tests/test_stage37_variable_panel.py walks the same flow."""
     csv_path = master_fixture(work / "stage37-master")
     offered = panel_offered(csv_path)
     texts = panel_texts(offered)
@@ -4919,6 +5005,7 @@ def journey_variable_picker(gui: Gui, work: Path, journey: Journey) -> None:
                "the copy does not name the task it was copied from")
         expect(tasks[1]["confirms"] == {"one_construct": True},
                f"the copy's confirmations: {tasks[1]['confirms']}")
+    scales_register_steps(gui, journey, offered)
 
 
 # Journeys that prepare the machine and start the program themselves.

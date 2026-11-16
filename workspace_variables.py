@@ -384,7 +384,7 @@ class PreparationItems:
     variable panel: search, name groups, select or unselect what is shown,
     clear, a count and the reasons for what is not offered.
 
-    The hosted panel is built once and updated in place (``page.update()``,
+    The hosted panel is built once and updated in place (``update_hosted``,
     not the workspace's keyed re-render), so this list keeps its controls
     and changes what they show: a control rebuilt in that kind of update is
     a new widget, and the search field would lose the keyboard focus at
@@ -464,10 +464,9 @@ class PreparationItems:
         self._update()
 
     def _update(self) -> None:
-        try:
-            self.app.page.update()
-        except Exception:      # not on a page yet (built before it is shown)
-            pass
+        # Hosted in Data → Prepare: its changes are sent as a hosted
+        # control's; nothing is sent before it is on screen (Issue #80).
+        self.app.update_hosted(self.control)
 
     # ---------------------------------------------------------------- layout
     def _current_look(self):

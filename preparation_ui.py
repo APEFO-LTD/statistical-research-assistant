@@ -19,7 +19,7 @@ CAPTION_COLOR = "#536781"
 
 def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
                                 caption_color: str | None = CAPTION_COLOR,
-                                item_picker=None):
+                                item_picker=None, refresh=None):
     """Return (view, reset_for_new_dataset). Loading into analysis is explicit.
 
     ``with_steps``: ``load_dataframe(frame, steps)`` also receives the steps
@@ -30,7 +30,13 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
     ``item_picker`` (Stage 37, Issue #68): the list a scale score's items
     are chosen in, instead of the plain list of boxes; an object with
     ``control``, ``set_columns(frame)`` and ``selected()`` (the research
-    workspace passes ``workspace_variables.PreparationItems``)."""
+    workspace passes ``workspace_variables.PreparationItems``).
+
+    ``refresh`` (Issue #80): sends the panel's changes to the client; by
+    default ``page.update()``. The research workspace hosts the panel in a
+    page Flet 1.1 keeps frozen, which a page-wide update does not look
+    into, and passes its own (``WorkspaceApp.update_hosted``)."""
+    update = refresh if refresh is not None else page.update
     state = {"working": None, "steps": [], "source_path": None}
 
     method = ft.Dropdown(
@@ -98,7 +104,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
                 target.value = source.value + hint
             elif method.value == "scale":
                 target.value = "scale_mean"
-        page.update()
+        update()
 
     method.on_select = set_mode
 
@@ -148,7 +154,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
     def apply_step(e):
         if state["working"] is None:
             status.value = "Load a dataset first."
-            page.update()
+            update()
             return
         frame = state["working"]
         output = (target.value or "").strip()
@@ -186,7 +192,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
             update_columns()
         except (ValueError, TypeError, KeyError) as err:
             status.value = f"Transformation error: {err}"
-        page.update()
+        update()
 
     async def load_for_analysis(e):
         if state["working"] is None:
@@ -201,12 +207,12 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
                 f"Prepared table sent to Dataset: "
                 f"{len(state['working'])} rows."
             )
-        page.update()
+        update()
 
     async def save_prepared(e):
         if state["working"] is None:
             status.value = "Load a dataset first."
-            page.update()
+            update()
             return
         try:
             path = await picker.save_file(
@@ -224,7 +230,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
                 status.value = f"Saved: {csv}\nRecipe: {recipe}"
         except Exception as err:
             status.value = f"Save error: {err}"
-        page.update()
+        update()
 
     view = ft.Column(
         controls=[

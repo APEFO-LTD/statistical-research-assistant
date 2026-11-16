@@ -103,8 +103,11 @@ class ScalesCard:
         self.editing = len(self.definitions) - 1
         self.filters, self.messages = {}, []
         self._save()
-        self.app.render()
+        # The new scale's name field takes the focus in this render (a
+        # request made after it went stale and moved the focus, at the next
+        # item click, to the name field: Issue #80).
         self.app.request_focus("scales-name")
+        self.app.render()
 
     def _edit(self, index: int) -> None:
         self.editing = None if self.editing == index else index

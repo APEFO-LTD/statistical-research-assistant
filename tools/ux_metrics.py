@@ -1014,7 +1014,7 @@ class Meter(CountingWorkspace):
         self.counts["check"] += 1
 
         def run():
-            control.value = value
+            self.client_sets(control, value=value)    # as the client does (Issue #80)
             handler = getattr(control, "on_change", None)    # classic boxes are read on Apply
             return self.dispatch(handler, SimpleNamespace(control=control, data=value)) \
                 if handler else None
@@ -1030,7 +1030,7 @@ class Meter(CountingWorkspace):
         self.counts["choose"] += 2
 
         def run():
-            control.value = value
+            self.client_sets(control, value=value)
             handler = control.on_select
             return self.dispatch(handler, SimpleNamespace(control=control, data=value)) \
                 if handler else None
@@ -1042,7 +1042,7 @@ class Meter(CountingWorkspace):
 
     def type_control(self, control, label: str, value: str):
         def run():
-            control.value = value
+            self.client_sets(control, value=value)
             handler = getattr(control, "on_change", None)
             return self.dispatch(handler, SimpleNamespace(control=control, data=value)) \
                 if handler else None

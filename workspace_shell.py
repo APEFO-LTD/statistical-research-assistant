@@ -181,6 +181,8 @@ class WorkspaceApp:
         self.last_work = (settings.get("last_task"), settings.get("last_result"))
         self._place_written = None
         self._focus_target: str | None = None
+        self._hosted_ids: set[int] = set()      # hosted controls on screen (Issue #80)
+        self._page_epoch = 0
         self.pages: dict[str, object] = {}
         self.root: ft.Control | None = None
         self.status_text: ft.Text | None = None
@@ -515,9 +517,26 @@ class WorkspaceApp:
 
     # Keyboard focus (U11): a main action that opens new content moves the
     # focus to what comes next, where Flet can move it.
+    #
+    # Issue #80 (a focus transaction that is safe on Flet 1.1): the page is
+    # rebuilt on every render and reconciled with the one on screen by its
+    # key ("workspace-page-<route>"). Flet 1.1's differ diffs such a pair
+    # (a new object taking the place of one with the same key) as *frozen*
+    # and marks the new control and every control below it ``_frozen``
+    # (``object_patch._effective_frozen`` → ``_dataclass_added``); after
+    # ``page.update()`` any property set on them raises "Frozen controls
+    # cannot be updated". So the target is chosen in the tree built by this
+    # render and ``autofocus`` is set on it *before* ``page.update()`` (a
+    # control that is new on screen takes the focus itself); a control that
+    # replaces one already on screen is told with ``focus()``, Flet's method
+    # for a mounted control, which changes no property. Nothing is set on a
+    # control after ``page.update()``.
     def request_focus(self, data: str, *, first_inside: bool = False) -> None:
-        """Move the keyboard focus, after the next render, to the control
-        ``data`` (or to the first focusable control inside it)."""
+        """Move the keyboard focus, at the next render, to the control
+        ``data`` (or to the first focusable control inside it). Call it
+        before the ``render()`` (or ``navigate()``) that shows the target:
+        a request outlives no render, so one made after it would move the
+        focus at an unrelated later render (a checkbox click) instead."""
         self._focus_target = (data, first_inside)
 
     @staticmethod
@@ -533,27 +552,34 @@ class WorkspaceApp:
                 elif isinstance(child, ft.Control):
                     stack.append(child)
 
-    def _apply_focus(self) -> None:
+    def _take_focus_target(self):
+        """The control of the pending focus request in the tree this render
+        built (not mounted yet), or None. The request is used up either way:
+        a stale one never reaches a later render."""
         request, self._focus_target = self._focus_target, None
         if not request:
-            return
+            return None
         target, first_inside = request
         holder = next((c for c in self._descendants(self._page_stack)
                        if getattr(c, "data", None) == target), None)
         if holder is None:
-            return
+            return None
         if first_inside:
             control = next((c for c in self._descendants(holder) if c is not holder
                             and self.can_take_focus(c)), None)
         else:
             control = holder if self.can_take_focus(holder) else None
         if control is None:
-            return
+            return None
         self.focused = getattr(control, "data", None) or target
-        control.autofocus = True              # a newly built control takes it itself
+        return control
+
+    def _request_client_focus(self, control) -> None:
+        """After ``page.update()``: ``focus()`` for a control already on
+        screen (a reconciled, frozen one included); no property is set."""
         try:
-            self.page.run_task(control.focus)  # one rebuilt in place is told to
-        except Exception:                     # no client (tests): recorded only
+            self.page.run_task(control.focus)
+        except Exception:                     # no client (tests without one)
             pass
 
     @staticmethod
@@ -704,9 +730,24 @@ class WorkspaceApp:
         # one on screen (same control identities) instead of replacing it, so
         # the scroll position, keyboard focus, caret and expanded sections
         # survive a re-render; another route gets a fresh page.
+        #
+        # Flet 1.1 diffs such a rebuilt page as *frozen* (Issue #80): every
+        # control built for it is marked ``_frozen`` once sent and cannot be
+        # changed afterwards. A control a page keeps between renders and
+        # changes in place (a "hosted" control: Data → Prepare) must not be
+        # added in such a render: it would be frozen too and its next change
+        # would raise. When one enters the page, the page gets a new key
+        # once, so it is added as new (not frozen); later renders keep it
+        # (an identical object is retained, never re-marked), and its own
+        # changes are sent with ``update_hosted``.
+        hosted = [c for c in getattr(page, "hosted_now", ()) if c is not None]
+        if any(id(c) not in self._hosted_ids for c in hosted):
+            self._page_epoch += 1
+        self._hosted_ids = {id(c) for c in hosted}
+        key = f"workspace-page-{self.route}"
         controls: list[ft.Control] = [ft.Column(
-            [body], scroll=ft.ScrollMode.AUTO, expand=True,
-            data=f"workspace-page-{self.route}", key=f"workspace-page-{self.route}",
+            [body], scroll=ft.ScrollMode.AUTO, expand=True, data=key,
+            key=key if not self._page_epoch else f"{key}#{self._page_epoch}",
         )]
         # A page may keep its main actions on screen below the scrolling
         # content (the import review's sticky footer).
@@ -715,12 +756,29 @@ class WorkspaceApp:
             controls.append(ft.Container(footer, key=f"workspace-footer-{self.route}",
                                          data="workspace-footer"))
         self._page_stack.controls = controls
+        # The focus transaction (Issue #80): declared on the new tree before
+        # it is sent, requested with focus() after; nothing set afterwards.
+        focus = self._take_focus_target()
+        if focus is not None:
+            focus.autofocus = True            # built by this render, not yet mounted
         self._remember_place()          # the task or result on screen may have changed
         self.content_host.bgcolor = self.ui.p.canvas
         self.root.bgcolor = self.ui.p.canvas
         self._rendered_width = int(getattr(self.page, "width", None) or 1280)
         self.page.update()
-        self._apply_focus()
+        if focus is not None:
+            self._request_client_focus(focus)
+
+    def update_hosted(self, control) -> None:
+        """Send the changes of a hosted control (or of a control inside one)
+        to the client: ``page.update(control)``, Flet's update of that
+        subtree alone. A page-wide ``page.update()`` does not reach it: the
+        differ does not look inside the frozen page around it (Issue #80).
+        While no hosted control is on screen nothing is sent: the next
+        render shows it as it is."""
+        if not self._hosted_ids or self.page is None:
+            return
+        self.page.update(control)
 
     def scroll_page(self, delta: float) -> None:
         """Scroll the page on screen by ``delta`` pixels (negative: up)."""
@@ -1340,6 +1398,7 @@ class DataPage:
         self.opened: set[str] = set()
         self.sample = SAMPLES[0][0]
         self._preparation = None
+        self.hosted_now: list[ft.Control] = []   # in this build, kept between renders
         self.items_picker = None       # the scale items' variable panel (Stage 37)
         from workspace_groups import GroupsCard
 
@@ -1355,6 +1414,7 @@ class DataPage:
                         "user_missing": "missing"}
 
     def build(self) -> ft.Control:
+        self.hosted_now = []
         app, ui, s = self.app, self.app.ui, self.app.session
         header = wc.page_header(ui, ui.t("data.title"), ui.t("data.subtitle"), actions=[
             wc.button(ui, ui.t("data.open"), action=app.open_data_action, kind="primary",
@@ -1620,11 +1680,14 @@ class DataPage:
             panel = self._preparation_panel()
             if panel is not None:
                 content.append(panel)
-        return wc.card(ui, content, title=ui.t("data.prepare"),
+                self.hosted_now.append(panel)     # kept and changed in place
+        card = wc.card(ui, content, title=ui.t("data.prepare"),
                        description=ui.t("data.prepare.body"), actions=[] if self.show_preparation
                        else [wc.button(ui, ui.t("data.prepare.open"), self._open_preparation,
                                        icon=ft.Icons.TUNE, data="data-prepare")],
                        data="data-preparation")
+        card.key = ft.ScrollKey("data-preparation")
+        return card
 
     def _preparation_panel(self):
         """The validated classic preparation tools, hosted unchanged."""
@@ -1648,9 +1711,11 @@ class DataPage:
             from workspace_variables import PreparationItems
 
             self.items_picker = PreparationItems(self.app)
-            self._preparation = build_preparation_workspace(self.app.page, load_dataframe=adopt,
-                                                            with_steps=True, caption_color=None,
-                                                            item_picker=self.items_picker)
+            # Its changes are sent as a hosted control's (Issue #80).
+            self._preparation = build_preparation_workspace(
+                self.app.page, load_dataframe=adopt, with_steps=True, caption_color=None,
+                item_picker=self.items_picker,
+                refresh=lambda: self.app.update_hosted(self._preparation[0]))
             self._preparation_df = None
         panel, reset = self._preparation
         if self._preparation_df is not self.app.session.df:
@@ -1663,6 +1728,9 @@ class DataPage:
     def _open_preparation(self, e=None):
         self.show_preparation = True
         self.app.render()
+        # The hosted panel entered the page, which was therefore sent anew
+        # (Issue #80): the page is scrolled to the panel that was opened.
+        self.app.reveal("data-preparation")
 
     # ------------------------------------------------------------- helpers
     def _sample_picker(self) -> ft.Control:

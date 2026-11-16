@@ -21,6 +21,7 @@ from __future__ import annotations
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 import warnings
 
@@ -181,7 +182,7 @@ class RegisterLogicTests(MasterFixture, unittest.TestCase):
 
 
 # ================================================================ workspace
-class RegisterWorkspaceTests(MasterFixture, unittest.TestCase):
+class OpenedMaster(MasterFixture):
     def workspace(self, root: Path | None = None) -> CountingWorkspace:
         ws = CountingWorkspace(root=root)
         self.addCleanup(ws.close)
@@ -195,6 +196,9 @@ class RegisterWorkspaceTests(MasterFixture, unittest.TestCase):
         ws.click("data-accept")
         ws.click("nav-data")
         return ws
+
+
+class RegisterWorkspaceTests(OpenedMaster, unittest.TestCase):
 
     def define(self, ws, name, items, method, minimum, *, by=None, confirm=True):
         ws.click("scales-add")
@@ -314,6 +318,204 @@ class RegisterWorkspaceTests(MasterFixture, unittest.TestCase):
             ws.type("scales-high", "7")
             d = ws.app.pages["data"].scales.definitions[0]
             self.assertEqual((d.reverse, d.low, d.high), (("SYN_SUP_04",), 1.0, 7.0))
+
+
+# ======================================== Issue #80: Flet 1.1's frozen controls
+class FrozenControlsTests(OpenedMaster, unittest.TestCase):
+    """Issue #80 (P0): on the installed Flet 1.1.2 program a click on an
+    item box of the scales register raised ``RuntimeError: Frozen controls
+    cannot be updated``: the render after "Add a scale" set ``autofocus`` on
+    the rebuilt name field after ``page.update()``, when Flet had already
+    frozen it (a rebuilt page is diffed against the one on screen by its
+    key, and every control of it is frozen). The harness now diffs every
+    update with Flet's own differ, so the same rule holds here.
+
+    The acceptance walk: the 98-variable master fixture, more than 20 item
+    boxes ticked and unticked, items added and removed, reverse keys changed,
+    two scales switched between, names and minimums typed, the program
+    closed and opened again: no exception, the focus is moved only where a
+    main action asks for it (never by a stale request), the page is
+    reconciled in place (scroll position and focus kept), nothing is
+    cleared that the researcher did not change, and the stored register is
+    the one on screen."""
+
+    SUP_KEPT = ["SYN_SUP_01", "SYN_SUP_03", "SYN_SUP_04", "SYN_SUP_05", "SYN_SUP_07",
+                "SYN_SUP_08", "SYN_SUP_09", "SYN_SUP_11"]
+
+    def toggle(self, ws, name: str, value: bool) -> None:
+        """One click on an item box, then what must hold after it."""
+        before = len(ws.page.focus_requests())
+        ws.check(f"scales-items-{name}", value)
+        self.assertEqual(ws.app.page_control.key, self.page_key,
+                         "the page is reconciled in place: its scroll position is kept")
+        self.assertEqual(len(ws.page.focus_requests()), before,
+                         "a box click moves no focus (no stale focus request)")
+        self.assertFalse(any(getattr(c, "autofocus", False) for c in ws.controls()
+                             if getattr(c, "data", None) == "scales-name"),
+                         "the name field does not take the focus at each render")
+        self.toggles += 1
+
+    def editing(self, ws):
+        card = ws.app.pages["data"].scales
+        return card.definitions[card.editing]
+
+    def test_twenty_toggles_items_reverse_keys_two_scales_and_a_restart(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            ws = self.opened(root)
+            self.toggles = 0
+            ws.app.render()                  # the Data page rendered again: now frozen
+            self.assertTrue(hasattr(ws.find("data-accept-confirm"), "_frozen"),
+                            "the harness freezes a re-rendered page as Flet 1.1 does")
+
+            # Add a scale: its name field takes the focus in that render.
+            ws.click("scales-add")
+            self.assertEqual(ws.page.focus_requests()[-1].data, "scales-name")
+            self.assertEqual(ws.app.focused, "scales-name")
+            ws.type("scales-name", "SUP_AVG")
+            ws.segment("scales-method", "mean")
+            ws.type("scales-min", "6")
+            self.page_key = ws.app.page_control.key
+            ws.type("scales-items:search", "SYN_SUP_*")
+
+            # 22 clicks on the item boxes.
+            sup = [f"SYN_SUP_{n:02d}" for n in range(1, 13)]
+            for name in sup:
+                self.toggle(ws, name, True)
+            for name in sup[1::2]:
+                self.toggle(ws, name, False)
+            for name in ("SYN_SUP_04", "SYN_SUP_08"):
+                self.toggle(ws, name, True)
+            self.toggle(ws, "SYN_SUP_01", False)
+            self.toggle(ws, "SYN_SUP_01", True)
+            d = self.editing(ws)
+            self.assertEqual(list(d.items), self.SUP_KEPT)
+            self.assertEqual((d.name, d.method, d.min_answered), ("SUP_AVG", "mean", 6),
+                             "the clicks cleared nothing else")
+            self.assertEqual(ws.find("scales-name").value, "SUP_AVG")
+            self.assertEqual(ws.find("scales-min").value, "6")
+
+            # Reverse keys: marked, unmarked, marked again; the range typed.
+            ws.check("scales-reverse-SYN_SUP_04")
+            ws.type("scales-low", "1")
+            ws.type("scales-high", "7")
+            ws.check("scales-reverse-SYN_SUP_04", False)
+            ws.check("scales-reverse-SYN_SUP_04")
+            ws.check("scales-reverse-SYN_SUP_08")
+            d = self.editing(ws)
+            self.assertEqual((d.reverse, d.low, d.high), (("SYN_SUP_04", "SYN_SUP_08"), 1.0, 7.0))
+            self.assertEqual(ws.app.page_control.key, self.page_key)
+
+            # Remove and add items with the panel's own actions.
+            ws.type("scales-items:search", "SYN_SUP_11")
+            ws.click("scales-items:unselect-shown")
+            self.assertNotIn("SYN_SUP_11", self.editing(ws).items)
+            ws.click("scales-items:select-shown")
+            self.assertEqual(list(self.editing(ws).items), self.SUP_KEPT)
+            ws.check("scales-confirm-one_construct")
+
+            # A second scale; then switch between the two.
+            ws.click("scales-add")
+            self.assertEqual(ws.page.focus_requests()[-1].data, "scales-name")
+            ws.type("scales-name", "WELL_SUM")
+            ws.click("scales-items:group:SYN_WELL_")
+            ws.type("scales-items:search", "SYN_WELL_0?")      # an unticked box stays listed
+            self.toggle(ws, "SYN_WELL_03", False)
+            self.toggle(ws, "SYN_WELL_03", True)
+            ws.segment("scales-method", "sum")
+            ws.type("scales-min", "5")
+            ws.check("scales-confirm-one_construct")
+            ws.click("scales-edit-0")
+            self.assertEqual(ws.find("scales-name").value, "SUP_AVG")
+            ws.type("scales-items:search", "SYN_SUP_03")
+            self.toggle(ws, "SYN_SUP_03", False)
+            self.toggle(ws, "SYN_SUP_03", True)
+            ws.check("scales-confirm-one_construct")     # the items changed: K1
+            ws.click("scales-edit-1")
+            self.assertEqual(ws.find("scales-name").value, "WELL_SUM")
+            ws.click("scales-edit-1")                    # closed
+            self.assertGreaterEqual(self.toggles, 20)
+            self.assertGreaterEqual(ws.counts["check"], 30)
+
+            expected = [
+                sr.ScaleDefinition("SUP_AVG", tuple(self.SUP_KEPT),
+                                   reverse=("SYN_SUP_04", "SYN_SUP_08"), low=1.0, high=7.0,
+                                   method="mean", min_answered=6),
+                sr.ScaleDefinition("WELL_SUM", tuple(WELL), method="sum", min_answered=5)]
+            expected = [d.confirm("one_construct", True) for d in expected]
+            card = ws.app.pages["data"].scales
+            self.assertEqual(sr.register_json(card.definitions), sr.register_json(expected))
+            project = ws.app.projects.project
+            self.assertEqual(project.scale_register(), sr.register_json(expected),
+                             "the stored register is the one on screen")
+
+            # Close the program and open it again.
+            project_id = ws.app.projects.info().id
+            ws.close()
+            again = self.workspace(root)
+            again.click(f"project-open-{project_id}")
+            again.click("nav-data")
+            again.app.render()
+            reloaded = again.app.pages["data"].scales
+            self.assertEqual(sr.register_json(reloaded.definitions), sr.register_json(expected))
+            again.click("scales-edit-1")
+            again.type("scales-items:search", "SYN_WELL_0?")
+            again.check("scales-items-SYN_WELL_05", False)
+            again.check("scales-items-SYN_WELL_05", True)
+            self.assertEqual(list(reloaded.definitions[1].items), list(WELL))
+
+    def test_the_hosted_prepare_panel_is_never_frozen_and_its_changes_are_sent(self):
+        """The same class of defect elsewhere: Data → Prepare is a panel
+        kept between renders and changed in place. Opened in a re-render of
+        the Data page it was added to a frozen page, frozen with it, and its
+        first change raised; changed in place below the frozen page its
+        changes were not sent by ``page.update()`` (the harness raises
+        ``LostUpdate`` for that)."""
+        with tempfile.TemporaryDirectory() as folder:
+            ws = self.opened(Path(folder))
+            ws.app.render()
+            before = ws.app.page_control.key
+            ws.click("data-prepare")
+            panel = ws.app.pages["data"]._preparation[0]
+            self.assertFalse(hasattr(panel, "_frozen"))
+            self.assertNotEqual(ws.app.page_control.key, before, "added as a new page once")
+            scrolls = [kwargs for handler, _, kwargs in ws.page.tasks
+                       if getattr(handler, "__name__", "") == "scroll_to"]
+            self.assertEqual(scrolls[-1].get("scroll_key"), "data-preparation")
+            key = ws.app.page_control.key
+            method = next(c for c in ws.controls(panel)
+                          if isinstance(c, ft.Dropdown) and c.label == "Transformation")
+            ws.client_sets(method, value="scale")
+            ws.dispatch(method.on_select, SimpleNamespace(control=method, data="scale"))
+            ws.type("prep-items:search", "SYN_WELL_*")
+            ws.click("prep-items:select-shown")
+            ws.app.render()
+            self.assertEqual(ws.app.page_control.key, key, "kept in place afterwards")
+            self.assertFalse(hasattr(panel, "_frozen"))
+            self.assertEqual(ws.app.pages["data"].items_picker.selected()[:5],
+                             [f"SYN_WELL_{n:02d}" for n in range(1, 6)])
+
+    def test_a_focus_request_reaches_only_the_render_it_was_made_for(self):
+        """The transaction itself: ``autofocus`` only on a control of the
+        tree being built (before ``page.update()``), ``focus()`` after it,
+        and a request that no render took is not carried to a later one."""
+        with tempfile.TemporaryDirectory() as folder:
+            ws = self.opened(Path(folder))
+            ws.app.render()
+            ws.click("scales-add")
+            field = ws.find("scales-name")
+            self.assertTrue(field.autofocus)
+            self.assertTrue(hasattr(field, "_frozen"), "sent: frozen from now on")
+            self.assertIs(ws.page.focus_requests()[-1], field)
+            ws.type("scales-name", "X")
+            self.assertFalse(ws.find("scales-name").autofocus)
+            # A request for a control that is not on the page is dropped.
+            ws.app.request_focus("no-such-control")
+            ws.app.render()
+            self.assertIsNone(ws.app._focus_target)
+            before = len(ws.page.focus_requests())
+            ws.app.render()
+            self.assertEqual(len(ws.page.focus_requests()), before)
 
 
 class TextTests(unittest.TestCase):

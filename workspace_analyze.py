@@ -2167,7 +2167,7 @@ class ReportsPage:
         self.include_stale = False
         self.opened: set[str] = set()
         self.feedback: tuple[str, str] | None = None
-        self._preview: ft.Text | None = None   # updated in place while typing
+        self._preview: ft.Text | None = None   # the preview on screen (a render follows typing)
         from workspace_export import ExportPanel
 
         self.export = ExportPanel(app, "reports")    # Stage 37 (#67): one Export action
@@ -2386,18 +2386,17 @@ class ReportsPage:
         self.app.render()
 
     def _set_title(self, e):
-        """The preview shows the title as it will be exported. It is updated
-        in place: re-rendering the page on every keystroke is not needed.
-        The title is kept in the session at once and saved in the project
-        when the field is left (and before an export or the project closes),
-        so typing does not log every keystroke."""
+        """The preview shows the title as it will be exported. The title is
+        kept in the session at once and saved in the project when the field
+        is left (and before an export or the project closes), so typing does
+        not log every keystroke. The preview follows by a render: it was
+        changed in place, but on Flet 1.1 the page around it is frozen once
+        rendered twice and the change raised "Frozen controls cannot be
+        updated" (Issue #80); the keyed render keeps the field, its caret
+        and the focus."""
         self.app.session.update_report(title=e.control.value or "", save=False)
         if self._preview is not None:
-            wc.set_text(self._preview, self.app.session.combined_report(self.study_title))
-            try:
-                self.app.page.update()
-            except Exception:  # pragma: no cover - page not shown
-                pass
+            self.app.render()
 
     def _save_title(self, e=None):
         self.app.session.notify("report_settings")
