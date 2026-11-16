@@ -49,6 +49,22 @@ on:
       - "tests/test_analysis_runs.py"
       - "tests/test_workspace_*.py"
       - "tests/workspace_harness.py"
+      # Stage 37 integration: the new top-level modules are bundled and imported by the
+      # packaged program (the self-test runs the in-house α and the FTS5 library search).
+      - "cronbach.py"
+      - "reliability.py"
+      - "linear_model.py"
+      - "process_models.py"
+      - "process_charts.py"
+      - "process_reporting.py"
+      - "process_text.py"
+      - "data_export.py"
+      - "export_bundle.py"
+      - "csv_safety.py"
+      - "research_library.py"
+      - "library_ask.py"
+      - "research_workflow.py"
+      - "research_report.py"
       - ".github/workflows/windows-package.yml"
 
 permissions:
