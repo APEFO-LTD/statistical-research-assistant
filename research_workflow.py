@@ -527,7 +527,15 @@ def task_title(language: str, method: str, roles: dict | None,
                  count=len(roles["outcomes"]))
     names = [v for value in roles.values()
              for v in (value if isinstance(value, list) else [value]) if v]
-    return f"{label(language, method_title(method, options or {}))}: {', '.join(names[:3])}"
+    title = label(language, method_title(method, options or {}))
+    if len(names) > 3:
+        # Stage 37 (Issue #68, UX branch): a task and its copy with one item
+        # fewer must not carry the same name ("… SYN_LON_01 … SYN_LON_19 (19)").
+        from workspace_text import count_text
+
+        count = count_text(language, len(names), "variables")
+        return f"{title}: {names[0]} … {names[-1]} ({count})"
+    return f"{title}: {', '.join(names[:3])}"
 
 
 def _adjust_title(value: str) -> str:

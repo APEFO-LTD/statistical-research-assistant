@@ -18,6 +18,10 @@ on:
       - "data_ui.py"
       - "legacy_data.py"
       - "research_app.py"
+      - "app_preferences.py"
+      - "user_settings.py"
+      - "window_state.py"
+      - "interface_layout.py"
       - "workspace_*.py"
       - "project_*.py"
       - "import_session.py"
@@ -40,7 +44,6 @@ on:
       - "export_bundle.py"
       - "csv_safety.py"
       - "data_loader.py"
-      - "app_preferences.py"
       - "import_workflow.py"
       - "tests/fixtures/stage37/generate_master_fixture.py"
       # Stage 37 integration (docs/STAGE37_INTEGRATION.md): the modules the Stage 37

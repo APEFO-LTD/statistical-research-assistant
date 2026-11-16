@@ -2008,6 +2008,221 @@ T: dict[str, tuple[str, str, str]] = {
 }
 
 
+# Stage 37 (issue #68): start interface, language choices, one Settings hub,
+# text size, density and typeface. The LV and RU texts are drafts for the
+# native-speaker review (docs/STAGE37_UX_SHELL.md lists every key);
+# DRAFT_KEYS keeps the list for the locale audit.
+_STAGE37_SHELL = {
+    "context.language_menu": ("Language: {name}. All languages",
+                              "Valoda: {name}. Visas valodas",
+                              "Язык: {name}. Все языки"),
+    "context.language_settings": ("Language settings…", "Valodas iestatījumi…",
+                                  "Настройки языка…"),
+    "home.continue_title": ("Continue where you left off", "Turpiniet, kur pārtraucāt",
+                            "Продолжить с того места, где вы остановились"),
+    "home.continue_body": (
+        "Your last session ended in the project “{title}”, on {page}. The project opens only "
+        "when you choose it.",
+        "Jūsu pēdējā sesija beidzās projektā “{title}”, lapā “{page}”. Projekts tiek atvērts "
+        "tikai tad, kad to izvēlaties.",
+        "Последний сеанс закончился в проекте «{title}», на странице «{page}». Проект "
+        "открывается, только когда вы его выберете."),
+    "home.continue_button": ("Continue: {page}", "Turpināt: {page}", "Продолжить: {page}"),
+    "help.interfaces": ("Research workspace and classic interface",
+                        "Pētījumu darba vide un klasiskā saskarne",
+                        "Исследовательская среда и классический интерфейс"),
+    "help.interfaces.body": (
+        "The research workspace is the normal start of the program. The classic interface, "
+        "with the same engine and the same data, stays available: “Classic interface” in the "
+        "sidebar or the button below. Settings choose which of the two opens at start.",
+        "Pētījumu darba vide ir programmas parastais sākums. Klasiskā saskarne ar to pašu "
+        "dzinēju un tiem pašiem datiem paliek pieejama: “Klasiskā saskarne” sānjoslā vai poga "
+        "zemāk. Iestatījumos var izvēlēties, kura no tām atveras startā.",
+        "Исследовательская среда — обычный запуск программы. Классический интерфейс с тем же "
+        "движком и теми же данными остаётся доступным: «Классический интерфейс» на боковой "
+        "панели или кнопка ниже. В настройках можно выбрать, какой из них открывается при "
+        "запуске."),
+    "help.settings_open": ("Open Settings", "Atvērt iestatījumus", "Открыть настройки"),
+    "settings.subtitle": (
+        "Everything you choose here is kept on this computer for the next start and applies "
+        "at once.",
+        "Viss, ko šeit izvēlaties, tiek saglabāts šajā datorā nākamajai palaišanai un "
+        "darbojas uzreiz.",
+        "Всё, что вы выбираете здесь, сохраняется на этом компьютере для следующего запуска "
+        "и действует сразу."),
+    "settings.sections": ("On this page", "Šajā lapā", "На этой странице"),
+    "settings.section.appearance": ("Appearance", "Izskats", "Внешний вид"),
+    "settings.section.typography": ("Text and density", "Teksts un blīvums",
+                                    "Текст и плотность"),
+    "settings.section.typography_body": (
+        "The interface uses the Windows fonts Segoe UI or Segoe UI Variable. Text size and "
+        "density apply to every page.",
+        "Saskarne izmanto Windows fontus Segoe UI vai Segoe UI Variable. Teksta lielums un "
+        "blīvums attiecas uz visām lapām.",
+        "Интерфейс использует шрифты Windows Segoe UI или Segoe UI Variable. Размер текста и "
+        "плотность применяются ко всем страницам."),
+    "settings.section.language": ("Language", "Valoda", "Язык"),
+    "settings.section.start": ("Start", "Palaišana", "Запуск"),
+    "settings.section.projects": ("Projects and data folder", "Projekti un datu mape",
+                                  "Проекты и папка данных"),
+    "settings.section.backups": ("Backups", "Rezerves kopijas", "Резервные копии"),
+    "settings.section.updates": ("Updates", "Atjauninājumi", "Обновления"),
+    "settings.section.ai": ("AI privacy", "MI un privātums", "ИИ и конфиденциальность"),
+    "settings.section.reset": ("Reset settings or delete data",
+                               "Atiestatīt iestatījumus vai dzēst datus",
+                               "Сброс настроек или удаление данных"),
+    "settings.theme.system": ("System", "Kā sistēmā", "Как в системе"),
+    "settings.theme_note": (
+        "System follows the app mode chosen in Windows (light or dark).",
+        "“Kā sistēmā” seko Windows izvēlētajam lietotņu režīmam (gaišs vai tumšs).",
+        "«Как в системе» следует режиму приложений, выбранному в Windows (светлый или тёмный)."),
+    "settings.text_size": ("Text size", "Teksta lielums", "Размер текста"),
+    "settings.text_size_note": (
+        "Applies to every page at once. Small helper text never becomes smaller than 12 px.",
+        "Attiecas uz visām lapām uzreiz. Mazais palīgteksts nekad nekļūst mazāks par 12 px.",
+        "Применяется сразу ко всем страницам. Мелкий вспомогательный текст никогда не "
+        "становится меньше 12 px."),
+    "settings.density": ("Density", "Blīvums", "Плотность"),
+    "settings.density.comfortable": ("Comfortable", "Ērts", "Свободная"),
+    "settings.density.compact": ("Compact", "Kompakts", "Компактная"),
+    "settings.typeface": ("Typeface", "Burtveidols", "Шрифт"),
+    "settings.typeface.segoe": ("Segoe UI · Windows", "Segoe UI · Windows",
+                                "Segoe UI · Windows"),
+    "settings.typeface.segoe_variable": ("Segoe UI Variable · Windows 11",
+                                         "Segoe UI Variable · Windows 11",
+                                         "Segoe UI Variable · Windows 11"),
+    "settings.typeface_note": (
+        "Fonts come from Windows; the program installs none. Where a font is missing, the next "
+        "one with Latvian and Cyrillic letters is used.",
+        "Fonti tiek ņemti no Windows; programma neinstalē nevienu. Ja fonta nav, tiek izmantots "
+        "nākamais, kurā ir latviešu un kirilicas burti.",
+        "Шрифты берутся из Windows; программа не устанавливает ни одного. Если шрифта нет, "
+        "используется следующий, в котором есть латышские и кириллические буквы."),
+    "settings.language_note": (
+        "English and Latviešu are also in the top bar. Every language, Русский included, is in "
+        "the globe menu beside them. Your choice is kept for the next start.",
+        "English un Latviešu ir arī augšējā joslā. Visas valodas, arī Русский, ir globusa "
+        "izvēlnē blakus tām. Jūsu izvēle tiek saglabāta nākamajai palaišanai.",
+        "English и Latviešu есть также на верхней панели. Все языки, включая русский, есть в "
+        "меню с глобусом рядом с ними. Ваш выбор сохраняется для следующего запуска."),
+    "settings.start_interface": ("Interface at start", "Saskarne palaišanas brīdī",
+                                 "Интерфейс при запуске"),
+    "settings.start.workspace": ("Research workspace", "Pētījumu darba vide",
+                                 "Исследовательская среда"),
+    "settings.start.classic": ("Classic interface", "Klasiskā saskarne",
+                               "Классический интерфейс"),
+    "settings.start_note": (
+        "The research workspace is the normal start. The classic interface stays one click "
+        "away: “Classic interface” in the sidebar, in Help and here.",
+        "Pētījumu darba vide ir parastais sākums. Klasiskā saskarne ir viena klikšķa attālumā: "
+        "“Klasiskā saskarne” sānjoslā, palīdzībā un šeit.",
+        "Исследовательская среда — обычный запуск. Классический интерфейс доступен в один "
+        "щелчок: «Классический интерфейс» на боковой панели, в справке и здесь."),
+    "settings.settings_file": ("Settings file: {path}", "Iestatījumu fails: {path}",
+                               "Файл настроек: {path}"),
+    "settings.recent_projects": ("Recent projects", "Nesenie projekti", "Недавние проекты"),
+    "settings.recent_files": ("Recent data files", "Nesenie datu faili", "Недавние файлы данных"),
+    "settings.recent_none": ("Nothing yet.", "Vēl nekā nav.", "Пока ничего."),
+    "settings.recent_clear": ("Clear the list of recent data files",
+                              "Notīrīt neseno datu failu sarakstu",
+                              "Очистить список недавних файлов данных"),
+    "settings.recent_cleared": (
+        "The list of recent data files is empty. The files themselves are unchanged.",
+        "Neseno datu failu saraksts ir tukšs. Paši faili nav mainīti.",
+        "Список недавних файлов данных пуст. Сами файлы не изменены."),
+    "settings.backups_body": (
+        "Before the program updates itself or opens a project saved in an older format, it "
+        "copies the projects into the folder below. A portable backup of one project (.sra) is "
+        "made with “Back up” on Home or on the project's page; it can be restored on any "
+        "computer.",
+        "Pirms programma atjaunina sevi vai atver projektu, kas saglabāts vecākā formātā, tā "
+        "nokopē projektus zemāk norādītajā mapē. Pārnēsājamu viena projekta rezerves kopiju "
+        "(.sra) izveido ar pogu “Rezerves kopija” sākumlapā vai projekta lapā; to var atjaunot "
+        "jebkurā datorā.",
+        "Перед самообновлением или открытием проекта, сохранённого в старом формате, "
+        "программа копирует проекты в папку ниже. Переносимая резервная копия проекта (.sra) "
+        "создаётся кнопкой «Резервная копия» на главной или на странице проекта; её можно "
+        "восстановить на любом компьютере."),
+    "settings.backups_privacy": (
+        "Backups are not encrypted and contain the participants' answers: keep them where only "
+        "you can read them.",
+        "Rezerves kopijas nav šifrētas un satur dalībnieku atbildes: glabājiet tās tur, kur tās "
+        "varat lasīt tikai jūs.",
+        "Резервные копии не зашифрованы и содержат ответы участников: храните их там, где их "
+        "можете прочитать только вы."),
+    "settings.backups_open": ("Open the backup folder", "Atvērt rezerves kopiju mapi",
+                              "Открыть папку резервных копий"),
+    "settings.backup_open_project": ("Back up “{title}”…", "Rezerves kopija: “{title}”…",
+                                     "Резервная копия «{title}»…"),
+    "settings.updates_channel": (
+        "The release channel comes with the installed program; switching channels is not "
+        "offered.",
+        "Laidienu kanāls ir noteikts instalētajā programmā; kanāla maiņa netiek piedāvāta.",
+        "Канал выпусков задан установленной программой; смена канала не предусмотрена."),
+    "settings.ai_body": (
+        "The AI assistant stays off until you connect a provider with your own key, which is "
+        "kept in the Windows credential store. What it may see is chosen per project, every "
+        "source off by default, and nothing is sent before you have seen the exact text.",
+        "MI asistents paliek izslēgts, kamēr nepievienojat pakalpojumu sniedzēju ar savu "
+        "atslēgu, kas tiek glabāta Windows akreditācijas datu krātuvē. Ko tas drīkst redzēt, "
+        "izvēlas katram projektam, visi avoti pēc noklusējuma izslēgti, un nekas netiek "
+        "nosūtīts, pirms neesat redzējis precīzu tekstu.",
+        "ИИ-помощник выключен, пока вы не подключите провайдера со своим ключом, который "
+        "хранится в диспетчере учётных данных Windows. Что ему можно видеть, выбирается для "
+        "каждого проекта, все источники по умолчанию выключены, и ничего не отправляется, "
+        "пока вы не увидели точный текст."),
+    "settings.reset": ("Reset settings", "Atiestatīt iestatījumus", "Сбросить настройки"),
+    "settings.reset_title": ("Reset all settings?", "Atiestatīt visus iestatījumus?",
+                             "Сбросить все настройки?"),
+    "settings.reset_body": (
+        "Language, appearance, text size, density, the interface at start, the window, the "
+        "sidebar and the list of recent data files go back to their defaults. Projects, "
+        "questionnaires, responses, backups, your researcher profile and AI keys are not "
+        "changed.",
+        "Valoda, izskats, teksta lielums, blīvums, saskarne palaišanas brīdī, logs, sānjosla un "
+        "neseno datu failu saraksts atgriežas pie noklusējuma. Projekti, anketas, atbildes, "
+        "rezerves kopijas, jūsu pētnieka profils un MI atslēgas netiek mainīti.",
+        "Язык, внешний вид, размер текста, плотность, интерфейс при запуске, окно, боковая "
+        "панель и список недавних файлов данных возвращаются к значениям по умолчанию. "
+        "Проекты, анкеты, ответы, резервные копии, профиль исследователя и ключи ИИ не "
+        "меняются."),
+    "settings.reset_confirm": ("Reset settings", "Atiestatīt iestatījumus", "Сбросить настройки"),
+    "settings.reset_done": (
+        "Settings were reset to their defaults. No research data was changed.",
+        "Iestatījumi ir atiestatīti uz noklusējuma vērtībām. Pētījuma dati netika mainīti.",
+        "Настройки сброшены к значениям по умолчанию. Данные исследования не изменены."),
+    "settings.delete_data": ("Delete research data", "Dzēst pētījuma datus",
+                             "Удалить данные исследования"),
+    "settings.delete_data_body": (
+        "Resetting settings never deletes research data. A project is deleted with Delete on "
+        "Home and is kept in “Recently deleted” first. To remove all research data, make a "
+        "backup if you need one, close the program and delete the data folder shown under "
+        "“Projects and data folder”. Uninstalling the program keeps that folder.",
+        "Iestatījumu atiestatīšana nekad nedzēš pētījuma datus. Projektu dzēš ar pogu “Dzēst” "
+        "sākumlapā, un vispirms tas tiek saglabāts sadaļā “Nesen dzēstie”. Lai noņemtu visus "
+        "pētījuma datus, vajadzības gadījumā izveidojiet rezerves kopiju, aizveriet programmu "
+        "un izdzēsiet datu mapi, kas norādīta sadaļā “Projekti un datu mape”. Atinstalējot "
+        "programmu, šī mape tiek saglabāta.",
+        "Сброс настроек никогда не удаляет данные исследования. Проект удаляется кнопкой "
+        "«Удалить» на главной и сначала сохраняется в «Недавно удалённых». Чтобы удалить все "
+        "данные исследования, при необходимости сделайте резервную копию, закройте программу "
+        "и удалите папку данных, указанную в разделе «Проекты и папка данных». При удалении "
+        "программы эта папка сохраняется."),
+    "settings.delete_data_projects": ("Projects on Home", "Projekti sākumlapā",
+                                      "Проекты на главной"),
+    "settings.not_saved": (
+        "The setting applies now but could not be kept for the next start: {error}",
+        "Iestatījums darbojas tagad, bet to nevarēja saglabāt nākamajai palaišanai: {error}",
+        "Настройка действует сейчас, но её не удалось сохранить для следующего запуска: {error}"),
+    "reports.section_names": (
+        "Section titles are shown in the language of the report ({name}).",
+        "Sadaļu nosaukumi ir parādīti atskaites valodā ({name}).",
+        "Названия разделов показаны на языке отчёта ({name})."),
+}
+T.update(_STAGE37_SHELL)
+DRAFT_KEYS = frozenset(_STAGE37_SHELL)
+
+
 # Guided advisor explanations (workspace_methods.advise).
 T.update({
     "why.two_groups": (
@@ -4578,6 +4793,125 @@ T.update({
 })
 
 
+# Stage 37 (Issue #68, review UX-3): the variable panel of the role pickers
+# and reuse (duplicate a task, repeat a result with changes, recent methods,
+# the items of a scale score). LV/RU drafts — needs native review
+# (docs/STAGE37_UX_VARIABLES.md lists the keys).
+T.update({
+    "vars.search": ("Find variables", "Meklēt mainīgos", "Найти переменные"),
+    "vars.search_hint": (
+        "A name, a pattern such as {pattern} or a range such as {range}. Enter selects what is shown.",
+        "Nosaukums, šablons, piemēram, {pattern}, vai diapazons, piemēram, {range}. Enter atlasa redzamos.",
+        "Имя, шаблон, например {pattern}, или диапазон, например {range}. Enter выбирает показанные."),
+    "vars.group": ("All {pattern} ({count})", "Visi {pattern} ({count})", "Все {pattern} ({count})"),
+    "vars.group_tip": (
+        "Select the {count} variables whose names are {stem} followed by a number",
+        "Atlasīt {count} mainīgos, kuru nosaukums ir {stem} un numurs",
+        "Выбрать {count} переменных с именем {stem} и номером"),
+    "vars.ungroup": ("Unselect {pattern} ({count})", "Noņemt {pattern} ({count})",
+                     "Снять {pattern} ({count})"),
+    "vars.ungroup_tip": ("All {count} are selected: unselect them",
+                         "Visi {count} ir atlasīti: noņemt atlasi",
+                         "Выбраны все {count}: снять выбор"),
+    "vars.more_groups": (
+        "{count} more name groups: type a pattern to find them.",
+        "Vēl {count} nosaukumu grupas: ierakstiet šablonu, lai tās atrastu.",
+        "Ещё групп имён: {count}. Введите шаблон, чтобы найти их."),
+    "vars.select_shown": ("Select all shown ({count})", "Atlasīt visus redzamos ({count})",
+                          "Выбрать все показанные ({count})"),
+    "vars.unselect_shown": ("Unselect shown ({count})", "Noņemt redzamos ({count})",
+                            "Снять показанные ({count})"),
+    "vars.count": ("Selected: {selected} of {total}", "Atlasīti: {selected} no {total}",
+                   "Выбрано: {selected} из {total}"),
+    "vars.count_shown": ("Selected: {selected} of {total} · shown: {shown}",
+                         "Atlasīti: {selected} no {total} · redzami: {shown}",
+                         "Выбрано: {selected} из {total} · показано: {shown}"),
+    "vars.none_match": ("No offered variable matches “{query}”.",
+                        "Neviens piedāvātais mainīgais neatbilst “{query}”.",
+                        "Ни одна предложенная переменная не подходит под «{query}»."),
+    "vars.show_all": ("Show all {count}", "Rādīt visus {count}", "Показать все ({count})"),
+    "vars.show_chosen": ("Show only the selected", "Rādīt tikai atlasītos",
+                         "Показать только выбранные"),
+    "vars.collapsed": (
+        "{count} more variables are listed after a search, a name group or Show all.",
+        "Vēl {count} mainīgie tiek parādīti pēc meklēšanas, nosaukumu grupas vai “Rādīt visus”.",
+        "Ещё переменных: {count}. Они показываются после поиска, выбора группы имён или «Показать все»."),
+    "vars.none_offered": ("No variable of this dataset can take this role.",
+                          "Neviens šīs datu kopas mainīgais nevar būt šajā lomā.",
+                          "Ни одна переменная этого набора не подходит для этой роли."),
+    "vars.not_offered": ("Not offered here:", "Šeit netiek piedāvāti:", "Здесь не предлагаются:"),
+    "vars.more": ("{names} and {count} more", "{names} un vēl {count}", "{names} и ещё {count}"),
+    "vars.why.identifier": ("{names} — identifier", "{names} — identifikators",
+                            "{names} — идентификатор"),
+    "vars.why.role": ("{names} — already {role}", "{names} — jau izvēlēts: {role}",
+                      "{names} — уже выбрано: {role}"),
+    "vars.why.level": ("{names} — {level}; this role takes {allowed}",
+                       "{names} — {level}; šai lomai der: {allowed}",
+                       "{names} — {level}; для этой роли подходят: {allowed}"),
+    "vars.why.binary": ("{names} — not coded 0/1", "{names} — nav kodēts 0/1",
+                        "{names} — не закодировано как 0/1"),
+    "vars.why.not_numeric": ("{names} — not numeric", "{names} — nav skaitlisks",
+                             "{names} — не числовая"),
+    # The role a variable already has, in "already …".
+    "vars.role.outcome": ("the outcome", "rezultāts", "зависимая переменная"),
+    "vars.role.outcomes": ("an outcome", "rezultāts", "зависимая переменная"),
+    "vars.role.group": ("the grouping variable", "grupu mainīgais", "группирующая переменная"),
+    "vars.role.covariates": ("a covariate", "kovariāts", "ковариата"),
+    "vars.role.measures": ("a measurement", "mērījums", "измерение"),
+    "vars.role.before": ("the first measurement", "pirmais mērījums", "первое измерение"),
+    "vars.role.after": ("the second measurement", "otrais mērījums", "второе измерение"),
+    "vars.role.x": ("the first variable", "pirmais mainīgais", "первая переменная"),
+    "vars.role.y": ("a related variable", "saistāmais mainīgais", "связываемая переменная"),
+    "vars.role.ys": ("a related variable", "saistāmais mainīgais", "связываемая переменная"),
+    "vars.role.a": ("the first categorical variable", "pirmais kategoriālais mainīgais",
+                    "первая категориальная переменная"),
+    "vars.role.b": ("the second categorical variable", "otrais kategoriālais mainīgais",
+                    "вторая категориальная переменная"),
+    "vars.role.predictors": ("a predictor", "prognozētājs", "предиктор"),
+    "vars.role.items": ("an item", "jautājums", "пункт"),
+    "vars.role.variable": ("the variable", "mainīgais", "переменная"),
+    # The items of a scale score (Data → Prepare), for its reliability.
+    "pick.score_items": ("Items of {score} ({count})", "{score} jautājumi ({count})",
+                         "Пункты {score} ({count})"),
+    "pick.score_items_tip": (
+        "The items {score} was scored from in Data → Prepare",
+        "Jautājumi, no kuriem {score} aprēķināts sadaļā “Dati” → “Sagatavot”",
+        "Пункты, из которых {score} рассчитан в разделе «Данные» → «Подготовка»"),
+    # Reuse: a task duplicated, a result repeated with changes.
+    "task.duplicate_tip": (
+        "Duplicate “{title}”: a new task with the same question, variables and method",
+        "Dublēt “{title}”: jauns uzdevums ar to pašu jautājumu, mainīgajiem un metodi",
+        "Дублировать «{title}»: новая задача с тем же вопросом, переменными и методом"),
+    "task.copy_notice": (
+        "A copy of “{title}”: the same question, variables and method. It becomes a new task when it runs; the original stays as it is. Every confirmation is asked again, and the link to a hypothesis is chosen again in step 1.",
+        "“{title}” kopija: tas pats jautājums, mainīgie un metode. Pēc aprēķina tā kļūst par jaunu uzdevumu; oriģināls paliek nemainīgs. Katrs apstiprinājums tiek prasīts vēlreiz, un saiti ar hipotēzi izvēlas vēlreiz 1. solī.",
+        "Копия «{title}»: тот же вопрос, переменные и метод. После расчёта она становится новой задачей; оригинал не меняется. Каждое подтверждение запрашивается снова, а связь с гипотезой выбирается заново на шаге 1."),
+    "results.repeat": ("Repeat with changes", "Atkārtot ar izmaiņām", "Повторить с изменениями"),
+    "results.repeat_tip": (
+        "Open this analysis as a new task with the same variables; the confirmations are asked again",
+        "Atvērt šo analīzi kā jaunu uzdevumu ar tiem pašiem mainīgajiem; apstiprinājumi tiek prasīti vēlreiz",
+        "Открыть этот анализ как новую задачу с теми же переменными; подтверждения запрашиваются снова"),
+    "results.repeat_named": ("Repeat “{title}” with changes", "Atkārtot “{title}” ar izmaiņām",
+                             "Повторить «{title}» с изменениями"),
+    "results.others": ("Other results", "Citi rezultāti", "Другие результаты"),
+    "results.other_open_tip": ("Show this result from its beginning",
+                               "Rādīt šo rezultātu no sākuma",
+                               "Показать этот результат с начала"),
+    # Recent methods (All methods).
+    "catalog.recent": ("Recently used", "Nesen izmantotās", "Недавно использованные"),
+    "catalog.recent_last": ("Last: {title} · {time}", "Pēdējā: {title} · {time}",
+                            "Последний: {title} · {time}"),
+    "catalog.recent_tip": (
+        "Opens with the variables and options of its last run; every confirmation is asked again",
+        "Atveras ar pēdējā aprēķina mainīgajiem un iestatījumiem; katrs apstiprinājums tiek prasīts vēlreiz",
+        "Открывается с переменными и параметрами последнего расчёта; каждое подтверждение запрашивается снова"),
+    "analyze.recent_notice": (
+        "Filled in from your last {method} ({time}): the same variables and options. Every confirmation is asked again.",
+        "Aizpildīts no jūsu pēdējās metodes {method} ({time}): tie paši mainīgie un iestatījumi. Katrs apstiprinājums tiek prasīts vēlreiz.",
+        "Заполнено по вашему последнему расчёту «{method}» ({time}): те же переменные и параметры. Каждое подтверждение запрашивается снова."),
+})
+
+
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {
@@ -4813,6 +5147,9 @@ PLURALS: dict[str, dict[str, tuple[str, ...]]] = {
     "statements": {"en": ("statement", "statements"),
                    "lv": ("apgalvojums", "apgalvojumi", "apgalvojumu"),
                    "ru": ("утверждение", "утверждения", "утверждений")},
+    # Stage 37 (D11): a report section's parts ("1 part", not "1 parts").
+    "parts": {"en": ("part", "parts"), "lv": ("daļa", "daļas", "daļu"),
+              "ru": ("часть", "части", "частей")},
 }
 
 
