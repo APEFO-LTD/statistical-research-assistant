@@ -3628,18 +3628,22 @@ def open_interpretation(gui: Gui) -> None:
     """Open a result's Interpretation section (it holds the researcher's
     note), unless it is open already: a click on an open section closes it.
 
-    The header is looked for again before every click: the search for the
-    note field scrolls the page, and where the page ends soon after the
-    section (Stage 37: other results at the end of a result) the header
-    was left under the context bar, where a click lands on the bar."""
-    header_text = "^" + re.escape(T("results.interpretation")) + r"(\n|$)"
-    find_text(gui, regex=header_text)
+    The search for the note scrolls the page down, so the section's header
+    is looked up again, and scrolled back into view, right before each
+    press. Pressing the header found before that search clicked where it had
+    been: once the page is long enough to scroll it out of view (the Export
+    card of Stage 37 made the Results page longer by its height), the click
+    landed above the content and the section never opened (PR #78 run
+    43498631988)."""
+    pattern = "^" + re.escape(T("results.interpretation")) + r"(\n|$)"
+    find_text(gui, regex=pattern)
     for attempt in range(3):
         with contextlib.suppress(StepFailure):
             find_text(gui, T("results.notes"), exact=True, timeout=6, moves=3)
             return
-        header, _ = find_text(gui, regex=header_text, first="up")
-        gui.scroll_into_view(header)
+        header, _ = find_text(gui, regex=pattern, first="up")
+        if not gui.clickable(header):
+            raise StepFailure("the Interpretation header cannot be scrolled into view")
         if attempt == 0:
             header.click_input()
         else:
