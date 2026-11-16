@@ -1168,6 +1168,15 @@ class Gui:
             with contextlib.suppress(Exception):
                 keyboard.send_keys("{ESC}")
             time.sleep(0.5)
+        # A modal dialog of the program ignores Esc: the legacy-data offer
+        # (Issue #80: a failed step left it open and blocked the next
+        # journey). Its "Not now" / "Close" change no research data.
+        import data_ui
+
+        for name in (data_ui.t("en", "later"), data_ui.t("en", "close")):
+            with contextlib.suppress(Exception):
+                if self.query(name, control_type="Button"):
+                    self.click(name, control_type="Button", timeout=3)
         with contextlib.suppress(Exception):
             self.click(T("nav.home"), control_type=("Button", "Text"), timeout=8)
 
@@ -2097,24 +2106,36 @@ def journey_legacy_migration(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(PREVIEW_PROJECT, scroll=False)
         gui.wait_text(PREVIEW_SURVEY, scroll=False)
         gui.shot("earlier data offered")
-    with journey.step("the dialog's texts are readable (contrast measured on screen)"):
+    with journey.step("the dialog's texts measured on screen (contrast)"):
         # Issue #80 (P1): light text stood on a near-white surface. The
         # title, the body and the path are measured on the screenshot of
-        # their own rectangles: WCAG AA, 4.5:1.
+        # their own rectangles (WCAG AA, 4.5:1). The dialog's title sits
+        # where the page's context bar is, which Gui.find does not count as
+        # clickable: visible=False, only its rectangle is read. The verdict
+        # comes after the dialog is closed, so that a failure here never
+        # leaves the modal dialog over the next journey.
         measured = {}
-        for role, name in (("title", data_ui.t("en", "title")),
-                           ("body", data_ui.t("en", "found")),
-                           ("path", str(folder))):
-            element = gui.find(name, scroll=False)
-            measured[role] = element_contrast(gui, element)
+        # The path as the dialog writes it (the folder the program found,
+        # which may be spelled otherwise than the driver's): by its place.
+        path = "^" + re.escape(str(folder)) + "$|" + re.escape(r"\Your Company" + "\\")
+        for role, name, regex in (("title", data_ui.t("en", "title"), None),
+                                  ("body", data_ui.t("en", "found"), None),
+                                  ("path", None, path)):
+            try:
+                element = gui.find(name, regex=regex, scroll=False, visible=False,
+                                   timeout=10)
+                measured[role] = element_contrast(gui, element)
+            except Exception as error:          # judged below, after Close
+                measured[role] = {"ratio": 0.0, "error": f"{type(error).__name__}: {error}"}
         journey.facts["migration_contrast"] = measured
-        low = {role: m for role, m in measured.items() if m["ratio"] < 4.5}
-        expect(not low, f"text below 4.5:1 in the migration dialog: {low}")
     with journey.step("copy it and see every copy checked"):
         gui.click(data_ui.t("en", "copy"), control_type="Button")
         gui.wait_text("Each copy was checked against its original", timeout=90, scroll=False)
         gui.shot("earlier data copied")
         gui.click(data_ui.t("en", "close"), control_type="Button")
+    with journey.step("the dialog's texts were readable (WCAG AA, 4.5:1)"):
+        low = {role: m for role, m in measured.items() if m["ratio"] < 4.5}
+        expect(not low, f"text below 4.5:1 in the migration dialog: {low}")
     with journey.step("the copied project opens"):
         open_project(gui, PREVIEW_PROJECT)
     with journey.step("the copies are in the data folder, the originals unchanged"):

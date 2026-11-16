@@ -378,6 +378,29 @@ class StableRenderTests(Case):
         self.assertEqual(ws.find("reports-preview-text").value.splitlines()[0],
                          "Fictional study")
 
+    def test_typing_a_study_title_on_a_frozen_page_neither_renders_nor_raises(self):
+        """Issue #80: once the Reports page has been rendered again, Flet 1.1
+        has frozen every control of it (the harness diffs as Flet does). The
+        preview is a hosted control: never frozen, changed in place and sent
+        with ``page.update(preview)``; typing still renders nothing."""
+        ws = self.workspace()
+        entry = self.groups_result(ws)
+        ws.app.session.toggle_report(entry.id)
+        ws.app.navigate("reports")
+        ws.app.render()
+        self.assertTrue(hasattr(ws.find("reports-study-title"), "_frozen"))
+        preview = ws.find("reports-preview-text")
+        self.assertFalse(hasattr(preview, "_frozen"))
+        with mock.patch.object(ws.app, "render", wraps=ws.app.render) as render, \
+                mock.patch.object(ws.page, "update", wraps=ws.page.update) as update:
+            ws.type("reports-study-title", "Fictional study")
+            ws.type("reports-study-title", "Fictional study 2")
+        self.assertEqual(render.call_count, 0)
+        self.assertEqual([call.args for call in update.call_args_list], [(preview,)] * 2,
+                         "only the preview is sent")
+        self.assertIs(ws.find("reports-preview-text"), preview)
+        self.assertEqual(preview.value.splitlines()[0], "Fictional study 2")
+
 
 if __name__ == "__main__":
     unittest.main()

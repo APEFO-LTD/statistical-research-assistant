@@ -739,7 +739,7 @@ class WorkspaceApp:
         # would raise. When one enters the page, the page gets a new key
         # once, so it is added as new (not frozen); later renders keep it
         # (an identical object is retained, never re-marked, and not diffed:
-        # what the build changed in it is sent after the page), and its own
+        # what the build changed in it is sent with its own update), and its own
         # changes are sent with ``update_hosted``.
         hosted = [c for c in getattr(page, "hosted_now", ()) if c is not None]
         retained = [c for c in hosted if id(c) in self._hosted_ids]
@@ -768,9 +768,12 @@ class WorkspaceApp:
         self.content_host.bgcolor = self.ui.p.canvas
         self.root.bgcolor = self.ui.p.canvas
         self._rendered_width = int(getattr(self.page, "width", None) or 1280)
-        self.page.update()
-        if retained:          # what the page's build changed in them (see above)
+        if retained:
+            # What the page's build changed in hosted controls that stay on
+            # screen (see above): sent first, to the controls the client
+            # holds; the page's own diff does not look into them.
             self.page.update(*retained)
+        self.page.update()
         if focus is not None:
             self._request_client_focus(focus)
 
