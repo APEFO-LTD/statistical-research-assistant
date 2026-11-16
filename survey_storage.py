@@ -589,3 +589,18 @@ def save_survey_csv(root: str | Path, survey_id: str, path: str | Path) -> Path:
     frame, _ = csv_safety.protect_frame(frame)
     frame.to_csv(destination, index=False, encoding="utf-8-sig")
     return destination
+
+
+def export_survey_responses(root: str | Path, survey_id: str,
+                            path: str | Path) -> tuple[Path, Path]:
+    """The questionnaire responses as CSV and, next to it, the codebook
+    ``<name>_codebook.json`` that records the CSV's SHA-256 and formula
+    protection, so the program's importer gives back the exact answers
+    (csv_safety). Both interfaces (the classic Survey panel and the
+    workspace's Questionnaires page) export with this one function."""
+    import csv_safety
+
+    written = save_survey_csv(root, survey_id, path)
+    codebook = save_survey_codebook(root, survey_id, csv_safety.codebook_path(written),
+                                    data_file=written)
+    return written, codebook

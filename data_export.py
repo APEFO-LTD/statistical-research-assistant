@@ -969,6 +969,9 @@ def csv_cell(value, decimal: str = "dot"):
         return bool(value)
     if isinstance(value, (int, float, np.integer, np.floating, Decimal)):
         number = plain_number(value)
+        if isinstance(number, float) and math.isinf(number):
+            # Unquoted, "-inf" is a formula to a spreadsheet (review F7).
+            return csv_safety.protect(number_text(number))
         if decimal == "comma" and isinstance(number, float):
             return _CommaNumber(number)
         return number
@@ -1021,15 +1024,16 @@ def read_exported_csv(path: Path, codebook: Codebook | dict | None = None) -> pd
     text_columns = [v["name"] for v in book.get("variables", [])
                     if v.get("kind") in ("text", "mixed", "category")]
     info = book.get("data_file") or {}
+    rule = csv_safety.book_rule(book)
     frame = pd.read_csv(path, encoding="utf-8-sig", sep=info.get("delimiter", ","),
                         decimal="," if info.get("decimal") == "comma" else ".",
                         dtype={csv_safety.protect(c): str for c in text_columns},
                         keep_default_na=False, na_values=[""])
-    frame.columns = [csv_safety.restore(str(c)) for c in frame.columns]
+    frame.columns = [csv_safety.restore(str(c), rule) for c in frame.columns]
     for column in frame.columns:
         if column in text_columns:
             frame[column] = frame[column].map(
-                lambda v: v if is_missing(v) else csv_safety.restore(str(v)))
+                lambda v: v if is_missing(v) else csv_safety.restore(str(v), rule))
     return frame
 
 
@@ -1488,10 +1492,7 @@ def export_csv(path: Path, df: pd.DataFrame, codebook: Codebook, *, bom: bool = 
         "empty_text": "\"\" (a quoted field with no characters)",
         "formula_protection": {
             "rule": csv_safety.RULE, "cells": facts["protected"],
-            "description": "a text cell that begins with = + - @, a tab or a carriage return "
-                           "(or with apostrophes followed by one) has one apostrophe added; "
-                           "numbers are never changed; remove one leading apostrophe from such "
-                           "a cell to get the exported text back"},
+            "description": csv_safety.DESCRIPTION},
     }
     sidecar = csv_safety.codebook_path(Path(path))
     text = json.dumps(book, ensure_ascii=False, indent=1).encode("utf-8")

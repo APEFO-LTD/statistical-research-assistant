@@ -36,8 +36,8 @@ from spatial_review_ui import SpatialReviewController
 from desktop_button_style import style_buttons
 from survey_storage import (
     validate_questions, create_survey, get_survey, list_surveys,
-    submit_response, response_count, responses_dataframe, save_survey_csv,
-    save_survey_codebook, question_is_visible, likert_choices,
+    submit_response, response_count, responses_dataframe, export_survey_responses,
+    question_is_visible, likert_choices,
     reorder_questions, reorder_sections, section_blocks, validate_page_answers,
 )
 
@@ -2552,10 +2552,10 @@ def build_survey_workspace(
                 allowed_extensions=["csv"],
             )
             if path:
-                output = await asyncio.to_thread(save_survey_csv, root, sid, path)
-                codebook_path = output.with_name(output.stem + "_codebook.json")
-                await asyncio.to_thread(
-                    save_survey_codebook, root, sid, codebook_path,
+                # The codebook records the CSV's SHA-256 and formula
+                # protection, so the importer gives the answers back exactly.
+                output, codebook_path = await asyncio.to_thread(
+                    export_survey_responses, root, sid, path,
                 )
                 response_status.value = (
                     f"CSV: {output}\nCodebook: {codebook_path}"

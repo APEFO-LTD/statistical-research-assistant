@@ -728,7 +728,7 @@ class QuestionnairesPage:
         self._collect_state = (answers, submit)
 
     async def _export(self, survey):
-        from survey_storage import save_survey_codebook, save_survey_csv
+        from survey_storage import export_survey_responses
 
         app = self.app
 
@@ -736,10 +736,7 @@ class QuestionnairesPage:
             return csv_path.with_name(csv_path.stem + "_codebook.json")
 
         def write(csv_path: Path) -> Path:
-            written = save_survey_csv(app.survey_root, survey.survey_id, csv_path)
-            save_survey_codebook(app.survey_root, survey.survey_id, codebook(written),
-                                 data_file=written)
-            return written
+            return export_survey_responses(app.survey_root, survey.survey_id, csv_path)[0]
 
         outcome = await app.save_file(
             app.t("q.export_responses"), f"{survey.survey_id}_responses.csv", "csv", write,

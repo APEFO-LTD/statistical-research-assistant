@@ -205,11 +205,11 @@ def _undo_formula_protection(path: Path, rows: list[list],
     book = book if book is not None else csv_safety.exported_codebook(path)
     if book is None:
         return None
-    changed = 0
+    changed, rule = 0, csv_safety.book_rule(book)
     for row in rows:
         for index, cell in enumerate(row):
             if isinstance(cell, str):
-                restored = csv_safety.restore(cell)
+                restored = csv_safety.restore(cell, rule)
                 if restored != cell:
                     row[index] = restored
                     changed += 1
