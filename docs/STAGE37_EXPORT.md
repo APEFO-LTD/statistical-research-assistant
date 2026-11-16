@@ -366,6 +366,7 @@ After the review fixes (§12) the files hold: `test_stage37_csv_guard.py` 14, `t
 **Full suite** (Linux, Python 3.12.3, a venv from both hashed locks, R 4.3.3 present, so the R syntax test ran):
 - before the change (`2f9af71` with the lock change): 1,326 tests, OK, 10 skipped (999 s);
 - after it (`b210777`): **1,376 tests, OK, 10 skipped** (1,043 s). The 50 new tests are the five files above.
+- after the review fixes of §12 (`13dfab9`): **1,405 tests, OK, 10 skipped** (937 s), R 4.3.3 present.
 
 Run with:
 
