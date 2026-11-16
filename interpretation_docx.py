@@ -16,7 +16,7 @@ from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT, WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Inches, Pt, RGBColor
+from docx.shared import Inches, Mm, Pt, RGBColor
 from PIL import Image
 
 from apa_figures import (
@@ -31,8 +31,10 @@ from output_workspace import PNG_SIGNATURE
 
 def _style(document: Document):
     section = document.sections[0]
-    section.page_width = Inches(8.5)
-    section.page_height = Inches(11.0)
+    # Stage 37.0b (review D9): A4, the paper size of the researchers this
+    # program is made for; the margins stay 1 inch (2.54 cm).
+    section.page_width = Mm(210)
+    section.page_height = Mm(297)
     section.top_margin = Inches(1.0)
     section.bottom_margin = Inches(1.0)
     section.left_margin = Inches(1.0)
@@ -55,6 +57,25 @@ def _style(document: Document):
         style.paragraph_format.space_before = Pt(10)
         style.paragraph_format.space_after = Pt(2)
         style.paragraph_format.keep_with_next = True
+    # APA level 3: flush left, bold italic (every result title of a report).
+    third = document.styles["Heading 3"]
+    third.font.name = "Times New Roman"
+    third.font.size = Pt(12)
+    third.font.bold = True
+    third.font.italic = True
+    third.font.color.rgb = RGBColor(0, 0, 0)
+    third.paragraph_format.line_spacing = 2
+    third.paragraph_format.space_before = Pt(6)
+    third.paragraph_format.space_after = Pt(2)
+    third.paragraph_format.keep_with_next = True
+    # Review R5: the theme font attributes take precedence over w:ascii and
+    # w:hAnsi in Word, so the headings would show the theme's Calibri.
+    for style_name in ("Title", "Heading 1", "Heading 2", "Heading 3"):
+        fonts = document.styles[style_name].element.rPr.find(qn("w:rFonts"))
+        if fonts is not None:
+            for attribute in ("w:asciiTheme", "w:hAnsiTheme", "w:eastAsiaTheme", "w:cstheme"):
+                fonts.attrib.pop(qn(attribute), None)
+            fonts.set(qn("w:cs"), "Times New Roman")
 
 
 def _table_borders(table):

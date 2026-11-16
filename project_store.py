@@ -96,8 +96,8 @@ class DesignationReasonNeeded(ProjectError):
 
     def __init__(self, hypotheses: tuple[str, ...], runs: int):
         self.hypotheses, self.runs = tuple(hypotheses), int(runs)
-        super().__init__(f"The priority of {len(self.hypotheses)} hypothesis(es) changes after "
-                         f"{self.runs} results; give the reason for each.")
+        super().__init__(f"{len(self.hypotheses)} hypothesis(es) change after {self.runs} "
+                         "results; give the reason for each.")
 
 
 def now() -> str:
@@ -326,6 +326,22 @@ def _migrate_v6(db: sqlite3.Connection) -> None:
         db.execute(f"CREATE TRIGGER IF NOT EXISTS protocol_records_no_{action.lower()}"
                    f" BEFORE {action} ON protocol_records"
                    " BEGIN SELECT RAISE(ABORT, 'protocol records are append-only'); END")
+    _guard_replace(db)
+
+
+def _guard_replace(db: sqlite3.Connection) -> None:
+    """Review G: ``REPLACE INTO`` (or ``INSERT OR REPLACE``) with an existing
+    id would rewrite a record in place, since SQLite fires no DELETE trigger
+    for it; an INSERT of an id that exists is refused. Idempotent, and added
+    to format-6 projects made before it when they are opened (no new
+    format)."""
+    if db.execute("SELECT 1 FROM sqlite_master WHERE type = 'table'"
+                  " AND name = 'protocol_records'").fetchone() is None:
+        return                      # a format the program does not write records in
+    db.execute("CREATE TRIGGER IF NOT EXISTS protocol_records_no_replace"
+               " BEFORE INSERT ON protocol_records"
+               " WHEN EXISTS (SELECT 1 FROM protocol_records WHERE id = NEW.id)"
+               " BEGIN SELECT RAISE(ABORT, 'protocol records are append-only'); END")
 
 
 MIGRATIONS = {1: _create_v1, 2: _migrate_v2, 3: _migrate_v3, 4: _migrate_v4, 5: _migrate_v5,
@@ -542,8 +558,82 @@ PROTOCOL_KINDS = ("designation", "link", "acknowledgement", "deviation", "justif
                   "withdrawal")
 REASON_KINDS = ("designation", "acknowledgement", "deviation", "justification", "withdrawal")
 DEVIATION_WHAT = ("method", "variables", "direction", "alpha", "designation", "sample",
-                  "exclusions", "data", "other")
+                  "exclusions", "data", "other", "wording", "question")
+
+
+def _question_kind(plan: dict, hypothesis: dict) -> str:
+    """The kind of research question a hypothesis belongs to ('' if none)."""
+    questions = {q.get("id"): q for q in plan.get("questions", []) or []}
+    return str((questions.get(hypothesis.get("question_id") or "") or {}).get("type") or "")
+
+
+def _planned_method(hypothesis: dict) -> dict:
+    return {"method": str(hypothesis.get("method_key") or ""),
+            "options": dict(hypothesis.get("method_options") or {})}
+
+
+def plan_changes(previous: dict, clean: dict) -> list[tuple[str, str, object, object]]:
+    """(hypothesis id, what, from, to) of every substantive change of a saved
+    hypothesis between two plans (Stage 37.0b, review S8): its priority
+    (``designation``), its wording (H1 or H0), its direction or its α; and
+    (review B) its planned method and options (``method``), its planned
+    variables (``variables``) and the kind of its research question
+    (``question``). A saved hypothesis that is gone (removed, or its H1
+    cleared) is ``removed``, from its last saved form (review A)."""
+    before = {h["id"]: h for h in previous.get("hypotheses", [])}
+    kept = {h["id"] for h in clean.get("hypotheses", [])}
+    changes = []
+    for number, old in enumerate(previous.get("hypotheses", []), start=1):
+        if old["id"] not in kept:
+            changes.append((old["id"], "removed", {**old, "number": number}, None))
+    for hypothesis in clean.get("hypotheses", []):
+        old = before.get(hypothesis["id"])
+        if old is None:
+            continue
+        hid = hypothesis["id"]
+        if old.get("priority", "primary") != hypothesis["priority"]:
+            changes.append((hid, "designation", old.get("priority", "primary"),
+                            hypothesis["priority"]))
+        if old.get("text", "") != hypothesis.get("text", ""):
+            changes.append((hid, "wording", old.get("text", ""), hypothesis.get("text", "")))
+        if old.get("h0", "") != hypothesis.get("h0", ""):
+            changes.append((hid, "wording", "H0: " + str(old.get("h0", "")),
+                            "H0: " + str(hypothesis.get("h0", ""))))
+        if old.get("direction", "two-sided") != hypothesis["direction"]:
+            changes.append((hid, "direction", old.get("direction", "two-sided"),
+                            hypothesis["direction"]))
+        if abs(float(old.get("alpha", 0.05)) - float(hypothesis["alpha"])) > 1e-12:
+            changes.append((hid, "alpha", float(old.get("alpha", 0.05)),
+                            float(hypothesis["alpha"])))
+        if _planned_method(old) != _planned_method(hypothesis):
+            changes.append((hid, "method", _planned_method(old), _planned_method(hypothesis)))
+        if _question_kind(previous, old) != _question_kind(clean, hypothesis):
+            changes.append((hid, "question", _question_kind(previous, old),
+                            _question_kind(clean, hypothesis)))
+        if dict(old.get("roles") or {}) != dict(hypothesis.get("roles") or {}):
+            changes.append((hid, "variables", dict(old.get("roles") or {}),
+                            dict(hypothesis.get("roles") or {})))
+    return changes
+
+
 _HEX12 = re.compile(r"[0-9a-f]{12}")
+# Stage 37.0b (review S16; design §13, default 3, owner-changeable): results
+# that describe the data or check a measure. They do not test a hypothesis, so
+# they do not make a hypothesis planned later "added after results".
+NON_INFERENTIAL_METHODS = ("descriptive", "explore", "alpha", "omega", "reliability",
+                           "item_diagnostics", "factor", "matrix")
+
+
+def _inferential_count(db: sqlite3.Connection, *, until: str | None = None) -> int:
+    """How many inferential results the project holds (calculated at or
+    before ``until``, a UTC time, when given)."""
+    marks = ", ".join("?" for _ in NON_INFERENTIAL_METHODS)
+    query = f"SELECT COUNT(*) FROM runs WHERE method NOT IN ({marks})"
+    values: tuple = NON_INFERENTIAL_METHODS
+    if until is not None:
+        query += " AND created_at <= ?"
+        values += (until,)
+    return int(db.execute(query, values).fetchone()[0])
 
 
 def _plan_questions(plan: dict) -> list[dict]:
@@ -731,7 +821,12 @@ def _insert_protocol_record(db: sqlite3.Connection, kind: str, *, hypothesis_id=
     payload = json.dumps(detail, ensure_ascii=False, sort_keys=True, default=str)
     if len(payload) > 8000:
         raise ProjectError("The record's details are too long.")
-    if kind == "withdrawal":
+    if kind == "withdrawal" and supersedes is None and detail.get("what") == "hypothesis":
+        # Review A: a hypothesis withdrawn from the plan after results. It
+        # names the hypothesis, not a record, and keeps its last saved form.
+        if hypothesis_id is None:
+            raise ProjectError("The withdrawal of a hypothesis names the hypothesis.")
+    elif kind == "withdrawal":
         target = db.execute("SELECT kind FROM protocol_records WHERE id = ?",
                             (str(supersedes or ""),)).fetchone()
         if target is None:
@@ -854,6 +949,7 @@ class ProjectStore:
         project = Project(self, folder, read_only=False)
         with project._db() as db:
             db.execute("UPDATE project SET last_opened_at = ?", (now(),))
+            _guard_replace(db)
             if recovered:
                 _log(db, "recovered", {"detail": recovered})
         project.recovered = recovered
@@ -957,6 +1053,85 @@ class ProjectStore:
             _log(db, "exported", {"file": destination.name, "questionnaires": included})
         return destination
 
+    # Formats an older version reads, and what its copy leaves out (design §8.6).
+    OLDER_FORMATS = (5,)
+
+    def export_for_format(self, project_id: str, destination: Path, version: int = 5, *,
+                          survey_root: Path | None = None) -> tuple[Path, int]:
+        """A ``.sra`` copy of the project for an older version of the program
+        (Stage 37.0b, design §8.6, AC-11): project format ``version`` (5, the
+        Stage 36.8 release candidate), which that version restores and opens.
+
+        Format 6 only adds the protocol records, so the copy's database is
+        the project's without them: the table, its index and its triggers are
+        dropped and the format is set to 5. Returns the file and how many
+        protocol records were left out; the caller says so. The original
+        project is not written to (it is read through a read-only
+        connection) and keeps its records. A copy that comes back to this
+        version is migrated to format 6 again, after a backup, with no
+        records."""
+        if version not in self.OLDER_FORMATS:
+            raise ProjectError(f"No copy for project format {version} can be made.")
+        folder = self._folder(project_id)
+        destination = Path(destination)
+        if destination.suffix.lower() != ".sra":
+            destination = destination.with_suffix(".sra")
+        files: list[tuple[str, bytes]] = []
+        with tempfile.TemporaryDirectory(prefix="sra-older-") as temp:
+            snapshot = Path(temp) / DB_NAME
+            with closing(_connect(folder / DB_NAME, read_only=True)) as db, \
+                    closing(sqlite3.connect(snapshot)) as out:
+                found = db.execute("PRAGMA user_version").fetchone()[0]
+                if found != SCHEMA_VERSION:
+                    raise ProjectFormatError(f"The project has format {found}; open it first.")
+                db.backup(out)
+                info = _info(db, folder)
+                surveys = [row["survey_id"] for row in db.execute(
+                    "SELECT survey_id FROM questionnaires")]
+            with closing(sqlite3.connect(snapshot)) as db:
+                left_out = int(db.execute("SELECT COUNT(*) FROM protocol_records").fetchone()[0])
+                for statement in ("DROP TRIGGER IF EXISTS protocol_records_no_update",
+                                  "DROP TRIGGER IF EXISTS protocol_records_no_delete",
+                                  "DROP TRIGGER IF EXISTS protocol_records_no_replace",
+                                  "DROP INDEX IF EXISTS protocol_records_hypothesis",
+                                  "DROP TABLE IF EXISTS protocol_records"):
+                    db.execute(statement)
+                db.execute("INSERT INTO events (at, kind, detail) VALUES (?, ?, ?)",
+                           (now(), "copied_for_format", json.dumps(
+                               {"format": version, "from_project": info.id,
+                                "protocol_records_left_out": left_out})))
+                db.execute(f"PRAGMA user_version = {int(version)}")
+                db.commit()
+                db.execute("VACUUM")          # no page of the dropped records stays behind
+            files.append((f"project/{DB_NAME}", snapshot.read_bytes()))
+        for sub in ("datasets", "figures"):
+            for path in sorted((folder / sub).glob("*")) if (folder / sub).is_dir() else []:
+                if path.is_file():
+                    files.append((f"project/{sub}/{path.name}", path.read_bytes()))
+        included = []
+        if survey_root is not None:
+            for survey_id in surveys:
+                survey_file = _survey_file(Path(survey_root), survey_id)
+                if survey_file is not None:
+                    files.append((f"surveys/{survey_file.name}", _read_consistent(survey_file)))
+                    included.append(survey_id)
+        manifest = {
+            "format": PACKAGE_FORMAT, "format_version": PACKAGE_VERSION,
+            "schema_version": int(version), "exported_at": now(),
+            "project": {"id": info.id, "title": info.title},
+            "questionnaires": included, "app": library_versions(),
+            "for_older_version": {"format": int(version), "protocol_records_left_out": left_out},
+            "files": [{"path": name, "size": len(data), "sha256": sha256_bytes(data)}
+                      for name, data in files],
+        }
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest, indent=1, ensure_ascii=False))
+            for name, data in files:
+                archive.writestr(name, data)
+        _atomic_write(destination, buffer.getvalue())
+        return destination, left_out
+
     def import_package(self, source: Path, *, survey_root: Path | None = None) -> tuple[ProjectInfo, list[str]]:
         """Restore a ``.sra`` backup as a project; never overwrites anything."""
         warnings: list[str] = []
@@ -975,6 +1150,22 @@ class ProjectStore:
                     _atomic_write(staging / name.removeprefix("project/"), data)
             migrate(staging / DB_NAME, self.root / BACKUPS)
             with closing(_connect(staging / DB_NAME)) as db, db:
+                # Review E: a copy made for an older version that comes back.
+                copied = db.execute("SELECT at, detail FROM events WHERE kind ="
+                                    " 'copied_for_format' ORDER BY id DESC LIMIT 1").fetchone()
+                if copied is not None:
+                    try:
+                        left_out = int(json.loads(copied["detail"]).get(
+                            "protocol_records_left_out") or 0)
+                    except (ValueError, TypeError, AttributeError):
+                        left_out = 0
+                    warnings.append(
+                        f"This project is a copy made for an older version on "
+                        f"{str(copied['at'])[:16].replace('T', ' ')}: the {left_out} protocol "
+                        "record(s) left out of that copy are not in it (the original project "
+                        "keeps them), and plan versions or results saved by the older version "
+                        "may have lost their typed fields. Open the project to see what is "
+                        "missing; nothing is restored automatically.")
                 if new_id != project_id:
                     title = db.execute("SELECT title FROM project").fetchone()["title"]
                     db.execute("UPDATE project SET id = ?, title = ?", (new_id, f"{title} (restored)"))
@@ -1309,7 +1500,16 @@ class Project:
         it once the project has results needs a reason in ``reasons``
         ({hypothesis id: reason}); without one nothing is saved
         (:class:`DesignationReasonNeeded`). The change and its reason are
-        recorded as a ``designation`` protocol record of the new version."""
+        recorded as a ``designation`` protocol record of the new version.
+
+        Stage 37.0b (review S8): so does any substantive change of a saved
+        hypothesis once results exist: its wording (H1 or H0), direction or
+        α. Each change is recorded as a ``deviation`` of the plan (what,
+        from, to) with the reason, and logged as ``plan_changed``. So do its
+        planned method, variables and question kind (review B). Removing a
+        saved hypothesis after results needs a reason too and is recorded as
+        the ``withdrawal`` of that hypothesis, with its last saved form
+        (review A)."""
         with self._write() as db:
             latest = db.execute("SELECT id, plan FROM plan_versions ORDER BY id DESC LIMIT 1").fetchone()
             previous = json.loads(latest["plan"]) if latest is not None else {"hypotheses": []}
@@ -1323,12 +1523,13 @@ class Project:
             if latest is not None and previous == clean:
                 return int(latest["id"])
             runs = db.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
-            before = {h["id"]: h.get("priority", "primary") for h in previous.get("hypotheses", [])}
-            changed = [(h["id"], before[h["id"]], h["priority"]) for h in clean["hypotheses"]
-                       if h["id"] in before and before[h["id"]] != h["priority"]]
+            changes = plan_changes(previous, clean)
+            changed = [(hid, old, new) for hid, what, old, new in changes
+                       if what == "designation"]
             reasons = {str(k): str(v or "").strip() for k, v in (reasons or {}).items()}
             if runs:
-                missing = tuple(hid for hid, _, _ in changed if not reasons.get(hid))
+                missing = tuple(dict.fromkeys(hid for hid, *_ in changes
+                                              if not reasons.get(hid)))
                 if missing:
                     raise DesignationReasonNeeded(missing, runs)
             cursor = db.execute(
@@ -1336,14 +1537,35 @@ class Project:
                 (now(), json.dumps(clean, ensure_ascii=False, sort_keys=True), runs,
                  str(note).strip()[:500]))
             version = int(cursor.lastrowid)
+            # Stage 37.0b (review S16): the inferential results that existed,
+            # which decide whether a hypothesis entered the plan after results.
             _log(db, "plan_saved", {"version": version,
-                                    "hypotheses": len(clean["hypotheses"]), "runs_before": runs})
+                                    "hypotheses": len(clean["hypotheses"]), "runs_before": runs,
+                                    "inferential_before": _inferential_count(db)})
             for hid, old, new in changed:
                 _log(db, "designation_changed", {"hypothesis": hid, "from": old, "to": new,
                                                  "version": version, "runs_before": runs})
                 if runs:
                     _insert_protocol_record(db, "designation", hypothesis_id=hid,
                                             detail={"from": old, "to": new},
+                                            reason=reasons[hid], plan_version=version)
+            for hid, what, old, new in changes:
+                if what == "designation":
+                    continue
+                _log(db, "plan_changed", {"hypothesis": hid, "what": what, "version": version,
+                                          "runs_before": runs})
+                if runs and what == "removed":
+                    _insert_protocol_record(db, "withdrawal", hypothesis_id=hid,
+                                            detail={"what": "hypothesis", "hypothesis": {
+                                                key: old.get(key) for key in (
+                                                    "number", "text", "h0", "priority",
+                                                    "direction", "alpha", "question_id",
+                                                    "method_key", "method_options", "roles")
+                                                if old.get(key) not in (None, "", {})}},
+                                            reason=reasons[hid], plan_version=version)
+                elif runs:
+                    _insert_protocol_record(db, "deviation", hypothesis_id=hid,
+                                            detail={"what": what, "from": old, "to": new},
                                             reason=reasons[hid], plan_version=version)
             self._touch(db)
             return version
@@ -1360,23 +1582,124 @@ class Project:
                      "runs_before": row["runs_before"], "note": row["note"]}
                     for row in db.execute(query)]
 
+    def _inferential_before(self) -> dict[int, int]:
+        """{plan version: inferential results when it was saved}, as the save
+        recorded it (Stage 37.0b); versions saved earlier are counted from
+        the results' times."""
+        found: dict[int, int] = {}
+        with self._db() as db:
+            for row in db.execute("SELECT detail FROM events WHERE kind = 'plan_saved'"):
+                try:
+                    detail = json.loads(row["detail"])
+                    found[int(detail["version"])] = int(detail["inferential_before"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+        return found
+
+    # Typed fields of a plan-format-2 hypothesis that a 36.x plan save drops.
+    TYPED_HYPOTHESIS_FIELDS = ("question_id", "method_key", "method_options", "roles", "expected")
+
+    def older_copy_notice(self) -> dict | None:
+        """Review E: this project is a copy made for an older version that has
+        come back. What it does not carry, as facts for a notice: when the copy
+        was made, its format, how many protocol records were left out of it,
+        and, per hypothesis (number in the current plan), the typed plan fields
+        that the last format-2 plan version saved before the copy had and the
+        current plan has lost (a 36.x plan save drops them); whether the typed
+        questions were dropped; how many results of a hypothesis's task saved
+        after the copy carry no hypothesis snapshot. Nothing is restored: the
+        researcher decides. None when this is no returned copy, or once the
+        notice was read (:meth:`note_older_copy`)."""
+        with self._db() as db:
+            rows = db.execute("SELECT id, at, kind, detail FROM events WHERE kind IN"
+                              " ('copied_for_format', 'older_copy_noted') ORDER BY id").fetchall()
+            copied = [r for r in rows if r["kind"] == "copied_for_format"]
+            if not copied or rows[-1]["kind"] == "older_copy_noted":
+                return None
+            event = copied[-1]
+            try:
+                detail = json.loads(event["detail"])
+            except ValueError:
+                detail = {}
+            runs = db.execute(
+                "SELECT r.provenance FROM runs r JOIN research_tasks t ON r.task_id = t.id"
+                " WHERE t.hypothesis_id IS NOT NULL AND t.hypothesis_id != ''"
+                " AND r.created_at > ?", (event["at"],)).fetchall()
+        missing_snapshot = 0
+        for row in runs:
+            try:
+                provenance = json.loads(row["provenance"] or "{}")
+            except ValueError:
+                provenance = {}
+            missing_snapshot += not provenance.get("hypothesis")
+        history = list(reversed(self.plan_history()))
+        typed = next((v["plan"] for v in reversed(history) if v["saved_at"] <= event["at"]
+                      and v["plan"].get("plan_format") == 2), None)
+        current = history[-1]["plan"] if history else {"hypotheses": []}
+        dropped = []
+        if typed is not None:
+            before = {h["id"]: h for h in typed.get("hypotheses", [])}
+            for number, hypothesis in enumerate(current.get("hypotheses", []), start=1):
+                old = before.get(hypothesis["id"])
+                if old is None:
+                    continue
+                lost = [f for f in self.TYPED_HYPOTHESIS_FIELDS
+                        if old.get(f) not in (None, "", {}, []) and
+                        hypothesis.get(f) in (None, "", {}, [])]
+                if lost:
+                    dropped.append((number, lost))
+        return {"at": event["at"], "format": int(detail.get("format") or 5),
+                "left_out": int(detail.get("protocol_records_left_out") or 0),
+                "dropped": dropped,
+                "questions_dropped": bool(typed is not None and typed.get("questions")
+                                          and not current.get("questions")),
+                "missing_snapshot": missing_snapshot}
+
+    def note_older_copy(self) -> None:
+        """The researcher has read the notice of a returned copy (review E)."""
+        with self._write() as db:
+            _log(db, "older_copy_noted", {})
+
     def hypothesis_status(self) -> dict[str, dict]:
         """For every hypothesis of the current plan: when it entered the plan
         and how many results existed then. One that entered after results were
         calculated is reported as such; it is exploratory unless the
-        researcher justifies otherwise."""
+        researcher justifies otherwise.
+
+        Stage 37.0b (review S16): only inferential results count. A
+        description, a reliability or item check, a factor analysis or a
+        correlation matrix before the plan does not make a hypothesis "added
+        after results" (``inferential_before``; ``runs_before`` keeps every
+        result). A version saved before 37.0b has no such count: when results
+        existed then, its standing stays "added after results" with
+        ``inferential_known`` False (review C-S16/W2)."""
         history = list(reversed(self.plan_history()))
+        counted = self._inferential_before()
         first: dict[str, dict] = {}
         for version in history:
             for hypothesis in version["plan"]["hypotheses"]:
-                first.setdefault(hypothesis["id"], {"version": version["version"],
-                                                    "saved_at": version["saved_at"],
-                                                    "runs_before": version["runs_before"]})
+                if hypothesis["id"] in first:
+                    continue
+                inferential = counted.get(version["version"])
+                known = inferential is not None or not int(version["runs_before"] or 0)
+                if inferential is None:
+                    # A version saved before 37.0b (review C-S16/W2) recorded
+                    # only how many results existed, not which were
+                    # inferential. Today's runs cannot tell (a post-hoc step
+                    # replaces a result with a new one), so the standing is
+                    # kept as that version decided it and flagged for review:
+                    # never upgraded to confirmatory automatically.
+                    inferential = int(version["runs_before"] or 0)
+                first[hypothesis["id"]] = {"version": version["version"],
+                                           "saved_at": version["saved_at"],
+                                           "runs_before": version["runs_before"],
+                                           "inferential_before": inferential,
+                                           "inferential_known": known}
         current = history[-1]["plan"]["hypotheses"] if history else []
         status = {}
         for hypothesis in current:
             entry = first[hypothesis["id"]]
-            planned = entry["runs_before"] == 0
+            planned = entry["inferential_before"] == 0
             status[hypothesis["id"]] = {
                 **entry, "planned_before_results": planned,
                 "standing": ("exploratory" if hypothesis["priority"] == "exploratory"
