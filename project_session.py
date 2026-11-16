@@ -67,9 +67,32 @@ def run_from_record(record: RunRecord, figure: bytes | None):
     )
 
 
+# Note lines a later version adds to a report without changing any number
+# (Stage 37, review S10: the Spearman permutation floor). A result saved
+# before a note existed is compared without it (review integration F2).
+ADDED_NOTES = (
+    "This p (.001) is the smallest a two-sided permutation estimate with 1,999 resamples "
+    "can give:",
+)
+
+
+def _without_added_notes(report: str) -> str:
+    return "\n".join(line for line in report.split("\n")
+                     if not line.startswith(ADDED_NOTES))
+
+
 def same_report(first, second) -> bool:
-    return (sha256_bytes(first.report.encode("utf-8"))
-            == sha256_bytes(second.report.encode("utf-8")))
+    """The recalculated report is the saved one: byte for byte, or after
+    leaving out the note lines of ``ADDED_NOTES`` (only when the saved report
+    has none of them, i.e. it was saved before they existed)."""
+    if (sha256_bytes(first.report.encode("utf-8"))
+            == sha256_bytes(second.report.encode("utf-8"))):
+        return True
+    saved = first.report
+    if any(line.startswith(ADDED_NOTES) for line in saved.split("\n")):
+        return False
+    return (sha256_bytes(saved.encode("utf-8"))
+            == sha256_bytes(_without_added_notes(second.report).encode("utf-8")))
 
 
 @dataclass(frozen=True)
