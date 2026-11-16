@@ -73,7 +73,8 @@ class FormatSixTests(Case):
             triggers = {r[0] for r in db.execute(
                 "SELECT name FROM sqlite_master WHERE type='trigger'")}
         self.assertIn("protocol_records", tables)
-        self.assertEqual(triggers, {"protocol_records_no_update", "protocol_records_no_delete"})
+        self.assertEqual(triggers, {"protocol_records_no_update", "protocol_records_no_delete",
+                                    "protocol_records_no_replace"})   # review G
 
     def test_a_format_5_project_migrates_with_a_backup_and_keeps_everything(self):
         info = self.store.create("Format five")

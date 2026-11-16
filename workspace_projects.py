@@ -368,6 +368,41 @@ class ProjectHub:
             announce=lambda path: app.t("project.backup_saved", path=path))
         self._done(outcome.message, outcome.tone)
 
+    def confirm_copy_older(self, project_id: str, title: str):
+        """Stage 37.0b (design §8.6, AC-11): a copy that version 36.x opens.
+        The warning comes first: the protocol records are not carried into
+        the copy; this project is not changed."""
+        ui, binding = self.app.ui, self.binding
+        count = (len(binding.project.protocol_records())
+                 if binding.active and binding.project.id == project_id else 0)
+
+        async def save(e=None):
+            self.app.page.pop_dialog()
+            await self.copy_older(project_id, title)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=wc.heading(ui, ui.t("project.copy_older_title"), tk.TYPE_TITLE_S),
+            content=ft.Container(wc.text(ui, ui.t("project.copy_older_body", count=count),
+                                         tk.TYPE_BODY, data="project-copy-older-body"),
+                                 width=520),
+            actions=[
+                wc.button(ui, ui.t("common.cancel"), lambda e: self.app.page.pop_dialog(),
+                          kind="quiet", data="project-copy-older-cancel"),
+                wc.button(ui, ui.t("project.copy_older_confirm"), save, kind="primary",
+                          icon=ft.Icons.SAVE_ALT, data="project-copy-older-confirm"),
+            ],
+        )
+        self.app.page.show_dialog(dialog)
+
+    async def copy_older(self, project_id: str, title: str):
+        app = self.app
+        outcome = await app.save_file(
+            app.t("project.copy_older_dialog"), _file_name(title)[:-4] + "_36x.sra", "sra",
+            lambda path: self.binding.export_for_format(project_id, path, app.survey_root)[0],
+            announce=lambda path: app.t("project.copy_older_saved", path=path))
+        self._done(outcome.message, outcome.tone)
+
     async def _on_backup_picked(self, e):
         await self.restore_files(getattr(e, "files", None))
 
@@ -451,6 +486,9 @@ class ProjectPage:
             wc.button(ui, ui.t("project.backup"),
                       wc.handler(hub.backup, info.id, info.title),
                       icon=ft.Icons.SAVE_ALT, data="project-backup-current"),
+            wc.button(ui, ui.t("project.copy_older"),
+                      lambda e, i=info.id, t=info.title: hub.confirm_copy_older(i, t),
+                      kind="quiet", icon=ft.Icons.HISTORY, data="project-copy-older"),
             wc.button(ui, ui.t("project.all_projects"), lambda e: app.navigate("home"),
                       kind="quiet", icon=ft.Icons.FOLDER_COPY_OUTLINED, data="project-all"),
             wc.button(ui, ui.t("project.close"), hub.close, kind="quiet", icon=ft.Icons.CLOSE,
@@ -470,6 +508,7 @@ class ProjectPage:
         if binding.message:
             key, tone = binding.message
             body.append(wc.notice(ui, ui.t(key), tone, data="project-message"))
+        body += self._older_copy(binding.project)
         if hub.feedback:
             body.append(wc.notice(ui, hub.feedback[0], hub.feedback[1], data="project-feedback"))
         views = self.hypotheses.views()
@@ -480,6 +519,34 @@ class ProjectPage:
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
     # ------------------------------------------------------ question
+    def _older_copy(self, project) -> list[ft.Control]:
+        """Review E: a copy made for an older version that came back says what
+        it does not carry, until the researcher has read it."""
+        ui = self.app.ui
+        notice = project.older_copy_notice()
+        if notice is None:
+            return []
+        parts = [ui.t("project.older_copy_back", when=f"{_local_time(notice['at']):%Y-%m-%d %H:%M}",
+                      count=notice["left_out"], format=notice["format"])]
+        if notice["dropped"]:
+            items = "; ".join(f"H{number}: " + ", ".join(
+                ui.t(f"project.older_copy_field.{f}") for f in fields)
+                for number, fields in notice["dropped"])
+            parts.append(ui.t("project.older_copy_fields", items=items))
+        if notice["questions_dropped"]:
+            parts.append(ui.t("project.older_copy_questions"))
+        if notice["missing_snapshot"]:
+            parts.append(ui.t("project.older_copy_snapshots", count=notice["missing_snapshot"]))
+        parts.append(ui.t("project.older_copy_nothing_restored"))
+        return [ft.Column([
+            wc.notice(ui, " ".join(parts), "warning", data="project-older-copy-back"),
+            wc.button(ui, ui.t("project.older_copy_noted"), self._note_older_copy,
+                      kind="quiet", data="project-older-copy-noted")], spacing=tk.SPACE_1)]
+
+    def _note_older_copy(self, e=None):
+        self.app.projects.project.note_older_copy()
+        self.app.render()
+
     def _question(self) -> ft.Control:
         """The research question or hypothesis: the first step of the journey."""
         app, ui = self.app, self.app.ui
