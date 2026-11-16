@@ -126,7 +126,7 @@ jobs:
           "EXE_PATH=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Researcher journeys on the packaged application
         shell: pwsh
-        timeout-minutes: 45
+        timeout-minutes: 75
         run: |
           python tools/windows_gui_e2e.py "$env:EXE_PATH" gui-e2e --probe
           if ($LASTEXITCODE -ne 0) { throw "Packaged GUI journeys failed (see gui-e2e/gui-e2e-result.json)" }

@@ -217,3 +217,6 @@ passes before and after): `test_stage37_integration`
 Full suite after these fixes, run once on `890178f` with the command in §7:
 1834 tests ran in 1410 s, **OK, 10 skipped**. These journeys have not run
 on Windows again yet.
+
+### 8.1 Journey step time budget (run 43910859452, `16efe4e`)
+The packaged GUI journeys step stopped at its 45-minute limit while the 22nd of 24 journeys (`startup-workspace`) was running; the 21 journeys before it had passed. The limit was set for the 18 RC journeys; the six Stage 37 journeys add about 12 minutes on the hosted runner. Both journey steps (packaged program in `windows-gui-e2e.yml`, installed program in `windows-installer.yml`) now have 75 minutes; the job limits (120 and 170 minutes) still cover the build and the other steps. No journey or check was removed or shortened.

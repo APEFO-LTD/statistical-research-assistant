@@ -148,7 +148,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "installed-application journeys failed" }
       - name: Researcher journeys on the installed program
         shell: pwsh
-        timeout-minutes: 45
+        timeout-minutes: 75
         run: |
           $PSNativeCommandUseErrorActionPreference = $true   # any failing command fails the step
           python tools/windows_gui_e2e.py "$env:LOCALAPPDATA\Programs\Statistical Research Assistant\StatisticalResearchAssistant.exe" installed\journeys
