@@ -93,6 +93,10 @@ DEFAULTS: dict[str, Any] = {
     "sidebar_expanded": None,      # None: chosen by the window width
     "last_route": "home",
     "last_project": None,
+    # Stage 37: the research task (Analyze) and the result (Results) on
+    # screen then, which Home's Continue reopens with the project.
+    "last_task": None,
+    "last_result": None,
     "window": None,                # {"width", "height", "left", "top", "maximized"}
     "recent_files": [],
     "export": {},                  # {"formats": {page: format}, "csv_layout", "csv_bom"}
@@ -170,12 +174,16 @@ VALIDATORS: dict[str, Callable[[Any], Any]] = {
     "last_route": _in(ROUTES),
     "last_project": lambda value: value if isinstance(value, str) and 0 < len(value) <= 200
     else None,
+    "last_task": lambda value: value if isinstance(value, str) and 0 < len(value) <= 200
+    else None,
+    "last_result": lambda value: value if isinstance(value, str) and 0 < len(value) <= 200
+    else None,
     "window": _window,
     "recent_files": _recent,
     "export": clean_export,
 }
 # Keys whose None is a meaningful value ("not chosen"), not an unknown one.
-NULLABLE = {"sidebar_expanded", "last_project", "window"}
+NULLABLE = {"sidebar_expanded", "last_project", "last_task", "last_result", "window"}
 
 
 def settings_path(source_root: Path | None = None) -> Path:

@@ -5256,3 +5256,195 @@ def t(language: str, key: str, **values) -> str:
         index = LANGS.index(language) if language in LANGS else 0
         text = row[index] or row[0]
     return text.format(**values) if values else text
+
+
+# Stage 37 (Fable review §4 item 2): the scales register of the Data page.
+# LV and RU are drafts for native review.
+T.update({
+    "scales.title": ("Scales", "Skalas", "Шкалы"),
+    "scales.body": (
+        "Define every scale of the study here: its items, the reverse-keyed items you checked, "
+        "the scoring rule and how many items must be answered. Then score them all and check "
+        "the reliability of all in one action each. Every score is a new column; the items "
+        "are never changed.",
+        "Definējiet šeit katru pētījuma skalu: tās apgalvojumus, pārbaudītos apgrieztos "
+        "apgalvojumus, aprēķina noteikumu un to, cik apgalvojumiem jābūt atbildētiem. Pēc tam "
+        "aprēķiniet visas skalas un pārbaudiet visu ticamību, katru ar vienu darbību. Katrs "
+        "rādītājs ir jauna kolonna; apgalvojumi netiek mainīti.",
+        "Определите здесь каждую шкалу исследования: её пункты, проверенные обратные пункты, "
+        "правило подсчёта и сколько пунктов должно быть отвечено. Затем подсчитайте все шкалы и "
+        "проверьте надёжность всех, каждое одним действием. Каждый балл — новый столбец; пункты "
+        "не изменяются."),
+    "scales.add": ("Add a scale", "Pievienot skalu", "Добавить шкалу"),
+    "scales.score_all": ("Score all ({count})", "Aprēķināt visas ({count})",
+                         "Подсчитать все ({count})"),
+    "scales.score_none": (
+        "No scale is ready to be scored: each needs a new name, 2–30 items, a scoring rule and "
+        "the minimum number of answered items.",
+        "Neviena skala nav gatava aprēķinam: katrai vajag jaunu nosaukumu, 2–30 apgalvojumus, "
+        "aprēķina noteikumu un minimālo atbildēto apgalvojumu skaitu.",
+        "Ни одна шкала не готова к подсчёту: каждой нужны новое имя, 2–30 пунктов, правило "
+        "подсчёта и минимальное число отвеченных пунктов."),
+    "scales.check_all": ("Check reliability of all ({count})",
+                         "Pārbaudīt visu ticamību ({count})",
+                         "Проверить надёжность всех ({count})"),
+    "scales.check_none": (
+        "No scale is ready for its reliability: score it first and confirm that its items are "
+        "meant to measure one construct.",
+        "Neviena skala nav gatava ticamības pārbaudei: vispirms aprēķiniet to un apstipriniet, "
+        "ka tās apgalvojumi ir paredzēti vienas konstrukcijas mērīšanai.",
+        "Ни одна шкала не готова к проверке надёжности: сначала подсчитайте её и подтвердите, "
+        "что её пункты предназначены для измерения одного конструкта."),
+    "scales.confirm_levels": ("Confirm as quantitative (scale): {names}",
+                              "Apstiprināt kā kvantitatīvus (intervālu): {names}",
+                              "Подтвердить как количественные (интервальные): {names}"),
+    "scales.confirm_levels_tip": (
+        "Your confirmation of the measurement level of these new scores. You can also set each "
+        "one in the variable list.",
+        "Jūsu apstiprinājums šo jauno rādītāju mērījumu līmenim. Katru var iestatīt arī "
+        "mainīgo sarakstā.",
+        "Ваше подтверждение уровня измерения этих новых баллов. Каждый можно задать и в "
+        "списке переменных."),
+    "scales.report_all": ("Add the reliability results to the report",
+                          "Pievienot ticamības rezultātus pārskatam",
+                          "Добавить результаты надёжности в отчёт"),
+    "scales.nothing_ready": (
+        "Open a scale with Edit to see what it still needs.",
+        "Atveriet skalu ar “Rediģēt”, lai redzētu, kas tai vēl vajadzīgs.",
+        "Откройте шкалу кнопкой «Изменить», чтобы увидеть, чего ей ещё не хватает."),
+    "scales.save_failed": ("The scales could not be saved in the project: {error}",
+                           "Skalas neizdevās saglabāt projektā: {error}",
+                           "Не удалось сохранить шкалы в проекте: {error}"),
+    "scales.score_failed": ("Nothing was scored: {error}", "Nekas netika aprēķināts: {error}",
+                            "Ничего не подсчитано: {error}"),
+    "scales.scored": ("Scored ({count}): {names}. Confirm their measurement level.",
+                      "Aprēķinātas ({count}): {names}. Apstipriniet to mērījumu līmeni.",
+                      "Подсчитано ({count}): {names}. Подтвердите их уровень измерения."),
+    "scales.checked": ("Reliability checked ({count}); each result is in Results.",
+                       "Ticamība pārbaudīta ({count}); katrs rezultāts ir sadaļā “Rezultāti”.",
+                       "Надёжность проверена ({count}); каждый результат — в «Результатах»."),
+    "scales.check_failed": ("{name}: the reliability could not be calculated: {error}",
+                            "{name}: ticamību neizdevās aprēķināt: {error}",
+                            "{name}: надёжность не удалось вычислить: {error}"),
+    "scales.state.checked": ("Cronbach’s α = {alpha}; McDonald’s ω = {omega}; n = {n}",
+                             "Kronbaha α = {alpha}; Makdonalda ω = {omega}; n = {n}",
+                             "α Кронбаха = {alpha}; ω Макдональда = {omega}; n = {n}"),
+    "scales.state.scored": ("Scored; its reliability is not checked yet.",
+                            "Aprēķināta; ticamība vēl nav pārbaudīta.",
+                            "Подсчитана; надёжность ещё не проверена."),
+    "scales.state.ready": ("Ready to be scored.", "Gatava aprēķinam.", "Готова к подсчёту."),
+    "scales.unnamed": ("(no name yet)", "(vēl bez nosaukuma)", "(ещё без имени)"),
+    "scales.facts": ("{items} items · {reverse} reversed · {rule} · at least {minimum} answered",
+                     "{items} apgalvojumi · {reverse} apgriezti · {rule} · vismaz {minimum} "
+                     "atbildēti",
+                     "пунктов: {items} · обратных: {reverse} · {rule} · отвечено не менее "
+                     "{minimum}"),
+    "scales.method.mean": ("Mean of the answered items", "Atbildēto apgalvojumu vidējais",
+                           "Среднее отвеченных пунктов"),
+    "scales.method.sum": ("Sum (every item answered)", "Summa (atbildēti visi apgalvojumi)",
+                          "Сумма (отвечены все пункты)"),
+    "scales.method.none": ("rule not chosen", "noteikums nav izvēlēts", "правило не выбрано"),
+    "scales.edit": ("Edit", "Rediģēt", "Изменить"),
+    "scales.close": ("Close", "Aizvērt", "Закрыть"),
+    "scales.remove": ("Remove", "Noņemt", "Удалить"),
+    "scales.open_result": ("Open the result", "Atvērt rezultātu", "Открыть результат"),
+    "scales.name": ("Name of the new score", "Jaunā rādītāja nosaukums",
+                    "Имя нового балла"),
+    "scales.name_hint": ("e.g. LON_SUM", "piem., LON_SUM", "напр. LON_SUM"),
+    "scales.items": ("Items of this scale", "Šīs skalas apgalvojumi", "Пункты этой шкалы"),
+    "scales.reverse": ("Reverse-keyed items", "Apgrieztie apgalvojumi", "Обратные пункты"),
+    "scales.reverse_body": (
+        "Tick an item only after you checked the scoring key: each tick is your confirmation "
+        "for that item. The program never marks an item as reversed.",
+        "Atzīmējiet apgalvojumu tikai pēc tam, kad pārbaudījāt aprēķina atslēgu: katra atzīme "
+        "ir jūsu apstiprinājums šim apgalvojumam. Programma nekad neatzīmē apgalvojumu kā "
+        "apgrieztu.",
+        "Отмечайте пункт только после проверки ключа: каждая отметка — ваше подтверждение для "
+        "этого пункта. Программа никогда не отмечает пункт как обратный сама."),
+    "scales.reverse_item": ("{name} is reverse-keyed", "{name} ir apgriezts",
+                            "{name} — обратный"),
+    "scales.low": ("Lowest answer code", "Zemākais atbildes kods", "Наименьший код ответа"),
+    "scales.high": ("Highest answer code", "Augstākais atbildes kods",
+                    "Наибольший код ответа"),
+    "scales.range_body": (
+        "A reversed item is written as a new column: lowest + highest − answer.",
+        "Apgriezts apgalvojums tiek ierakstīts jaunā kolonnā: zemākais + augstākais − atbilde.",
+        "Обратный пункт записывается в новый столбец: наименьший + наибольший − ответ."),
+    "scales.rule": ("Scoring rule", "Aprēķina noteikums", "Правило подсчёта"),
+    "scales.min": ("Minimum answered items", "Minimālais atbildēto apgalvojumu skaits",
+                   "Минимум отвеченных пунктов"),
+    "scales.min_hint": ("1 to {count}", "no 1 līdz {count}", "от 1 до {count}"),
+    "scales.rule_body": (
+        "There is no default. A case with fewer answered items gets no score. A sum needs every "
+        "item answered.",
+        "Noklusējuma nav. Gadījums ar mazāk atbildētiem apgalvojumiem rādītāju nesaņem. Summai "
+        "jābūt atbildētiem visiem apgalvojumiem.",
+        "Значения по умолчанию нет. Случай с меньшим числом отвеченных пунктов не получает "
+        "балла. Для суммы должны быть отвечены все пункты."),
+    "scales.confirm": ("Before the reliability", "Pirms ticamības", "Перед надёжностью"),
+    "scales.one_construct": (
+        "I checked that the items of this scale are meant to measure one construct",
+        "Es pārbaudīju, ka šīs skalas apgalvojumi ir paredzēti vienas konstrukcijas mērīšanai",
+        "Я проверил(а), что пункты этой шкалы предназначены для измерения одного конструкта"),
+    "scales.not_totals": (
+        "I checked that these columns hold answers to single items, not total or mean scores: "
+        "{names}",
+        "Es pārbaudīju, ka šajās kolonnās ir atbildes uz atsevišķiem apgalvojumiem, nevis "
+        "kopsummas vai vidējie: {names}",
+        "Я проверил(а), что в этих столбцах ответы на отдельные пункты, а не суммы или "
+        "средние: {names}"),
+    "scales.need.name": (
+        "Give the score a name: a letter first, then letters, digits or _.",
+        "Dodiet rādītājam nosaukumu: vispirms burts, tad burti, cipari vai _.",
+        "Дайте баллу имя: сначала буква, затем буквы, цифры или _."),
+    "scales.need.new_name": ("{name} is already a column: choose a new name.",
+                             "{name} jau ir kolonna: izvēlieties jaunu nosaukumu.",
+                             "{name} уже является столбцом: выберите новое имя."),
+    "scales.need.items": ("Choose 2–30 items ({count} chosen).",
+                          "Izvēlieties 2–30 apgalvojumus (izvēlēti: {count}).",
+                          "Выберите 2–30 пунктов (выбрано: {count})."),
+    "scales.need.columns": ("Not in the data on screen: {names}.",
+                            "Nav datos uz ekrāna: {names}.", "Нет в данных на экране: {names}."),
+    "scales.need.range": ("Type the lowest and the highest answer code for the reversed items.",
+                          "Ierakstiet zemāko un augstāko atbildes kodu apgrieztajiem "
+                          "apgalvojumiem.",
+                          "Введите наименьший и наибольший код ответа для обратных пунктов."),
+    "scales.need.method": ("Choose the scoring rule: mean or sum.",
+                           "Izvēlieties aprēķina noteikumu: vidējais vai summa.",
+                           "Выберите правило подсчёта: среднее или сумма."),
+    "scales.need.min": ("Type the minimum number of answered items.",
+                        "Ierakstiet minimālo atbildēto apgalvojumu skaitu.",
+                        "Введите минимальное число отвеченных пунктов."),
+    "scales.need.min_range": ("The minimum must be between 1 and {count}.",
+                              "Minimumam jābūt no 1 līdz {count}.",
+                              "Минимум должен быть от 1 до {count}."),
+    "scales.need.sum_all": ("A sum needs all {count} items answered: type {count}.",
+                            "Summai jābūt atbildētiem visiem {count} apgalvojumiem: ierakstiet "
+                            "{count}.",
+                            "Для суммы должны быть отвечены все {count} пунктов: введите "
+                            "{count}."),
+    "scales.need.items_reliability": (
+        "The reliability needs 3–40 items ({count} chosen).",
+        "Ticamībai vajag 3–40 apgalvojumus (izvēlēti: {count}).",
+        "Для надёжности нужно 3–40 пунктов (выбрано: {count})."),
+    "scales.need.score_first": ("Score the scale first (missing: {names}).",
+                                "Vispirms aprēķiniet skalu (trūkst: {names}).",
+                                "Сначала подсчитайте шкалу (нет: {names})."),
+    "scales.need.one_construct": (
+        "Confirm that the items are meant to measure one construct.",
+        "Apstipriniet, ka apgalvojumi ir paredzēti vienas konstrukcijas mērīšanai.",
+        "Подтвердите, что пункты предназначены для измерения одного конструкта."),
+    "scales.need.not_totals": (
+        "Some columns look like totals: confirm that they are single items.",
+        "Dažas kolonnas izskatās pēc kopsummām: apstipriniet, ka tie ir atsevišķi apgalvojumi.",
+        "Некоторые столбцы похожи на суммы: подтвердите, что это отдельные пункты."),
+    "scales.need.level": ("{name}: confirm it as ordinal or quantitative.",
+                          "{name}: apstipriniet to kā kārtas vai kvantitatīvu.",
+                          "{name}: подтвердите его как порядковый или количественный."),
+})
+
+
+# Stage 37 (Fable review §4 item 5): the variables of a table (LV/RU drafts).
+T.update({
+    "role.variables": ("Variables", "Mainīgie", "Переменные"),
+})

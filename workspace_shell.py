@@ -177,6 +177,9 @@ class WorkspaceApp:
                                  int(getattr(page, "width", None) or 1280) >= tk.BREAKPOINT_NARROW)
         # Where the researcher was when the program last closed (Home offers it).
         self.last_place = (settings.get("last_project"), settings.get("last_route"))
+        # Stage 37: and the research task and result on screen then.
+        self.last_work = (settings.get("last_task"), settings.get("last_result"))
+        self._place_written = None
         self._focus_target: str | None = None
         self.pages: dict[str, object] = {}
         self.root: ft.Control | None = None
@@ -454,9 +457,25 @@ class WorkspaceApp:
         if route is None or not self.projects.active:
             return
         try:
-            self.settings.update(last_route=route, last_project=self.projects.info().id)
+            task, result = self._work_on_screen()
+            place = (route, self.projects.info().id, task, result)
+            if place == self._place_written:
+                return
+            self.settings.update(last_route=route, last_project=place[1], last_task=task,
+                                 last_result=result)
+            self._place_written = place
         except Exception:
             pass        # a convenience: never disturb the navigation
+
+    def _work_on_screen(self) -> tuple[str | None, str | None]:
+        """(the research task open in Analyze, the stored id of the result
+        selected in Results), each None when there is none."""
+        analyze = self.pages.get("analyze")
+        task_id = getattr(analyze, "task_id", None)
+        task = task_id if task_id and self.session.task(task_id) is not None else None
+        entry = self.session.result(self.session.selected_result) \
+            if self.session.selected_result is not None else None
+        return task, getattr(entry, "record_id", None) or None
 
     def continue_place(self):
         """(project info, route) to continue from Home, or None: the project
@@ -478,8 +497,21 @@ class WorkspaceApp:
         if place is None:
             return
         info, route = place
-        self.last_place = (None, None)
+        task_id, result_id = self.last_work
+        self.last_place, self.last_work = (None, None), (None, None)
         await self.hub.open(info.id, route=route)
+        if not (self.projects.active and self.projects.info().id == info.id):
+            return
+        # Stage 37: the research task or the result that was on screen,
+        # when it is still in the project (one click: the click on Continue).
+        if result_id:
+            entry = next((e for e in self.session.results if e.record_id == result_id), None)
+            if entry is not None:
+                self.session.selected_result = entry.id
+        if route == "analyze" and task_id and self.session.task(task_id) is not None:
+            self.pages["analyze"].open_task_for(task_id)
+        else:
+            self.render()
 
     # Keyboard focus (U11): a main action that opens new content moves the
     # focus to what comes next, where Flet can move it.
@@ -683,6 +715,7 @@ class WorkspaceApp:
             controls.append(ft.Container(footer, key=f"workspace-footer-{self.route}",
                                          data="workspace-footer"))
         self._page_stack.controls = controls
+        self._remember_place()          # the task or result on screen may have changed
         self.content_host.bgcolor = self.ui.p.canvas
         self.root.bgcolor = self.ui.p.canvas
         self._rendered_width = int(getattr(self.page, "width", None) or 1280)
@@ -1098,7 +1131,7 @@ class WorkspaceApp:
         self.theme_choice = s.get("theme")
         self.text_scale, self.density, self.typeface = (
             s.get("text_scale"), s.get("density"), s.get("typeface"))
-        self.last_place = (None, None)
+        self.last_place, self.last_work = (None, None), (None, None)
         from workspace_export import forget_choices
 
         forget_choices(self)            # the export defaults are settings too
@@ -1311,6 +1344,9 @@ class DataPage:
         from workspace_groups import GroupsCard
 
         self.groups = GroupsCard(app)      # Stage 36.3: groups from a scale
+        from workspace_scales import ScalesCard
+
+        self.scales = ScalesCard(app)      # Stage 37: the scales register
         from workspace_export import ExportPanel
 
         self.export = ExportPanel(app, "data")     # Stage 37 (#67): one Export action
@@ -1357,6 +1393,7 @@ class DataPage:
             ft.Container(header, key=ft.ScrollKey("data-top")), stats, self._next_step(),
             ft.Container(self.export.build(), key=ft.ScrollKey("data-export")),
             ft.Container(self._dictionary(), key=ft.ScrollKey("data-variables")),
+            ft.Container(self.scales.build(), key=ft.ScrollKey("data-scales")),
             ft.Container(self.groups.build(), key=ft.ScrollKey("data-groups")), self._preview(),
             self._import_options(), self._preparation_card(), self._sample_picker(),
         ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))

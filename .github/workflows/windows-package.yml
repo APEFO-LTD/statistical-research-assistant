@@ -55,6 +55,8 @@ on:
       # Stage 37 integration: the new top-level modules are bundled and imported by the
       # packaged program (the self-test runs the in-house α and the FTS5 library search).
       - "cronbach.py"
+      - "scale_register.py"
+      - "variable_tables.py"
       - "reliability.py"
       - "linear_model.py"
       - "process_models.py"

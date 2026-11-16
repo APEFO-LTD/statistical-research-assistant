@@ -354,6 +354,44 @@ def run_matrix(df: pd.DataFrame, items: list[str], method: str, confirmed: bool)
     )
 
 
+def _table_report(result, lines=()) -> str:
+    table = result.tables[0]
+    rows = ["\t".join(table.columns)] + ["\t".join(row) for row in table.rows]
+    return "\n".join([result.title, *lines, "", *rows, "", *result.warnings])
+
+
+def run_descriptives_many(df: pd.DataFrame, variables: list[str]) -> AnalysisRun:
+    """Stage 37 (Fable review §4 item 5): one table of descriptives for many
+    variables (variable_tables.describe_many)."""
+    from variable_tables import describe_many
+
+    result = describe_many(df, list(variables))
+    table = result.tables[0]
+    return AnalysisRun(
+        "descriptive", result.title, _table_report(result), None, result,
+        summary=result.title, warnings=tuple(result.warnings),
+        tables=(ResultTable(table.title, table.columns, table.rows),),
+        inputs={"variables": list(variables)})
+
+
+def run_correlation_table(df: pd.DataFrame, items: list[str], method: str, adjust: str,
+                          pearson_confirmed: bool) -> AnalysisRun:
+    """Stage 37 (Fable review §4 item 5): every pair of the variables, with N,
+    95% CI and p adjusted as one family (variable_tables.correlation_table)."""
+    from variable_tables import correlation_table
+
+    result = correlation_table(df, list(items), method=method, adjust=adjust,
+                               pearson_confirmed=pearson_confirmed)
+    table = result.tables[0]
+    return AnalysisRun(
+        "batch_correlation", result.title, _table_report(result), None, result,
+        summary=result.title, guide="\n".join(result.warnings),
+        warnings=tuple(result.warnings),
+        tables=(ResultTable(table.title, table.columns, table.rows),),
+        inputs={"items": list(items), "method": method, "adjust": adjust,
+                "seed": result.inputs["seed"], "resamples": result.inputs["resamples"]})
+
+
 def run_chi_square(df: pd.DataFrame, a: str, b: str, confirmed: bool) -> AnalysisRun:
     analysis = analyze_chi_square(df, a, b, bool(confirmed))
     png = make_chi_square_chart(analysis)

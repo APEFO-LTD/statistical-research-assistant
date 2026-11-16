@@ -2282,6 +2282,31 @@ class Project:
             ids = [r["run_id"] for r in db.execute("SELECT run_id FROM report_items ORDER BY position")]
         return [self.run(i) for i in ids]
 
+    SCALE_REGISTER = "scale_register"
+
+    def save_scale_register(self, register: dict) -> None:
+        """Record the scales register (Stage 37, ``scale_register``) as an
+        entry of the activity log, as the report settings are: the latest
+        entry is the current register, earlier ones are its history, and a
+        program that does not know the kind ignores it (format 6 unchanged)."""
+        with self._write() as db:
+            _log(db, self.SCALE_REGISTER, dict(register))
+            self._touch(db)
+
+    def scale_register(self) -> dict:
+        """The latest saved scales register ({} when none was saved)."""
+        return self._latest_event(self.SCALE_REGISTER)
+
+    def _latest_event(self, kind: str) -> dict:
+        with self._db() as db:
+            row = db.execute("SELECT detail FROM events WHERE kind = ? ORDER BY id DESC LIMIT 1",
+                             (kind,)).fetchone()
+        try:
+            detail = json.loads(row["detail"]) if row is not None else {}
+        except ValueError:
+            detail = {}
+        return detail if isinstance(detail, dict) else {}
+
     REPORT_SETTINGS = "report_settings"
 
     def save_report_settings(self, settings: dict) -> None:
