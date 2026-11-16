@@ -522,7 +522,8 @@ class EvidenceResult:
     rows: int = 0
     checks: tuple = ()                # research_workflow.Check of its task: open or info
     n: str = ""                       # the engine's n (complete cases, or per pair)
-    estimates: tuple = ()             # the engine's verified rows: (parameter, estimate, ci, p)
+    # the engine's verified rows: (parameter, estimate, ci, p[, (adjustment, adjusted p)])
+    estimates: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -884,11 +885,22 @@ def _review(language: str, item) -> str:
 def _estimates(language: str, result: EvidenceResult) -> str:
     """The engine's verified rows as they were saved (no number is formatted
     or computed here): parameter = estimate, 95% CI, p."""
+    from batch_correlation import p_label
+
     parts = []
-    for parameter, estimate, ci, p in result.estimates:
+    for parameter, estimate, ci, p, *rest in result.estimates:
+        adjusted = rest[0] if rest else None
         key = "estimate_ci" if ci and ci != "Not calculated" else "estimate"
         part = text(language, key, parameter=parameter, estimate=estimate, ci=ci)
-        if p and p != "Not calculated":
+        if adjusted:
+            # A test of a batch: the p of its correction first, then the raw p,
+            # each with its label (review R1).
+            adjustment, p_adjusted = adjusted
+            if adjustment != "none" and p_adjusted and p_adjusted != "Not calculated":
+                part += f", {p_label(adjustment, language)} {p_adjusted}"
+            if p and p != "Not calculated":
+                part += f", {p_label('none', language)} {p}"
+        elif p and p != "Not calculated":
             part += f", p {p}"
         parts.append(part)
     return "; ".join(parts) or text(language, "no_estimate")
@@ -1259,9 +1271,22 @@ def _complete(entry) -> int | None:
     return None if complete is None else int(complete)
 
 
+def _row_n(row) -> int | None:
+    """The engine's n of one test of a batch: its ``n``, or the sum of its
+    group sizes (a two-group comparison keeps only ``ns``)."""
+    n = getattr(row, "n", None)
+    if isinstance(n, int) and not isinstance(n, bool):
+        return n
+    ns = getattr(row, "ns", None)
+    if ns and all(isinstance(v, int) and not isinstance(v, bool) for v in ns):
+        return int(sum(ns))
+    return None
+
+
 def _n(entry) -> str:
     """The engine's n of a result: its complete cases, or the n of each pair
-    or outcome of a batch (one value when they are all the same)."""
+    or outcome of a batch (one value when they are all the same). Only the
+    engine's numbers: never the session's listwise count (review R2)."""
     try:
         evidence = entry.run.evidence()
     except Exception:
@@ -1269,25 +1294,52 @@ def _n(entry) -> str:
     if evidence is not None and evidence.n_complete is not None:
         return str(evidence.n_complete)
     rows = getattr(getattr(entry.run, "result", None), "rows", None) or ()
-    values = [str(getattr(row, "n")) for row in rows
-              if isinstance(getattr(row, "n", None), int)]
+    values = [str(n) for n in map(_row_n, rows) if n is not None]
     if values:
         distinct = list(dict.fromkeys(values))
         return distinct[0] if len(distinct) == 1 else ", ".join(values)
-    complete = _complete(entry)
-    return "—" if complete is None else str(complete)
+    return "—"
+
+
+def _adjusted_p(entry) -> dict:
+    """{structured quantity key: (adjustment, adjusted p as saved)} of a batch
+    result: the engine row of each test with its saved adjusted p (review R1)."""
+    from interpretation_wizard import _p
+
+    result = getattr(entry.run, "result", None)
+    adjustment = str(getattr(result, "adjustment", "") or "")
+    rows = getattr(result, "rows", None) or ()
+    if not adjustment or not rows or not callable(getattr(result, "structured", None)):
+        return {}
+    by_name = {}
+    for row in rows:
+        name = getattr(row, "y", None) or getattr(row, "outcome", None)
+        if name is not None and getattr(row, "p_adjusted", None) is not None:
+            by_name[str(name)] = _p(row.p_adjusted)
+    try:
+        quantities = result.structured().quantities
+    except Exception:
+        return {}
+    found = {}
+    for quantity in quantities:
+        name = quantity.key.split(":", 1)[1] if ":" in quantity.key else None
+        if quantity.p is not None and name in by_name:
+            found[quantity.label] = (adjustment, by_name[name])
+    return found
 
 
 def _rows(entry) -> tuple:
-    """(parameter, estimate, ci, p) of the engine's verified rows, as saved;
-    the n rows are given apart."""
+    """(parameter, estimate, ci, p, adjusted) of the engine's verified rows, as
+    saved; the n rows are given apart. ``adjusted`` is (adjustment, adjusted p)
+    for each test of a batch, else None: its p is then the unadjusted one."""
     try:
         rows = entry.run.evidence().rows
     except Exception:
         return ()
+    adjusted = _adjusted_p(entry)
     skip = ("Complete observations (N)", "Original records", "N", "Missing")
-    return tuple((row.parameter, row.estimate, row.ci, row.p) for row in rows
-                 if row.parameter not in skip)
+    return tuple((row.parameter, row.estimate, row.ci, row.p, adjusted.get(row.parameter))
+                 for row in rows if row.parameter not in skip)
 
 
 def hypothesis_evidence(session, project, entries=None) -> dict[str, HypothesisEvidence]:
