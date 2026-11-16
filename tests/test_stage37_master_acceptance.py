@@ -31,6 +31,7 @@ import hashlib
 import json
 import math
 import os
+import re
 from pathlib import Path
 import shutil
 import sys
@@ -287,8 +288,11 @@ class Scenario:
                 rows = item.rows
                 if section.key == "appendix" and item.kind == "table":
                     rows = tuple(row[:-1] for row in rows)      # without the run's uuid
-                out.append((section.key, item.kind, item.text, item.title, item.columns,
-                            rows))
+                # The minute a result was calculated is in its paragraph: two
+                # runs that straddle a minute differ there and nowhere else.
+                text = re.sub(r"calculated \d{4}-\d{2}-\d{2} \d{2}:\d{2}", "calculated <time>",
+                              item.text or "")
+                out.append((section.key, item.kind, text, item.title, item.columns, rows))
         return out
 
 
