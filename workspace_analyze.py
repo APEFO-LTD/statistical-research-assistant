@@ -26,6 +26,10 @@ from workspace_state import LEVELS, ResearchTask
 from workspace_text import count_text, label as engine_label
 import workspace_variables as wv
 
+# Room on the right of a result card for its "Repeat with changes" button
+# (an icon button over the card's corner).
+REPEAT_ICON_ROOM = tk.CONTROL_HEIGHT
+
 GOAL_ICONS = {
     "compare": ft.Icons.COMPARE_ARROWS, "change": ft.Icons.TIMELINE,
     "relate": ft.Icons.SCATTER_PLOT_OUTLINED, "associate": ft.Icons.GRID_ON,
@@ -1466,13 +1470,7 @@ class ResultsPage:
         items = []
         for entry in reversed(self.app.session.results):
             selected = entry.id == current.id
-            # Stage 37 (Issue #68): a result can be repeated with changes from
-            # the list itself, as a new task (nothing confirmed is copied).
-            repeat = [wc.icon_button(ui, ft.Icons.CONTENT_COPY_OUTLINED,
-                                     ui.t("results.repeat_named", title=entry.title),
-                                     lambda e, i=entry.id: self._repeat(i),
-                                     data=f"result-repeat-{entry.id}")] if entry.method else []
-            items.append(ft.Container(
+            card = ft.Container(
                 content=ft.Row([ft.Column([
                     wc.text(ui, entry.title, tk.TYPE_LABEL, weight=ft.FontWeight.W_600,
                             max_lines=2),
@@ -1481,13 +1479,30 @@ class ResultsPage:
                                icon=ft.Icons.DESCRIPTION_OUTLINED)] if entry.in_report else []),
                     *([wc.chip(ui, ui.t("results.stale"), "warning", icon=ft.Icons.UPDATE,
                                data=f"result-stale-{entry.id}")] if entry.stale_reasons else []),
-                ], spacing=2, expand=True), *repeat], spacing=tk.SPACE_1,
+                ], spacing=2, expand=True)], spacing=tk.SPACE_1,
                     vertical_alignment=ft.CrossAxisAlignment.START),
                 bgcolor=ui.p.accent_subtle if selected else ui.p.surface,
                 border=ft.Border.all(1, ui.p.accent if selected else ui.p.border),
-                border_radius=ui.radius("card"), padding=tk.SPACE_3, ink=True,
+                border_radius=ui.radius("card"), ink=True,
+                padding=ft.Padding.only(left=tk.SPACE_3, top=tk.SPACE_3, bottom=tk.SPACE_3,
+                                        right=tk.SPACE_1 + (REPEAT_ICON_ROOM if entry.method else tk.SPACE_2)),
                 on_click=lambda e, i=entry.id: self._select(i), data=f"result-{entry.id}",
-            ))
+            )
+            if not entry.method:
+                items.append(card)
+                continue
+            # Stage 37 (Issue #68): a result can be repeated with changes from
+            # the list itself, as a new task (nothing confirmed is copied). The
+            # button lies over the card's corner, not inside the card: a
+            # button inside the clickable card merges into it, and neither the
+            # card nor the button is a button any more (screen readers, the
+            # pointer; tools/workspace_state_checks.py).
+            repeat = wc.icon_button(ui, ft.Icons.CONTENT_COPY_OUTLINED,
+                                    ui.t("results.repeat_named", title=entry.title),
+                                    lambda e, i=entry.id: self._repeat(i),
+                                    data=f"result-repeat-{entry.id}")
+            items.append(ft.Stack([card, ft.Container(repeat, top=tk.SPACE_1, right=tk.SPACE_1)],
+                                  data=f"result-row-{entry.id}"))
         return ft.Column(items, spacing=tk.SPACE_2, data="results-log",
                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 

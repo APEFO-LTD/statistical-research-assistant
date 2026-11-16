@@ -468,6 +468,16 @@ class ReuseTests(unittest.TestCase):
         ws.click("nav-results")
         self.assertEqual(ws.find(f"result-repeat-{first.id}").tooltip,
                          T("results.repeat_named", title=first.title))
+        # The button is not inside the clickable result card: there it merges
+        # into the card, and the browser shows neither as a button (the
+        # results-pointer-affordances check of tools/workspace_state_checks.py).
+        from ux_inventory import walk
+
+        for entry in ws.app.session.results:
+            inside = []
+            walk(ws.find(f"result-{entry.id}"), lambda c, d: inside.append(c))
+            self.assertEqual([c.data for c in inside[1:] if getattr(c, "on_click", None)], [],
+                             f"a clickable control inside result card {entry.id}")
         ws.counts.clear()
         ws.click(f"result-repeat-{first.id}")
         self.assertEqual(ws.total, 1)
