@@ -92,6 +92,7 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "table.effects.columns": ("Effect", "b", "SE", "t", "p", "95% CI"),
         "table.interaction": "Model {model}: test of the interaction",
         "table.interaction.columns": ("Product", "Equation", "ΔR²", "F", "df", "p", "f²"),
+        "table.interaction.hc3_columns": ("HC3 Wald F", "HC3 p"),
         "table.conditional": "Model {model}: conditional effects of {focal} at values of W",
         "table.conditional.columns": ("W", "Where", "Effect", "SE", "t", "p", "95% CI"),
         "table.cond_indirect": "Model {model}: conditional indirect effects (percentile "
@@ -162,6 +163,25 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
                                            "effect has the opposite sign to the direct effect c′ "
                                            "({direct}): inconsistent mediation at those values of "
                                            "W (suppression; MacKinnon, Krull & Lockwood, 2000).",
+        # Review S37-INT-1/2: opposite point estimates without a conclusive sign.
+        "interp.sign_open.both": "{path}: the point estimate of the indirect effect ({ab}) has "
+                                 "the opposite sign to the direct effect c′ ({direct}) and to "
+                                 "the total effect c ({total}), but the 95% interval of the "
+                                 "indirect effect or of the opposed effects includes zero: the "
+                                 "sign difference is inconclusive in these data.",
+        "interp.sign_open.direct": "{path}: the point estimate of the indirect effect ({ab}) has "
+                                   "the opposite sign to the direct effect c′ ({direct}), but "
+                                   "the 95% interval of one of them includes zero: the sign "
+                                   "difference is inconclusive in these data.",
+        "interp.sign_open.total": "{path}: the point estimate of the indirect effect ({ab}) has "
+                                  "the opposite sign to the total effect c ({total}), but the "
+                                  "95% interval of one of them includes zero: the sign "
+                                  "difference is inconclusive in these data.",
+        "interp.sign_open.conditional": "Via {m}, at W = {values}: the point estimate of the "
+                                        "conditional indirect effect has the opposite sign to "
+                                        "the direct effect c′ ({direct}), but the 95% interval "
+                                        "of one of them includes zero: the sign difference is "
+                                        "inconclusive at those values of W.",
         "interp.not_causal": "These are conditional associations in the data as analysed. "
                              "“Effect” is the conventional name of these model quantities "
                              "(Hayes, 2022); it does not mean that one variable changes another.",
@@ -190,8 +210,9 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "warn.boot_invalid": "{invalid} of {total} bootstrap resamples had a singular design "
                              "and were left out.",
         "warn.hc3": "HC3 standard errors apply to the paths and conditional effects; the "
-                    "bootstrap intervals do not depend on them; model F and ΔR² tests are "
-                    "the classical OLS tests.",
+                    "bootstrap intervals do not depend on them. The model F and the ΔR² F "
+                    "tests are classical OLS tests; the HC3 Wald F and p of each product are "
+                    "shown beside them in the interaction table.",
         "warn.cross_sectional": "Cross-sectional data cannot establish temporal order: an "
                                 "indirect path is a pattern of conditional associations, not "
                                 "evidence of causal mediation.",
@@ -301,6 +322,7 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "table.interaction": "{model}. modelis: mijiedarbības pārbaude",
         "table.interaction.columns": ("Reizinājums", "Vienādojums", "ΔR²", "F", "bp", "p",
                                       "f²"),
+        "table.interaction.hc3_columns": ("HC3 Valda F", "HC3 p"),
         "table.conditional": "{model}. modelis: {focal} nosacītie efekti pie W vērtībām",
         "table.conditional.columns": ("W", "Kur", "Efekts", "SE", "t", "p", "95% TI"),
         "table.cond_indirect": "{model}. modelis: nosacītie netiešie efekti (procentiļu "
@@ -369,6 +391,25 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
                                            "({direct}): nekonsekventa mediācija pie šīm W "
                                            "vērtībām (supresija; MacKinnon, Krull & Lockwood, "
                                            "2000).",
+        # Review S37-INT-1/2. LV drafts — needs native review.
+        "interp.sign_open.both": "{path}: netiešā efekta punktnovērtējumam ({ab}) ir pretēja "
+                                 "zīme nekā tiešajam efektam c′ ({direct}) un kopējam efektam "
+                                 "c ({total}), bet netiešā efekta vai pretējo efektu 95% "
+                                 "intervāls ietver nulli: zīmju atšķirība šajos datos nav "
+                                 "pārliecinoša.",
+        "interp.sign_open.direct": "{path}: netiešā efekta punktnovērtējumam ({ab}) ir pretēja "
+                                   "zīme nekā tiešajam efektam c′ ({direct}), bet viena no tiem "
+                                   "95% intervāls ietver nulli: zīmju atšķirība šajos datos nav "
+                                   "pārliecinoša.",
+        "interp.sign_open.total": "{path}: netiešā efekta punktnovērtējumam ({ab}) ir pretēja "
+                                  "zīme nekā kopējam efektam c ({total}), bet viena no tiem 95% "
+                                  "intervāls ietver nulli: zīmju atšķirība šajos datos nav "
+                                  "pārliecinoša.",
+        "interp.sign_open.conditional": "Caur {m} pie W = {values}: nosacītā netiešā efekta "
+                                        "punktnovērtējumam ir pretēja zīme nekā tiešajam "
+                                        "efektam c′ ({direct}), bet viena no tiem 95% intervāls "
+                                        "ietver nulli: zīmju atšķirība pie šīm W vērtībām nav "
+                                        "pārliecinoša.",
         "interp.not_causal": "Tās ir nosacītas saistības analizētajos datos. “Efekts” ir šo "
                              "modeļa lielumu ierastais nosaukums (Hayes, 2022); tas nenozīmē, "
                              "ka viens mainīgais maina citu.",
@@ -395,8 +436,9 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "warn.boot_invalid": "{invalid} no {total} bootstrap atkārtotajām izlasēm bija "
                              "singulārs plāns, un tās netika izmantotas.",
         "warn.hc3": "HC3 standartkļūdas attiecas uz ceļiem un nosacītajiem efektiem; bootstrap "
-                    "intervāli no tām nav atkarīgi; modeļa F un ΔR² pārbaudes ir klasiskās OLS "
-                    "pārbaudes.",
+                    "intervāli no tām nav atkarīgi. Modeļa F un ΔR² F pārbaudes ir klasiskās OLS "
+                    "pārbaudes; katra reizinājuma HC3 Valda F un p ir parādīti blakus tām "
+                    "mijiedarbības tabulā.",
         "warn.cross_sectional": "Šķērsgriezuma dati nevar noteikt laika secību: netiešais ceļš "
                                 "ir nosacītu saistību kopums, nevis cēloniskas mediācijas "
                                 "pierādījums.",
@@ -503,6 +545,7 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "table.effects.columns": ("Эффект", "b", "SE", "t", "p", "95% ДИ"),
         "table.interaction": "Модель {model}: проверка взаимодействия",
         "table.interaction.columns": ("Произведение", "Уравнение", "ΔR²", "F", "сс", "p", "f²"),
+        "table.interaction.hc3_columns": ("F Вальда HC3", "HC3 p"),
         "table.conditional": "Модель {model}: условные эффекты {focal} при значениях W",
         "table.conditional.columns": ("W", "Где", "Эффект", "SE", "t", "p", "95% ДИ"),
         "table.cond_indirect": "Модель {model}: условные косвенные эффекты (процентильный "
@@ -576,6 +619,25 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
                                            "({direct}): несогласованная медиация при этих "
                                            "значениях W (супрессия; MacKinnon, Krull & Lockwood, "
                                            "2000).",
+        # Review S37-INT-1/2. RU drafts — needs native review.
+        "interp.sign_open.both": "{path}: точечная оценка косвенного эффекта ({ab}) имеет знак, "
+                                 "противоположный прямому эффекту c′ ({direct}) и общему "
+                                 "эффекту c ({total}), но 95% интервал косвенного эффекта или "
+                                 "противоположных эффектов включает ноль: различие знаков в "
+                                 "этих данных не является убедительным.",
+        "interp.sign_open.direct": "{path}: точечная оценка косвенного эффекта ({ab}) имеет "
+                                   "знак, противоположный прямому эффекту c′ ({direct}), но 95% "
+                                   "интервал одного из них включает ноль: различие знаков в "
+                                   "этих данных не является убедительным.",
+        "interp.sign_open.total": "{path}: точечная оценка косвенного эффекта ({ab}) имеет знак, "
+                                  "противоположный общему эффекту c ({total}), но 95% интервал "
+                                  "одного из них включает ноль: различие знаков в этих данных "
+                                  "не является убедительным.",
+        "interp.sign_open.conditional": "Через {m} при W = {values}: точечная оценка условного "
+                                        "косвенного эффекта имеет знак, противоположный прямому "
+                                        "эффекту c′ ({direct}), но 95% интервал одного из них "
+                                        "включает ноль: различие знаков при этих значениях W не "
+                                        "является убедительным.",
         "interp.not_causal": "Это условные связи в проанализированных данных. «Эффект» — "
                              "принятое название этих величин модели (Hayes, 2022); оно не "
                              "означает, что одна переменная изменяет другую.",
@@ -602,7 +664,9 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "warn.boot_invalid": "{invalid} из {total} бутстреп-выборок имели вырожденный план и "
                              "были исключены.",
         "warn.hc3": "Ошибки HC3 относятся к путям и условным эффектам; бутстреп-интервалы от "
-                    "них не зависят; F модели и проверки ΔR² — классические проверки OLS.",
+                    "них не зависят. F модели и F-проверки ΔR² — классические проверки OLS; "
+                    "F Вальда HC3 и p каждого произведения показаны рядом с ними в таблице "
+                    "взаимодействия.",
         "warn.cross_sectional": "Одномоментные данные не позволяют установить временной "
                                 "порядок: косвенный путь — это набор условных связей, а не "
                                 "свидетельство причинной медиации.",

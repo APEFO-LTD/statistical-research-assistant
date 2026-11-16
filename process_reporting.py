@@ -122,11 +122,16 @@ def process_tables(result, language: str = "en", sensitivity=None) -> tuple[Proc
             tuple((_effect_label(e, language, binary_x), num(e.value), num(e.se),
                    ci(e.ci_low, e.ci_high)) for e in result.indirect)))
     if result.interactions:
+        # Review S37-INT-3: with HC3, the HC3 Wald F and p of each product.
+        robust = result.spec.hc3 and any(t.robust_f is not None for t in result.interactions)
         tables.append(ProcessTable(
             _t(language, "table.interaction", model=model),
-            _columns(language, "table.interaction.columns"),
+            _columns(language, "table.interaction.columns")
+            + (_columns(language, "table.interaction.hc3_columns") if robust else ()),
             tuple((test.product, test.equation, fixed(test.delta_r2), f"{test.f_value:.2f}",
                    f"{test.df1}, {test.df2}", p_cell(test.p), fixed(test.f2))
+                  + ((("—", "—") if test.robust_f is None else
+                      (f"{test.robust_f:.2f}", p_cell(test.robust_p))) if robust else ())
                   for test in result.interactions)))
     if result.conditional:
         by_table: dict[str, list] = {}
@@ -357,38 +362,59 @@ def inconsistent_mediation(result, language: str = "en") -> list[str]:
     """The wording guard of review S5: an indirect effect whose sign differs
     from the direct or the total effect is called inconsistent mediation
     (suppression; MacKinnon, Krull & Lockwood, 2000). The program never
-    labels any pattern "partial" or "full" mediation."""
+    labels any pattern "partial" or "full" mediation.
+
+    Review S37-INT-1/2: the label needs a conclusive sign on both sides: the
+    indirect effect's bootstrap interval excludes zero, and so does the
+    interval of the effect it is opposed to (c′ or c; an inconclusive one is
+    not named as opposed). Otherwise the opposite point estimates are said
+    to be an inconclusive sign difference. The same holds for each
+    conditional indirect effect of Models 7 and 14 at its value of W."""
     language = _language(language)
     model = result.spec.model
     out: list[str] = []
     if model == "4":
-        direct = result.estimate("direct").value
-        total = result.estimate("total").value
+        direct = result.estimate("direct")
+        total = result.estimate("total")
         for e in result.indirect:
             if not (e.key.startswith("indirect:") or e.key == "indirect_total"):
                 continue
             sign = _sign(e.value)
             if not sign:
                 continue
-            against_direct = _sign(direct) == -sign
-            against_total = _sign(total) == -sign
-            key = ("interp.inconsistent.both" if against_direct and against_total else
-                   "interp.inconsistent.direct" if against_direct else
-                   "interp.inconsistent.total" if against_total else None)
-            if key:
-                path = (_t(language, "path.total") if e.key == "indirect_total"
-                        else _t(language, "path.via", m=e.mediator))
-                out.append(_t(language, key, path=path, ab=num(e.value), direct=num(direct),
-                              total=num(total)))
+            against_direct = _sign(direct.value) == -sign
+            against_total = _sign(total.value) == -sign
+            if not (against_direct or against_total):
+                continue
+            path = (_t(language, "path.total") if e.key == "indirect_total"
+                    else _t(language, "path.via", m=e.mediator))
+            values = dict(path=path, ab=num(e.value), direct=num(direct.value),
+                          total=num(total.value))
+            firm_direct = against_direct and direct.excludes_zero
+            firm_total = against_total and total.excludes_zero
+            if e.excludes_zero and (firm_direct or firm_total):
+                key = ("interp.inconsistent.both" if firm_direct and firm_total else
+                       "interp.inconsistent.direct" if firm_direct else
+                       "interp.inconsistent.total")
+                out.append(_t(language, key, **values))
+                continue
+            key = ("interp.sign_open.both" if against_direct and against_total else
+                   "interp.sign_open.direct" if against_direct else "interp.sign_open.total")
+            out.append(_t(language, key, **values))
     elif model in ("7", "14"):
-        direct = result.estimate("direct").value
-        by_mediator: dict[str, list[str]] = {}
+        direct = result.estimate("direct")
+        firm: dict[str, list[str]] = {}
+        open_: dict[str, list[str]] = {}
         for e in result.indirect:
-            if e.key.startswith("cond_indirect:") and _sign(e.value) == -_sign(direct) != 0:
-                by_mediator.setdefault(e.mediator, []).append(num(e.w))
-        for mediator, values in by_mediator.items():
+            if e.key.startswith("cond_indirect:") and _sign(e.value) == -_sign(direct.value) != 0:
+                target = firm if e.excludes_zero and direct.excludes_zero else open_
+                target.setdefault(e.mediator, []).append(num(e.w))
+        for mediator, values in firm.items():
             out.append(_t(language, "interp.inconsistent.conditional", m=mediator,
-                          values=", ".join(dict.fromkeys(values)), direct=num(direct)))
+                          values=", ".join(dict.fromkeys(values)), direct=num(direct.value)))
+        for mediator, values in open_.items():
+            out.append(_t(language, "interp.sign_open.conditional", m=mediator,
+                          values=", ".join(dict.fromkeys(values)), direct=num(direct.value)))
     return out
 
 

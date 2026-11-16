@@ -17,7 +17,7 @@ ordinary least squares (statsmodels) on the listwise-complete cases.
   defined for the constant, dummy codes and products.
 * Optional HC3 coefficient standard errors (t-based p and intervals, as
   :mod:`regression_analysis` does); model F and block ΔR² tests are classical,
-  with the HC3 Wald F of each block added when HC3 is used.
+  with the HC3 Wald F and p of each block shown beside it when HC3 is used.
 * Each categorical variable and each product is also tested as a block (all
   its columns together): ΔR², F, p and f² = ΔR²/(1 − R²).
 * Diagnostics: residual Shapiro–Wilk and Q–Q, Breusch–Pagan (Koenker),
@@ -400,8 +400,9 @@ def fit_linear_model(df: pd.DataFrame, spec: LinearSpec) -> LinearModelResult:
         warnings.append(f"{factor} is dummy-coded; reference category {reference} "
                         f"(rule: {'named by the researcher' if factor in explicit else spec.reference}).")
     if spec.hc3:
-        warnings.append("HC3 standard errors apply to the coefficients; model F and block ΔR² "
-                        "tests are the classical OLS tests (the HC3 Wald F is shown with them).")
+        warnings.append("HC3 standard errors apply to the coefficients. The model F and the "
+                        "block ΔR² F tests are classical OLS tests; the HC3 Wald F and p of each "
+                        "block are shown beside them in the blocks table (HC3 Wald F, HC3 p).")
     if shapiro_p is not None and shapiro_p < 0.05:
         warnings.append("Residual Shapiro–Wilk p < .05; examine the Q–Q plot.")
     if bp_p < 0.05:
@@ -449,11 +450,19 @@ def linear_tables(result: LinearModelResult) -> tuple[Table, ...]:
     tables = [Table(f"Linear model: {result.outcome}",
                     ("Term", "b", "SE", "t", "p", "95% CI", "β", "VIF"), rows)]
     if result.blocks:
+        # Review S37-INT-3: with HC3, the HC3 Wald F and p of each block are
+        # shown beside the classical ΔR² F test.
+        robust = result.spec.hc3 and any(b.robust_f is not None for b in result.blocks)
         tables.append(Table("Blocks of terms (ΔR² when the block is removed)",
-                            ("Block", "Kind", "Columns", "ΔR²", "F", "df", "p", "f²"),
+                            ("Block", "Kind", "Columns", "ΔR²", "F", "df", "p", "f²")
+                            + (("HC3 Wald F", "HC3 p") if robust else ()),
                             tuple((b.name, b.kind, str(len(b.columns)), fixed(b.delta_r2),
                                    f"{b.f_value:.2f}", f"{b.df1}, {b.df2}", p_cell(b.p),
-                                   fixed(b.f2)) for b in result.blocks)))
+                                   fixed(b.f2))
+                                  + ((("—", "—") if b.robust_f is None else
+                                      (f"{b.robust_f:.2f}", p_cell(b.robust_p)))
+                                     if robust else ())
+                                  for b in result.blocks)))
     if result.references:
         tables.append(Table("Dummy coding of categorical covariates",
                             ("Variable", "Reference category", "Categories (n)"),
@@ -515,6 +524,10 @@ def structured_result(result: LinearModelResult) -> StructuredResult:
                             note=f"F({b.df1}, {b.df2}) = {b.f_value:.3f}; f² = {b.f2:.4f}",
                             p=b.p, p_method="F test of the R² change")
                    for b in result.blocks)
+    blocks += tuple(Quantity(f"hc3_f:{b.name}", f"HC3 Wald F of {b.name}", b.robust_f,
+                             note=f"df = {b.df1}, {b.df2}", p=b.robust_p,
+                             p_method="HC3 Wald F test of the block")
+                    for b in result.blocks if result.spec.hc3 and b.robust_f is not None)
     diagnostics = (Quantity("r2", "R²", result.r_squared, p=result.f_p,
                             p_method=f"F({result.df_model}, {result.df_resid})"),
                    Quantity("adj_r2", "Adjusted R²", result.adj_r_squared))
