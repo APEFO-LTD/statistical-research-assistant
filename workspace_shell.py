@@ -1298,6 +1298,9 @@ class DataPage:
         from workspace_groups import GroupsCard
 
         self.groups = GroupsCard(app)      # Stage 36.3: groups from a scale
+        from workspace_scales import ScalesCard
+
+        self.scales = ScalesCard(app)      # Stage 37: the scales register
         from workspace_export import ExportPanel
 
         self.export = ExportPanel(app, "data")     # Stage 37 (#67): one Export action
@@ -1344,6 +1347,7 @@ class DataPage:
             ft.Container(header, key=ft.ScrollKey("data-top")), stats, self._next_step(),
             ft.Container(self.export.build(), key=ft.ScrollKey("data-export")),
             ft.Container(self._dictionary(), key=ft.ScrollKey("data-variables")),
+            ft.Container(self.scales.build(), key=ft.ScrollKey("data-scales")),
             ft.Container(self.groups.build(), key=ft.ScrollKey("data-groups")), self._preview(),
             self._import_options(), self._preparation_card(), self._sample_picker(),
         ], spacing=tk.SPACE_5, horizontal_alignment=ft.CrossAxisAlignment.STRETCH))

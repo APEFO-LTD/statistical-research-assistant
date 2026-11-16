@@ -58,6 +58,7 @@ on:
       - "batch_correlation.py"
       - "reliability.py"
       - "cronbach.py"
+      - "scale_register.py"
       - "item_diagnostics.py"
       - "linear_model.py"
       - "process_models.py"
