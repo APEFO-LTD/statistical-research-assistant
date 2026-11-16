@@ -59,6 +59,7 @@ on:
       - "reliability.py"
       - "cronbach.py"
       - "scale_register.py"
+      - "variable_tables.py"
       - "item_diagnostics.py"
       - "linear_model.py"
       - "process_models.py"

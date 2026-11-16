@@ -178,6 +178,15 @@ def _run_matrix(df, roles, options, confirms, session):
     return runs.run_matrix(df, roles["items"], options["method"], confirms.get("scales", False))
 
 
+def _run_descriptives_many(df, roles, options, confirms, session):
+    return runs.run_descriptives_many(df, list(roles["variables"]))
+
+
+def _run_correlation_table(df, roles, options, confirms, session):
+    return runs.run_correlation_table(df, list(roles["items"]), options["method"],
+                                      options["adjust"], confirms.get("pearson", False))
+
+
 def _run_groups(df, roles, options, confirms, session):
     return runs.run_groups(df, roles["group"], roles["outcome"], options["method"],
                            _level(session, roles["outcome"]),
@@ -433,6 +442,30 @@ METHODS: dict[str, MethodSpec] = {spec.key: spec for spec in (
             "I confirmed the measurement scales and study assumptions (Pearson: "
             "quantitative and linear; Spearman: ordinal or quantitative)"),),
         runner=_run_matrix),
+    # Stage 37 (Fable review §4 item 5): Tables 1 and 2 of a thesis.
+    MethodSpec(
+        "descriptives_many", "descriptive", "describe", "Descriptive statistics of many variables",
+        "One table: N, missing, mean, SD, median, quartiles, minimum and maximum of each "
+        "ordinal or quantitative variable.",
+        (Role("variables", "role.variables", ORDERED, multiple=True, minimum=2, maximum=60),),
+        runner=_run_descriptives_many),
+    MethodSpec(
+        "correlation_table", "batch_correlation", "relationships",
+        "Correlation matrix with CIs and adjusted p",
+        "Every pair of 2–16 variables with its N, coefficient, 95% CI and p-value; all "
+        "p-values of the table adjusted together as one family.",
+        (Role("items", "role.variables", ORDERED, multiple=True, minimum=2, maximum=16),),
+        options=(Option("method", "Correlation method",
+                        (("pearson", "Pearson’s r"), ("spearman", "Spearman’s ρ")), "pearson"),
+                 Option("adjust", "Multiple-comparison adjustment",
+                        (("holm", "Holm (familywise error)"),
+                         ("bh", "Benjamini–Hochberg (false discovery rate)"),
+                         ("bonferroni", "Bonferroni (familywise error)")), "holm")),
+        confirmations=(Confirmation(
+            "pearson",
+            "For Pearson only: I reviewed linearity, outliers, independence and "
+            "suitability of the variables", applies_to=("pearson",)),),
+        runner=_run_correlation_table),
     MethodSpec(
         "chi", "chi", "relationships", "Chi-square test of independence",
         "Association between two categorical variables with observed and expected counts.",

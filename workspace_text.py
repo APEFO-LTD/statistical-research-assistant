@@ -5442,3 +5442,9 @@ T.update({
                           "{name}: apstipriniet to kā kārtas vai kvantitatīvu.",
                           "{name}: подтвердите его как порядковый или количественный."),
 })
+
+
+# Stage 37 (Fable review §4 item 5): the variables of a table (LV/RU drafts).
+T.update({
+    "role.variables": ("Variables", "Mainīgie", "Переменные"),
+})
