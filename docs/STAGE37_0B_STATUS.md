@@ -131,7 +131,7 @@ All new texts have LV and RU written as drafts, marked in the code ("LV/RU draft
 
 ## 9. Fixes after the 0b verification (`verify-stage37-0b.json`, reviewed `a8663ce`)
 
-Every confirmed major is fixed. Each fix has a red test in `tests/test_stage37_0b_fixes.py` (30 tests): run against a clean export of `a8663ce`, 28 fail or error there (32 failures and 5 errors counted per subtest; the 2 that pass are controls: a removal before any result needs no reason, and the SQLite guard keeps UPDATE/DELETE refused), and all pass on this branch.
+Every confirmed major is fixed. Each fix has a red test in `tests/test_stage37_0b_fixes.py` (30 tests): run against a clean export of `a8663ce`, 29 fail or error there (32 failures and 5 errors counted per subtest; the one that passes is a control: a removal before any result needs no reason), and all pass on this branch.
 
 | ID | Severity | Status | Fix | Proved by (`test_stage37_0b_fixes`) |
 |---|---|---|---|---|
