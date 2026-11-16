@@ -308,10 +308,15 @@ class ProjectHub:
         self._done(self.app.t("project.closed"))
 
     async def duplicate(self, project_id: str):
+        warnings: list[str] = []
         try:
-            info = await asyncio.to_thread(self.binding.duplicate, project_id)
+            info = await asyncio.to_thread(self.binding.duplicate, project_id, warnings)
         except (ProjectError, OSError) as error:
             self._failed(error)
+            return
+        if warnings:          # a research library that cannot be read was left out
+            self._done(self.app.t("project.duplicated", title=info.title) + " "
+                       + self.app.t("project.library_left_out_copy"), "warning")
             return
         self._done(self.app.t("project.duplicated", title=info.title))
 
@@ -362,11 +367,16 @@ class ProjectHub:
 
     async def backup(self, project_id: str, title: str):
         app = self.app
+        warnings: list[str] = []
         outcome = await app.save_file(
             app.t("project.backup_title"), _file_name(title), "sra",
-            lambda path: self.binding.export(project_id, path, app.survey_root),
+            lambda path: self.binding.export(project_id, path, app.survey_root, warnings),
             announce=lambda path: app.t("project.backup_saved", path=path))
-        self._done(outcome.message, outcome.tone)
+        message, tone = outcome.message, outcome.tone
+        if warnings and outcome.saved:   # a research library that cannot be read was left out
+            message, tone = message + " " + app.t("project.library_left_out_backup"), "warning"
+            app.status(message, tone)
+        self._done(message, tone)
 
     async def _on_backup_picked(self, e):
         await self.restore_files(getattr(e, "files", None))

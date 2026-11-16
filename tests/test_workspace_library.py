@@ -354,6 +354,89 @@ class BackupChoiceTests(LibraryUiCase):
         self.assertFalse([n for n in self.entries(again) if "/library/" in n])
 
 
+class HardeningTests(LibraryUiCase):
+    """Independent review verify-stage37-rag: storage F1/F2/F5, injection F1."""
+
+    def edit_row(self, project, **values):
+        import sqlite3
+        from contextlib import closing
+
+        with closing(sqlite3.connect(project.path / rl.FOLDER / rl.DB_NAME)) as db:
+            for column, value in values.items():
+                db.execute(f"UPDATE documents SET {column} = ?", (value,))
+            db.commit()
+
+    def test_open_never_hands_an_unchecked_path_to_the_system(self):
+        ws = self.ws
+        project = self.project("Fictional restored study")
+        page = self.open_library()
+        self.add((fx.EN_NOTES, "txt"))
+        (document,) = page.library().documents()
+        for stored in ("../../../outside.txt", "payload.cmd"):
+            self.edit_row(project, stored_name=stored)
+            ws.app.render()
+            with mock.patch("workspace_library.open_with_system") as system:
+                ws.click(f"library-doc-{document.id}-open")
+                system.assert_not_called()
+            self.assertIn("was not opened", ws.find("workspace-status").value)
+
+    def test_a_library_that_cannot_be_opened_is_reported_for_that_project_only(self):
+        import sqlite3
+        from contextlib import closing
+
+        ws = self.ws
+        first = self.project("Fictional study A")
+        page = self.open_library()
+        self.add((fx.EN_REVIEW, "pdf"))
+        for damage in ("newer", "garbage"):
+            with self.subTest(damage=damage):
+                second = self.project(f"Fictional study B {damage}")
+                folder = second.path / rl.FOLDER
+                folder.mkdir(parents=True, exist_ok=True)
+                if damage == "newer":
+                    with closing(sqlite3.connect(folder / rl.DB_NAME)) as db:
+                        db.execute(f"PRAGMA user_version = {rl.SCHEMA_VERSION + 1}")
+                        db.commit()
+                else:
+                    (folder / rl.DB_NAME).write_bytes(b"\0" * 8192)
+                self.open_library()
+                self.assertTrue(ws.find_all("library-failed"))
+                ws.app.render()
+                self.assertIsNone(page.library(), "never the library of another project")
+                self.assertTrue(ws.find_all("library-failed"), "still this project's failure")
+                self.assertFalse(ws.find_all("library-none"))
+                self.assertFalse(ws.find_all("library-doc-"))
+                note = self.files / "piezimes.txt"
+                note.parent.mkdir(parents=True, exist_ok=True)
+                note.write_text("Laboratorijas piezīmes\n\nSintētisks teksts.\n", encoding="utf-8")
+                self.assertEqual(ws.run(page.add_files(picked(note))), [])
+                self.assertEqual(rl.Library.for_project(first.path).counts()[0], 1)
+                self.assertIsNone(page.search())
+                self.assertTrue(ws.find_all("library-backup"), "the backup choice stays reachable")
+                self.assertTrue(ws.find_all("library-retry"))
+
+    def test_a_damaged_library_does_not_block_backing_up_or_copying_the_project(self):
+        ws = self.ws
+        project = self.project("Fictional damaged study")
+        page = self.open_library()
+        self.add((fx.EN_NOTES, "txt"))
+        ws.check("library-backup", True)
+        for side in (project.path / rl.FOLDER).glob("library.sqlite3-*"):
+            side.unlink()
+        (project.path / rl.FOLDER / rl.DB_NAME).write_bytes(b"\0" * 8192)
+        ws.app.navigate("home")
+        ws.click(f"project-duplicate-{project.id}")
+        status = ws.find("workspace-status").value
+        self.assertIn(T("project.library_left_out_copy"), status)
+        ws.click(f"project-backup-{project.id}")
+        saved = ws.saved[-1].with_suffix(".sra")
+        self.assertTrue(saved.is_file())
+        with zipfile.ZipFile(saved) as archive:
+            self.assertFalse([n for n in archive.namelist() if "/library/" in n])
+        self.assertIn(T("project.library_left_out_backup"), ws.find("workspace-status").value)
+        del page
+
+
 class LanguageTests(unittest.TestCase):
     def test_every_part_of_the_page_reads_in_every_language(self):
         for language in ("en", "lv", "ru"):

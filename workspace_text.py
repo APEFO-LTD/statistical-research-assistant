@@ -768,6 +768,13 @@ T: dict[str, tuple[str, str, str]] = {
     "project.duplicate": ("Duplicate", "Dublēt", "Дублировать"),
     "project.duplicated": ("Created the copy “{title}”.", "Izveidota kopija “{title}”.",
                            "Создана копия «{title}»."),
+    "project.library_left_out_copy": (
+        "The research library could not be read, so the copy was made without it; the library "
+        "itself was not changed.",
+        "Pētījuma bibliotēku neizdevās nolasīt, tāpēc kopija izveidota bez tās; pati bibliotēka "
+        "netika mainīta.",
+        "Исследовательскую библиотеку не удалось прочитать, поэтому копия создана без неё; сама "
+        "библиотека не изменена."),
     "project.backup": ("Back up…", "Rezerves kopija…", "Резервная копия…"),
     "project.backup_title": ("Save a project backup", "Saglabāt projekta rezerves kopiju",
                              "Сохранить резервную копию проекта"),
@@ -778,6 +785,13 @@ T: dict[str, tuple[str, str, str]] = {
     ),
     "project.backup_saved": ("Backup saved: {path}", "Rezerves kopija saglabāta: {path}",
                              "Резервная копия сохранена: {path}"),
+    "project.library_left_out_backup": (
+        "The research library could not be read, so this backup was made without it; "
+        "everything else is in it, and the library itself was not changed.",
+        "Pētījuma bibliotēku neizdevās nolasīt, tāpēc šī rezerves kopija izveidota bez tās; "
+        "viss pārējais tajā ir, un pati bibliotēka netika mainīta.",
+        "Исследовательскую библиотеку не удалось прочитать, поэтому эта резервная копия создана "
+        "без неё; всё остальное в ней есть, а сама библиотека не изменена."),
     "project.archive": ("Archive", "Arhivēt", "В архив"),
     "project.unarchive": ("Return from the archive", "Atgriezt no arhīva", "Вернуть из архива"),
     "project.archived": ("Archived “{title}”.", "Arhivēts “{title}”.", "Проект «{title}» перемещён в архив."),
@@ -3678,6 +3692,51 @@ T.update({
                                             "šis meklēšanas iestatījums šeit nav pieejams.",
                                             "эта настройка поиска здесь недоступна."),
     # Ask with sources (library_ask.py).
+    # Hardening (independent review verify-stage37-rag).
+    "library.error.unsafe_source": (
+        "the library refers to a file it did not store itself (for example in a restored "
+        "backup), so it is never opened.",
+        "bibliotēka norāda uz failu, ko tā pati nav saglabājusi (piemēram, atjaunotā rezerves "
+        "kopijā), tāpēc tas netiek atvērts.",
+        "библиотека ссылается на файл, который она сама не сохраняла (например, в "
+        "восстановленной резервной копии), поэтому он не открывается."),
+    "library.error.damaged": (
+        "The library file of this project could not be read; it may be damaged ({detail}). "
+        "Nothing was changed, and the stored documents are kept in the project's library "
+        "folder. Backups and copies of the project leave the library out until it can be read.",
+        "Šī projekta bibliotēkas failu neizdevās nolasīt; tas var būt bojāts ({detail}). Nekas "
+        "netika mainīts, un saglabātie dokumenti paliek projekta bibliotēkas mapē. Projekta "
+        "rezerves kopijās un kopijās bibliotēka netiek iekļauta, līdz to atkal var nolasīt.",
+        "Файл библиотеки этого проекта не удалось прочитать; возможно, он повреждён ({detail}). "
+        "Ничего не изменено, сохранённые документы остаются в папке библиотеки проекта. "
+        "Резервные копии и копии проекта не включают библиотеку, пока её нельзя прочитать."),
+    "library.error.locked": (
+        "The library is being written by another window of the program. Try again in a moment.",
+        "Bibliotēkā pašlaik raksta cits programmas logs. Mēģiniet vēlreiz pēc brīža.",
+        "В библиотеку сейчас пишет другое окно программы. Повторите попытку через минуту."),
+    "library.error.unwritable": (
+        "The library could not be opened: this program may not read or write its folder "
+        "({detail}).",
+        "Bibliotēku neizdevās atvērt: programma nedrīkst lasīt vai rakstīt tās mapē ({detail}).",
+        "Библиотеку не удалось открыть: программе нельзя читать или писать в её папку "
+        "({detail})."),
+    "library.failed_title": ("The research library of “{project}” could not be opened",
+                             "Projekta “{project}” pētījuma bibliotēku neizdevās atvērt",
+                             "Исследовательскую библиотеку проекта «{project}» не удалось открыть"),
+    "library.retry": ("Try again", "Mēģināt vēlreiz", "Повторить"),
+    "library.failed_backup": (
+        "While the library cannot be read, backups and copies of this project are made without "
+        "it, and say so.",
+        "Kamēr bibliotēku nevar nolasīt, šī projekta rezerves kopijas un kopijas tiek veidotas "
+        "bez tās, un tas tiek pateikts.",
+        "Пока библиотеку нельзя прочитать, резервные копии и копии проекта создаются без неё, и "
+        "об этом сообщается."),
+    "library.not_opened": ("{name} was not opened: {reason}", "{name} netika atvērts: {reason}",
+                           "{name} не открыт: {reason}"),
+    "library.card_unreadable": (
+        "The library of this project cannot be read by this version; open it for details.",
+        "Šī versija nevar nolasīt šī projekta bibliotēku; atveriet to, lai uzzinātu vairāk.",
+        "Эта версия не может прочитать библиотеку проекта; откройте её, чтобы узнать подробности."),
     "library.ask.title": ("Ask with sources", "Jautāt ar avotiem", "Спросить по источникам"),
     "library.ask.intro": (
         "Optional. Your question goes to the AI provider chosen in Settings together with only "

@@ -90,6 +90,7 @@ class LibraryPage:
         self._tickets = itertools.count(1)
         self._library = None
         self._library_for = None
+        self.library_error = None       # why the open project's library cannot be opened
         self._ocr_probe: tuple[bool, tuple[str, ...]] | None = None
         self.opened: set[str] = set()
         self.reset()
@@ -112,19 +113,37 @@ class LibraryPage:
 
     # ------------------------------------------------------------ state
     def library(self):
-        """The open project's library (created on first use), or None."""
-        from research_library import Library
+        """The open project's library (created on first use), or None: no
+        project is open, or its library cannot be opened (``library_error``
+        says why). The page, its state and its library are bound to one
+        project (its id, folder and opening): a library that fails to open
+        is never replaced by the one opened before (storage F2)."""
+        import sqlite3
+
+        from research_library import Library, LibraryError
 
         binding = self.app.projects
         if not binding.active:
-            self._library, self._library_for = None, None
+            self._library, self._library_for, self.library_error = None, None, None
             return None
-        key = (binding.project.id, binding.generation)
+        key = (binding.project.id, str(binding.project.path), binding.generation)
         if self._library_for != key:
             self.reset()
+            self._library, self.library_error = None, None
             self._library_for = key
-            self._library = Library.for_project(binding.project.path)
+            try:
+                self._library = Library.for_project(binding.project.path)
+            except LibraryError as error:
+                self.library_error = error
+            except (sqlite3.Error, OSError) as error:
+                self.library_error = LibraryError("damaged", str(error),
+                                                  detail=str(error)[:200])
         return self._library
+
+    def retry_library(self, e=None):
+        """Open the project's library again (it was locked, or put right)."""
+        self._library, self._library_for, self.library_error = None, None, None
+        self.app.render()
 
     def ocr_engine(self) -> tuple[bool, tuple[str, ...]]:
         if self._ocr_probe is None:
@@ -147,9 +166,10 @@ class LibraryPage:
         app, ui = self.app, self.app.ui
         try:
             library = self.library()
-        except LibraryError as error:
-            return app.constrained(wc.notice(ui, self.error_text(error), "danger",
-                                             title=ui.t("library.title"), data="library-failed"))
+        except LibraryError as error:           # pragma: no cover - library() keeps it
+            self.library_error, library = error, None
+        if self.library_error is not None and app.projects.active:
+            return self._failed(self.library_error)
         if library is None:
             return wc.empty_state(ui, ft.Icons.LOCAL_LIBRARY_OUTLINED, ui.t("library.title"),
                                   ui.t("library.no_project"), actions=[
@@ -169,6 +189,34 @@ class LibraryPage:
             body.append(wc.notice(ui, self.message[0], self.message[1], data="library-message"))
         body += [self._documents(library), self._search(library), self._ask(library)]
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="library-page",
+                                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+
+    def _failed(self, error) -> ft.Control:
+        """The open project's library cannot be opened: say so for this
+        project, keep the backup choice reachable, offer to try again."""
+        import research_library as rl
+
+        app, ui = self.app, self.app.ui
+        project = app.projects.project
+        travels = rl.travels(project.path)
+        notice = wc.notice(ui, self.error_text(error), "danger",
+                           title=ui.t("library.failed_title", project=app.projects.info().title),
+                           actions=[wc.button(ui, ui.t("library.retry"), self.retry_library,
+                                              icon=ft.Icons.REFRESH, data="library-retry")],
+                           data="library-failed")
+        backup = wc.card(ui, [
+            wc.checkbox(ui, ui.t("library.backup"), travels,
+                        on_change=lambda e: self.set_travels(bool(e.control.value)),
+                        data="library-backup"),
+            wc.caption(ui, ui.t("library.failed_backup"), data="library-backup-note"),
+        ], title=ui.t("library.documents"), data="library-documents")
+        header = wc.page_header(ui, ui.t("library.title"),
+                                ui.t("library.subtitle", project=app.projects.info().title),
+                                actions=[wc.button(ui, ui.t("library.back"),
+                                                   lambda e: app.navigate("project"), kind="quiet",
+                                                   icon=ft.Icons.ARROW_BACK, data="library-back")])
+        return app.constrained(ft.Column([header, notice, backup], spacing=tk.SPACE_4,
+                                         data="library-page",
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
     # ------------------------------------------------------- documents
@@ -457,8 +505,15 @@ class LibraryPage:
         app, library = self.app, self.library()
         if library is None:
             return
-        path = library.source_file(document)
         if document.type != "pdf" or not page:
+            # Only the stored copy itself, checked by name, place and SHA-256,
+            # ever reaches the system (storage F1 / injection F1).
+            try:
+                path, _data = await asyncio.to_thread(library.verified_source, document)
+            except LibraryError as error:
+                app.status(app.t("library.not_opened", name=document.file_name,
+                                 reason=self.error_text(error)), "danger")
+                return
             try:
                 await asyncio.to_thread(open_with_system, path)
             except Exception as error:
@@ -722,7 +777,9 @@ class LibraryPage:
         if project is None:
             return
         rl.set_travels(project.path, value)
-        self.message = (self.app.t("library.backup_on" if value else "library.backup_off"), "info")
+        if self.library_error is None:
+            self.message = (self.app.t("library.backup_on" if value else "library.backup_off"),
+                            "info")
         self.app.render()
 
     def error_text(self, error) -> str:
@@ -733,6 +790,7 @@ class LibraryPage:
 
         if key in T:
             values.setdefault("name", "")
+            values.setdefault("detail", str(error)[:200])
             if "size" in values:
                 values["size"] = f"{values['size'] / 1024 ** 2:.1f} MB"
             if "limit" in values and reason == "too_large":
@@ -1059,6 +1117,8 @@ def project_card(app) -> ft.Control:
     ui = app.ui
     documents, passages = rl.peek(app.projects.project.path)
     summary = counts_text(ui, documents, passages) if documents else ui.t("library.card_empty")
+    if not documents and rl.unreadable(app.projects.project.path):
+        summary = ui.t("library.card_unreadable")
     travels = rl.travels(app.projects.project.path)
     return wc.card(ui, [wc.text(ui, summary, tk.TYPE_BODY, data="project-library-counts"),
                         wc.caption(ui, ui.t("library.card_backup_on" if travels
