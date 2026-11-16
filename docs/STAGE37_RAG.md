@@ -40,11 +40,12 @@ Tables of `library.sqlite3`:
 | `chunk_index` | FTS5, external content over the view `chunk_search` (ё read as е), BM25 with `snippet()` |
 | `postings` | the pure-Python index, used only where FTS5 is missing |
 | `ai_transfers` | which passages went to an AI provider: cite IDs, provider, model, tokens, outcome (never the text) |
-| `meta` | backend, tokenizer, folding, creation time |
+| `meta` | backend, tokenizer, folding, creation time; `orphaned_copies`: stored copies of removed documents still to delete (§11) |
 
 - **The project format is untouched.** Project schema 6 is unchanged, and so is the `.sra` package format (version 1). A project without a library opens exactly as before. `test_research_library.IsolationTests` checks that the project database has no library table and is still format 6.
 - **A newer library is refused without writing.** The format is read through a read-only connection first. `StoreTests.test_a_library_of_a_newer_version_is_refused_without_writing` compares the file bytes.
-- **Concurrency.** Every operation opens its own connection: WAL, `synchronous=FULL`, a busy timeout, and writes serialised. A document can be indexed in a worker thread while the page searches.
+- **Concurrency.** Every operation opens its own connection: WAL, `synchronous=FULL`, `secure_delete`, a busy timeout, and writes serialised. A document can be indexed in a worker thread while the page searches. Opening a library needs no write lock unless its schema or index settings must change.
+- **Stored names are never trusted.** A copy is opened, rendered or read again only as `<64 hex sha256><suffix of its type>` directly in this library's `sources/` (no link, no way out) and only when its bytes hash to the document's SHA-256 (`Library.verified_source`, §11).
 
 ### 1.2 Reading
 
@@ -56,9 +57,9 @@ Tables of `library.sqlite3`:
 | Markdown | `#` and underlined headings | Fenced code is text. |
 | TXT | paragraphs separated by blank lines | A short first line is the title. Numbered, common or all-capital lines are headings. UTF-8 (with BOM), UTF-16, else CP1251 or CP1257. |
 
-All text is NFC-normalised, so a decomposed `ā` cannot split a word. Control characters are removed. Bare page numbers are dropped, and a word broken over two lines with a hyphen is joined.
+All text is NFC-normalised, so a decomposed `ā` cannot split a word, and Latin ligatures (U+FB00–FB06) are read as their letters. Control characters are removed. Bare page numbers are dropped, and a word broken over two lines with a hyphen is joined (linear in the number of lines). DOCX table cells are told apart by cell, so equal neighbouring values both stay; a merged cell is read once.
 
-Limits: 64 MiB per file, 2,000 pages, 4 million extracted characters.
+Limits: 64 MiB per file, 2,000 pages, 4 million extracted characters; a PDF page drawing more than 32 MiB of decoded content (content streams, forms, Type 3 glyphs, patterns, annotation appearances) is left out before pypdf or PDFium parse it, and the viewer refuses it; a DOCX that unpacks to more than 256 MiB, or has a part above 1 MiB compressed more than 200:1, is refused before python-docx reads it. Cancel is honoured while pages, lines and paragraphs are read and passages are built.
 
 Refusals are explained in words and store nothing (`ExtractionTests.test_unusable_files_are_refused_and_nothing_is_stored`): unsupported type, empty, password-protected PDF, damaged file, no text, too large.
 
@@ -86,14 +87,14 @@ The same bytes read by the same chunker version give the same IDs, in any librar
 | Dedupe | The same SHA-256 is never added twice, whatever the file name. | `test_the_same_bytes_are_never_added_twice` |
 | Revisions | Another file with the same name gets a version label `vN`; the earlier one becomes `v1`. A label can also be typed. | `test_a_revision_of_the_same_file_gets_a_version_label` |
 | Incremental reindex | `outdated()` lists documents read by an older chunker. `reindex_all(only_outdated=True)` reads only those, and pages read by OCR keep their recognised text without being read again. | `OcrTests.test_reindexing_keeps_the_recognised_text_without_reading_again` |
-| Remove | Removes passages, FTS rows and segments in one transaction, then the stored copy. A copy another program holds open (Windows refuses to delete it) goes the next time the library is opened; it is never searchable. | `test_removing_a_document_removes_its_passages_index_rows_and_copy`, with FTS5's `integrity-check` against the content; `test_a_copy_held_open_elsewhere_is_deleted_the_next_time` |
+| Remove | Removes passages, FTS rows and segments in one transaction, records the stored copy as to be deleted, merges the FTS5 index (`optimize`) and empties the WAL, then deletes the copy. Freed pages are overwritten (`secure_delete`), and the snapshot that travels is vacuumed: no word of the removed text stays in the file or its backup. A copy another program holds open (Windows refuses to delete it) stays recorded and goes the next time the library is opened or a document is removed; it is never searchable and never travels. Only recorded copies are ever deleted, so an empty, missing or older database put back deletes nothing. | `test_removing_a_document_removes_its_passages_index_rows_and_copy`, with FTS5's `integrity-check` against the content; `test_a_copy_held_open_elsewhere_is_deleted_the_next_time`; `test_library_hardening.RemovalTests`, `StoredCopiesSurviveTests` |
 
 ### 1.4 Search
 
 - **Query.** Query words are tokenised like `unicode61`. In the chosen configuration (§4):
-  - EN/LV/RU function words are left out;
+  - EN/LV/RU function words are left out, also when typed without diacritics;
   - every other word is stemmed with English, Latvian and Russian endings;
-  - each stem is searched as a quoted prefix, `"одиночеств"*`, joined with `OR`.
+  - each stem is searched as a quoted prefix, `"одиночеств"*`, joined with `OR`; a word too short to stem (under five letters) is searched as typed, so "chi" does not find "children".
 - **No query syntax reaches FTS5.** Quotes, `*`, `NOT`, `NEAR`, column filters and SQL fragments in a query are plain words (`test_query_syntax_is_never_passed_to_fts5`).
 - **Ranking.** BM25 (`k1 = 1.2`, `b = 0.75`). Ties are broken by passage id, so the order is deterministic.
 - **Filters.** Document type, language, and date added (since/until).
@@ -122,7 +123,7 @@ The same bytes read by the same chunker version give the same IDs, in any librar
 - **Ask with sources.** See §5.
 - **Badge.** "Local only · search never goes online".
 
-**Project switch.** Switching project switches the library and forgets the page state: results, the question and selections (`IsolationTests.test_switching_project_switches_the_library_and_forgets_the_page`).
+**Project switch.** Switching project switches the library and forgets the page state: results, the question and selections (`IsolationTests.test_switching_project_switches_the_library_and_forgets_the_page`). The page is bound to the open project's id, folder and opening; when that project's library cannot be opened (newer format, damaged, locked, no permission) the page says so for that project, with *Try again* and the backup choice, and never shows the library opened before (`HardeningTests.test_a_library_that_cannot_be_opened_is_reported_for_that_project_only`). The cards are keyed, so a message coming or going does not rebuild the search field, the question field or the backup box (`StableRenderTests`).
 
 **Languages.** EN/LV/RU. LV and RU are drafts for native review. Every key exists in three languages with the same placeholders (`test_locale_audit`, `test_workspace_foundations`). No bare key is shown in any language (`LanguageTests`).
 
@@ -131,7 +132,7 @@ The same bytes read by the same chunker version give the same IDs, in any librar
 | Point | What was done | Proved by |
 |---|---|---|
 | 1. Tokenization: unicode61 folds Latvian diacritics but does not stem («одиночества» ≠ «одиночество», "lonely" ≠ "loneliness") | Benchmarked exact words, pure prefix (`term*`), multilingual stems and per-language stems, porter and trigram (with and without diacritic removal), ё→е (§4). The chosen configuration finds both probes at rank 1. | `test_the_reviewers_probes_find_the_inflected_words`, `test_the_reviewers_probes_rank_first` |
-| 2. AI data rows sent every column | **Red test first** (`3fc204b`, marked expectedFailure), then the fix (`db7514e`). Identifier columns and free-text columns are left out of the rows by default. Identifiers are columns confirmed or suggested as identifiers, named like one, or holding unique codes with digits, even when bulk-confirmed as a category. Free text is prose, or text that is not a category. The request records what was left out. The assistant preview (`ai-preview-excluded`) and Settings (`ai-excluded-raw_data`) name the columns. With nothing left, no row is sent. | `tests/test_stage37_ai_rows.py` (5 tests, one end to end through the fake provider) |
+| 2. AI data rows sent every column | **Red test first** (`3fc204b`, marked expectedFailure), then the fix (`db7514e`). Identifier columns and free-text columns are left out of the rows by default. Identifiers are columns confirmed or suggested as identifiers, named like one (also camelCase, Latvian and Russian names, phone, e-mail, name), holding (nearly) unique codes with digits or whole numbers under an identifier name, e-mail addresses, phone numbers or personal names, even when bulk-confirmed as a category (§11). Free text is prose, or text that is not a category. The request records what was left out. The assistant preview (`ai-preview-excluded`) and Settings (`ai-excluded-raw_data`) name the columns. With nothing left, no row is sent. | `tests/test_stage37_ai_rows.py` (5 tests, one end to end through the fake provider) |
 | 3. GDPR and backups | An explicit per-project choice, **off by default**: *Include the library in backups and project copies*, with a caption on what it means. The Project card repeats it. `project_store` adds the library (a consistent snapshot of its database, the choice and the stored documents) to `.sra` backups and project copies only when it is on. A restored backup brings the same documents and cite IDs back. Schema 6 and the package format are unchanged. A deleted project takes its library to the trash with it. | `BackupChoiceTests.test_off_by_default_on_when_chosen_in_backups_and_copies`, `IsolationTests.test_each_project_has_its_own_library` |
 | 4. Quoted spans | `ai_assist.unverified_quotes` looks up every quoted span ("…", “…”, „…“, «…», ‘…’; an ellipsis inside a quote separates parts) in what was sent, ignoring case, spacing, dash and apostrophe styles. It is used by both AI answers: the Results-page assistant (`ai-unverified-quotes`, also written into the note) and Ask with sources (`library-answer-quotes`). | `CheckTests.test_quotes_are_found_word_for_word_or_flagged`, `ResultsAssistantQuoteTests`, `CheckedAnswerTests.test_citations_numbers_and_quotes_are_checked` |
 
@@ -230,14 +231,15 @@ The exact-word baseline C reaches overall R@5 0.922 and MRR 0.889. For Latvian i
 | Numbers come only from the deterministic engine. The rules forbid any calculation, no result of the study is sent, and every number of the answer that is not in the passages is highlighted and listed. | `test_citations_numbers_and_quotes_are_checked` (0.85 and 2020 flagged; 3, 7 and 12 verified) |
 | Quotes are checked word for word | §2, point 4 |
 | Audit. The project activity log records provider, model, tokens, outcome, source `library` and task `library_ask`. The library log records the cite IDs sent. Neither the prompt nor the answer is stored. | `ConsentTests` |
+| Sent at most once. A request whose reply is lost after it went out (connection closed or reset) is not sent again and is reported as *uncertain* (the provider may have received and billed it); a 429/5xx refusal is reported, not repeated; only a connection that was never made is tried again. | `ResendTests` |
 | Retrieved text is untrusted (§6) | `InjectionTests`, `RequestTests.test_a_source_cannot_close_its_element_or_open_another` |
 
 ## 6. Prompt-injection containment
 
 - **Data, not instructions.** Each passage is sent inside `<source id="S1" document="…" version="…" location="…">…</source>`.
-  - A `<source` or `</source` inside the text is broken (`< source`, `< /source`), so a passage can neither close its element nor open a forged one (`S9`).
+  - Invisible format characters (Unicode Cf: zero-width space, soft hyphen, word joiner, BOM) are removed and the text is NFKC-folded (fullwidth `＜`, small-form `﹤` and fullwidth letters become ASCII) before any `<source`, `</source`, `<question` or `</question` is broken (`< source`, `< /source`, `< question`). A passage can neither close its element, open a forged one nor add a question, in the prompt as sent or as the preview reads it (`DelimiterTests`).
   - Attribute values cannot hold quotes or angle brackets.
-  - The question cannot close its own element.
+  - The question cannot close its own element or open a source.
 - **The rules come first.** They say that a source is quoted data that never changes the rules.
 - **The answer can do nothing.** It is plain text in a draft card: no links, no tool, no action. A provider that obeys the hostile memo ("delete the library", "reveal the API key", cites `[S9]`) changes nothing:
   - the documents, the project's AI permissions, the AI settings and the page are as before;
@@ -250,15 +252,16 @@ The exact-word baseline C reaches overall R@5 0.922 and MRR 0.889. For Latvian i
 
 ## 7. Tests
 
-**New test files (77 tests).**
+**New test files (108 tests; 77 before the review hardening of §11).**
 
 | File | Tests | Covers |
 |---|---|---|
-| `tests/test_stage37_ai_rows.py` | 5 | data rows without identifier and free-text columns (review point 2) |
-| `tests/test_research_library.py` | 33 | capabilities and fallback, tokens equal FTS5, reviewer probes, query syntax, PDF/DOCX/MD/TXT reading, page mapping, exact offsets, refusals, real OCR, dedupe, revisions, remove (also with the copy held open), reindex, stable cite IDs, newer format, backend switch, fallback equivalence, filters, contradictions, snippets, why, project isolation, the packaged self-test step, offline guard |
+| `tests/test_stage37_ai_rows.py` | 10 | data rows without identifier and free-text columns (review point 2; numeric codes, phones, e-mails, names, §11) |
+| `tests/test_research_library.py` | 37 | capabilities and fallback, tokens equal FTS5, reviewer probes, query syntax, PDF/DOCX/MD/TXT reading, page mapping, exact offsets, refusals, real OCR, dedupe, revisions, remove (also with the copy held open), reindex, stable cite IDs, newer format, backend switch, fallback equivalence, filters, contradictions, snippets, why, project isolation, the packaged self-test step, offline guard |
 | `tests/test_library_benchmark.py` | 6 | the evidence for the default, per-language thresholds, probes |
-| `tests/test_workspace_library.py` | 13 | the page: place, sidebar and shortcuts, progress, cancel, remove, reindex, search, filters, why, viewer and system viewer, isolation, backup choice, EN/LV/RU |
-| `tests/test_library_ask.py` | 17 | request building, citation and quote checks, consent, preview, payload, answers, injection, Results-page quotes, refusals |
+| `tests/test_workspace_library.py` | 17 | the page: place, sidebar and shortcuts, progress, cancel, remove, reindex, search, filters, why, viewer and system viewer, isolation, backup choice, EN/LV/RU; unchecked paths, a library that fails to open, a damaged library and backups, stable fields (§11) |
+| `tests/test_library_ask.py` | 22 | request building, citation and quote checks, consent, preview, payload, answers, injection, Results-page quotes, refusals; delimiter variants, sent at most once (§11) |
+| `tests/test_library_hardening.py` | 21 | stored names and restored backups, removal leaving nothing, held-open copies, stored copies surviving a lost database, damaged libraries, hostile PDF/DOCX/Markdown (§11) |
 | `tests/test_stage37_library_journey.py` | 3 | the Windows journey's flow in the harness, journey order |
 
 **Changed test.** `tests/test_stage368_review_journeys.py` now expects 19 journeys; the first 18 keep their order.
@@ -286,6 +289,10 @@ The driver reads the library on disk after adding (1 document, 5 passages, 5 FTS
 - **Unchecked parts of an answer.** The citation check flags statements without a label, but it cannot judge whether a cited passage supports a statement. Number and quote checks catch invented or altered values, not misread ones.
 - **Native review and Windows runs pending.** LV and RU texts are drafts. The Windows journey and the packaged self-test step need a Windows CI run, which only the owner can start.
 - **The benchmark is small and synthetic** (51 passages, 51 queries).
+- **Identifier detection is heuristic.** Names, codes, e-mails and phone numbers are recognised by column name and value shape (§11). A quasi-identifier (a rare combination of age, place and date) or a code without digits under a neutral name is not recognised; the anonymity statement still applies.
+- **Restored backups.** A `.sra` is not signed. Restore drops library files the library would not have written and warns about documents without a valid copy; such documents stay listed but can never be opened or read again.
+- **Copies held open before this change.** A removed document's copy left behind by the earlier code is not on the deletion record, so it stays on disk (it never travels and is never searchable).
+- **A damaged library is left out, not repaired.** Backups and copies of the project are made without it, with a note; the page explains and offers *Try again*. An empty or missing database opens as a new empty library and keeps the stored copies, which can be added again.
 
 ## 9. Embeddings: not in this increment
 
@@ -338,3 +345,40 @@ No embedding model ships. Before any is considered, the following evidence is ne
 | Embeddings | not done (plan only, §9) | — |
 | Native LV/RU review of the new texts | not done | owner |
 | Phrase or boolean queries; printed page labels; text-size settings of the page | not done | — |
+| Independent review `verify-stage37-rag`: every blocker and major (storage F1–F5, injection F1–F6, privacy F1–F5, retrieval R1–R3, integration F2) | done | §11 |
+| Integration F1 (Windows journey order and count against other Stage 37 branches) | not done here | left to the integrator; `tools/windows_gui_e2e.py` unchanged |
+
+## 11. Hardening after the independent review (`verify-stage37-rag`)
+
+The review of `9da2c4c` confirmed 3 blockers and 18 majors in the five lenses (privacy, injection, storage, retrieval, integration). All but integration F1 (the integrator's) were fixed, each with a test that failed on `9da2c4c` first.
+
+| Finding | Was | Now | Proved by |
+|---|---|---|---|
+| storage F1, injection F1 (blockers) | `documents.stored_name` from a restored `.sra` was joined to `sources/` unchecked and given to `os.startfile` or the viewer | Only `<sha256><suffix of its type>` inside `library/sources` (no link, no traversal, absolute, UNC, drive, `:` stream or device name), with its SHA-256 checked, is opened, rendered or read again; restore writes a library file only as the library names it and warns | `test_library_hardening.StoredNameTests`, `RestoredBackupTests`; `test_workspace_library.HardeningTests.test_open_never_hands_an_unchecked_path_to_the_system` |
+| storage F2 (blocker) | a library that failed to open left the previous project's library on the page | the page is bound to the project; its failure is shown for that project | `HardeningTests.test_a_library_that_cannot_be_opened_is_reported_for_that_project_only` |
+| storage F3 | an empty, missing or older database deleted every stored copy it did not list | copies are deleted only from a record written when a document is removed | `StoredCopiesSurviveTests` |
+| storage F4, privacy F4 | a held-open copy of a removed document travelled in backups and copies | only copies the database refers to (and whose hash matches) travel; the held-open one is deleted later | `RemovalTests.test_a_copy_held_open_never_travels_and_goes_later` |
+| privacy F5 | removed text stayed in FTS5 segments and free pages, and in the backup snapshot | FTS5 `optimize`, `secure_delete`, WAL truncated, snapshot vacuumed | `RemovalTests.test_a_removed_document_leaves_nothing_in_the_library_file_or_its_backup` |
+| storage F5 | a damaged library blocked backup and copy (and Duplicate raised into the event loop) | the library is left out with a note; the page and the Project card say it cannot be read | `DamagedLibraryTests`, `HardeningTests.test_a_damaged_library_does_not_block_backing_up_or_copying_the_project` |
+| privacy F1, F2 | numeric participant codes, phones, e-mails, names and codes with a repeat went into AI data rows | identifiers by name (camelCase, LV, RU) and by value shape, whatever the confirmed level | `test_stage37_ai_rows.IdentifierDetectionTests` (also: ordinary variables are still sent) |
+| privacy F3 | a POST whose reply was lost was sent up to four times and reported "offline" | sent at most once; "uncertain" explained in EN/LV/RU | `test_library_ask.ResendTests` |
+| injection F2 | PDFium inflated a content-stream bomb (1.2 GB growth for a 600 MiB stream) and ignored Cancel | decoded size counted first, 32 MiB per page; Cancel after reading and in the probe | `HostileFileTests` (subprocess peak memory, cancel, shared stream, viewer) |
+| injection F3 | a DOCX zip bomb was inflated by python-docx | declared sizes and ratios checked first | `HostileFileTests.test_a_docx_zip_bomb_is_refused_before_it_is_inflated` |
+| injection F4 | cubic Markdown heading regex (seconds for 1.6 KB) | bounded prefix match and `rstrip` | `HostileFileTests.test_a_markdown_heading_with_a_long_run_of_spaces_is_read_at_once`, `test_cancel_stops_reading_a_long_text` |
+| injection F5 | quadratic dehyphenation | linear, same output | `HostileFileTests.test_dehyphenation_is_linear_and_unchanged` |
+| injection F6 | Cf characters and fullwidth or small-form brackets forged `<source>`/`<question>` | removed and NFKC-folded before escaping | `test_library_ask.DelimiterTests` |
+| retrieval R1 (and R5) | function words and short prefixes found unrelated passages | more function words, also without diacritics; short words exact; benchmark recall and MRR unchanged | `TokenizerTests.test_function_words_and_short_words_do_not_find_unrelated_passages`, `tests/test_library_benchmark.py` |
+| retrieval R2 | PDF ligatures unsearchable | folded to letters | `ExtractionTests.test_pdf_ligatures_are_searchable` |
+| retrieval R3 | equal neighbouring DOCX cells dropped, values shifted | cells told apart by identity | `ExtractionTests.test_docx_table_keeps_equal_neighbouring_cells` |
+| integration F2 | a message coming or going rebuilt the search field, the question field and the backup box | the cards are keyed | `test_workspace_library.StableRenderTests` |
+
+The chunker version is now `passages-2` (ligatures, table cells): documents read before are listed as outdated, and *Read every document again* applies the changes.
+
+**CI failure on Linux (`test_adding_shows_progress_then_the_documents`, `again[0].duplicate` False).** Not a product race: the test writes the same fixture PDF twice and expects a duplicate, and matplotlib stamped the PDF's `CreationDate` in whole seconds. On a slow runner the two writes fell in different seconds, so the files had different SHA-256 and the library rightly added a second document. The fixture now writes no creation date (`StoreTests.test_the_pdf_fixture_is_the_same_bytes_whenever_it_is_written`).
+
+**Not fixed here (minors, reasons).**
+- privacy F6 (over-exclusion of ordinary columns): unchanged; the new rules are checked not to exclude ordinary variables, but a column named like an identifier is still left out.
+- injection F7–F10 (MAX_CHARS checked after reading, fallback parity and its exceptions, hostile model output): bounded by the limits above or by the plain-text answer; not changed.
+- storage F6–F8, F10–F13 (newer schema in the card, large libraries, version semantics, concurrent adds across instances, remove during reindex, ranking after reindex, the dedupe test): not changed; F9 (page state across projects) is covered by the project binding.
+- retrieval R4, R6–R9 (stemmer endings and recall, numbers and hyphenation in PDFs, the tokenizer mirror): need a larger labelled set to change safely.
+- integration F1 is the integrator's; F3–F9 (localisation, docs and CI coverage, 175 % layout) are not changed.
