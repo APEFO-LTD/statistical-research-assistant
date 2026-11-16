@@ -3,12 +3,14 @@
 Each page shows the same small card: a format (the last one used is
 remembered in the preferences), one button that opens the system's Save
 dialog, and the advanced options folded away. The data page's default is a
-lossless copy of the data (.xlsx with its codebook); the results page's an
+copy of the data (.xlsx with its codebook), exact unless the card lists the
+values the format cannot hold; the results page's an
 editable results workbook; the reports page's the reproducibility bundle.
 Exporting a dataset never needs a report.
 
 Before saving, the card says what a format cannot carry (.sav), lists every
-name or field that changes for SPSS, and warns when the rows look as if they
+name or field that changes for SPSS and every value the .xlsx format cannot
+hold exactly (with CSV as the exact alternative), and warns when the rows look as if they
 could identify participants. Nothing is uploaded: files are written only
 where the researcher chooses, to a temporary file first, re-opened with an
 independent reader (signature and row count) and then moved into place
@@ -60,6 +62,7 @@ class ExportPanel:
         self._layout: str | None = None
         self._bom: bool | None = None
         self._cache: tuple | None = None       # (key, codebook)
+        self._plans: tuple | None = None       # (key, {"xlsx": …, "sav": …})
         self._facts: dict = {}
 
     # ------------------------------------------------------------ choices
@@ -161,6 +164,22 @@ class ExportPanel:
             self._cache = (key, book)
         return self._cache[1]
 
+    def plan(self, fmt: str):
+        """What the .xlsx (:func:`data_export.plan_xlsx`) or .sav
+        (:func:`data_export.plan_sav`) export changes, computed once per
+        version of the data (not on every render, review integration F2)."""
+        import data_export as de
+
+        book = self.codebook()
+        key = self._cache[0] if self._cache else None
+        if self._plans is None or self._plans[0] != key:
+            self._plans = (key, {})
+        plans = self._plans[1]
+        if fmt not in plans:
+            plans[fmt] = de.plan_xlsx(self.app.session.df) if fmt == "xlsx" else \
+                de.plan_sav(self.app.session.df, book)
+        return plans[fmt]
+
     def _stem(self) -> str:
         import export_bundle
 
@@ -189,6 +208,8 @@ class ExportPanel:
         ], wrap=True, spacing=tk.SPACE_3, vertical_alignment=ft.CrossAxisAlignment.CENTER))
         if fmt == "sav" and s.has_data:
             content += self._sav_notices()
+        if s.has_data and (fmt == "bundle" or (fmt == "xlsx" and "data" in self.sections)):
+            content += self._xlsx_notices(fmt)
         if fmt == "csv" and s.has_data:
             content.append(wc.caption(ui, ui.t("export.csv.note"), data="export-csv-note"))
         if fmt in ROW_LEVEL and s.has_data and (fmt != "xlsx" or "data" in self.sections):
@@ -200,12 +221,30 @@ class ExportPanel:
         return wc.card(ui, content, title=ui.t(f"export.title.{context}"),
                        description=ui.t(f"export.body.{context}"), data=f"export-{context}")
 
-    def _sav_notices(self) -> list[ft.Control]:
-        import data_export as de
+    def xlsx_lines(self) -> list[str]:
+        """One line per variable and reason the .xlsx Data sheet changes."""
+        t = self.app.t
+        return [t(f"export.xlsx.change.{reason}", name=name, count=count)
+                for name, reason, count in self.plan("xlsx")]
 
+    def _xlsx_notices(self, fmt: str) -> list[ft.Control]:
+        """Before saving: every value the .xlsx format cannot hold exactly,
+        and the safe alternative (review X2, integrity F1)."""
+        ui = self.app.ui
+        lines = self.xlsx_lines()
+        if not lines:
+            return []
+        count = sum(n for _, reason, n in self.plan("xlsx") if not reason.startswith("name_"))
+        hint = ui.t("export.xlsx.changes_bundle" if fmt == "bundle" else
+                    "export.xlsx.changes_hint")
+        return [wc.notice(ui, "\n".join(lines) + "\n" + hint, "warning",
+                          title=ui.t("export.xlsx.changes_title", count=count),
+                          data="export-xlsx-changes")]
+
+    def _sav_notices(self) -> list[ft.Control]:
         ui = self.app.ui
         book = self.codebook()
-        plan = de.plan_sav(self.app.session.df, book)
+        plan = self.plan("sav")
         lines = [ui.t("export.sav.renamed", name=original, spss=spss)
                  for original, spss in plan.renamed.items()]
         for name, key, values in plan.changes:
@@ -370,7 +409,7 @@ class ExportPanel:
                 return self._facts["path"]
             return write, f"{stem}.csv"
         if fmt == "sav":
-            plan = de.plan_sav(df, book)
+            plan = self.plan("sav")
 
             def write(path):
                 self._facts = de.export_sav(path, df, book, plan=plan)
@@ -426,7 +465,7 @@ class ExportPanel:
         if self.format == "bundle":
             return t("export.saved_bundle", path=path, files=facts.get("files", 0),
                      rows=checked.get("rows", facts.get("rows", 0)),
-                     syntax=facts.get("syntax", 0))
+                     syntax=facts.get("syntax", 0)) + self._changed_note(facts)
         if self.format == "results":
             return t("export.saved_results", path=path, sheets=len(checked.get("sheets") or ()))
         rows = checked.get("rows")
@@ -440,5 +479,18 @@ class ExportPanel:
                      signature=checked.get("signature", ""))
         if rows is None:
             return t("export.saved_results", path=path, sheets=len(checked.get("sheets") or ()))
-        return t("export.saved", path=path, rows=rows, columns=columns,
-                 signature=checked.get("signature", ""))
+        message = t("export.saved", path=path, rows=rows, columns=columns,
+                    signature=checked.get("signature", ""))
+        return message + self._changed_note(facts)
+
+    def _changed_note(self, facts: dict) -> str:
+        """After saving: the outcome never reads as an exact copy when the
+        .xlsx format changed values (review X2)."""
+        changes = {"bundle": facts.get("xlsx_changes"),
+                   "xlsx": facts.get("changes")}.get(self.format)
+        if not isinstance(changes, list) or not changes:
+            return ""
+        count = sum(n for _, reason, n in changes if not str(reason).startswith("name_"))
+        names = list(dict.fromkeys(str(name) for name, _, _ in changes))
+        shown = ", ".join(names[:6]) + (" …" if len(names) > 6 else "")
+        return " " + self.app.t("export.saved_changed", count=count, columns=shown)

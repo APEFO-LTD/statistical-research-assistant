@@ -313,11 +313,13 @@ def results_sheets(entries: list) -> list[de.Sheet]:
     overview: list = [[_t(c) for c in ("Result", "Title", "Method", "Dataset", "Rows",
                                        "Complete cases", "Calculated", "Sheet")]]
     sheets: list[de.Sheet] = []
+    used = {"results", "provenance", "data", "codebook", "scales"}
     for number, entry in enumerate(entries, start=1):
         spec = METHODS.get(entry.method) if entry.method else None
         title = spec.title if spec is not None else entry.run.section
         evidence = entry.run.evidence()
-        sheet_name = f"R{number} {entry.run.title}"[:31]
+        # The name the workbook really gets (review X4: / : ? * [ ] \ become _).
+        sheet_name = de._sheet_title(f"R{number} {entry.run.title}", used)
         overview.append([_t(f"R{number}"), _t(entry.run.title), _t(title), _t(entry.dataset),
                          entry.rows, evidence.n_complete if evidence.n_complete is not None
                          else _t(""), _t(f"{entry.created:%Y-%m-%d %H:%M}"), _t(sheet_name)])
@@ -352,21 +354,30 @@ R_HEADER = """# {title}
 # Run from anywhere:  Rscript {script} path/to/the/unzipped/bundle
 args <- commandArgs(trailingOnly = TRUE)
 root <- if (length(args) > 0) args[1] else "."
+# Every column is read as text, as the program keeps it: group codes such as
+# "01" and "1" stay different, as in the engine; numbers are converted below.
 d <- read.csv(file.path(root, {csv}), check.names = FALSE, na.strings = "",
-              fileEncoding = "UTF-8", stringsAsFactors = FALSE)
-# Text cells that begin with = + - @ carry a protective apostrophe in the CSV.
-unprotect <- function(v) if (is.character(v)) sub("^'('*[-=+@\\t\\r])", "\\\\1", v) else v
+              fileEncoding = "UTF-8", colClasses = "character")
+# Texts (and names) that could start a spreadsheet formula carry one protective
+# apostrophe where a cell could start (codebook data_file.formula_protection).
+unprotect <- function(v) gsub("(^|[,;\\t\\r\\n])([ \\"]*)'(?='*[=+@\\t\\r\\n\\uFF1D\\uFF0B\\uFF0D\\uFF20-])",
+                              "\\\\1\\\\2", v, perl = TRUE)
+names(d) <- unprotect(names(d))
+num <- function(name) type.convert(d[[name]], as.is = TRUE)
+txt <- function(name) unprotect(d[[name]])
 check <- function(name, value) cat(sprintf("%s = %.15g\\n", name, value))
 """
 
 
 def _levels_literal(df: pd.DataFrame, column: str, labels: Iterable[str]) -> str:
+    """The engine's group labels as the CSV holds them (texts: the CSV
+    writes a number as :func:`data_export.number_text`)."""
     numeric = pd.api.types.is_numeric_dtype(df[column].dtype)
     values = []
     for label in labels:
         if numeric:
             try:
-                values.append(de.number_text(float(label)))
+                values.append(_r_string(de.number_text(float(label))))
                 continue
             except ValueError:
                 pass
@@ -386,7 +397,12 @@ def r_syntax(number: int, entry, df: pd.DataFrame, csv_name: str, version: str
                              version=version, number=number,
                              script=f"syntax/R{number}_{method}.R",
                              csv=_r_string(f"data/{csv_name}"))
-    var = lambda name: f"d[[{_r_string(name)}]]"  # noqa: E731
+    var = lambda name: f"num({_r_string(name)})"  # noqa: E731
+    text = lambda name: f"txt({_r_string(name)})"  # noqa: E731
+    used = [roles.get(k) for k in ("x", "y", "outcome", "group") if roles.get(k)] + \
+        list(roles.get("predictors") or [])
+    if any(str(name) not in df.columns for name in used):
+        return None, "a variable of this result is not in the dataset", {}
     if method == "correlation" and options.get("method") == "pearson":
         body = (f"x <- {var(roles['x'])}\ny <- {var(roles['y'])}\n"
                 "res <- cor.test(x, y, method = \"pearson\")\nprint(res)\n"
@@ -425,7 +441,7 @@ def r_syntax(number: int, entry, df: pd.DataFrame, csv_name: str, version: str
     if method == "groups" and options.get("method") == "welch":
         group, outcome = roles["group"], roles["outcome"]
         levels = _levels_literal(df, group, [result.group_a, result.group_b])
-        body = (f"g <- factor(unprotect({var(group)}), levels = {levels})\n"
+        body = (f"g <- factor({text(group)}, levels = {levels})\n"
                 f"y <- {var(outcome)}\n"
                 "res <- t.test(y ~ g, var.equal = FALSE)\nprint(res)\n"
                 "check(\"t\", unname(res$statistic))\ncheck(\"df\", unname(res$parameter))\n"
@@ -436,7 +452,7 @@ def r_syntax(number: int, entry, df: pd.DataFrame, csv_name: str, version: str
     if method == "omnibus" and options.get("method") in ("anova", "welch"):
         group, outcome = roles["group"], roles["outcome"]
         equal = "TRUE" if options.get("method") == "anova" else "FALSE"
-        body = (f"g <- factor(unprotect({var(group)}))\ny <- {var(outcome)}\n"
+        body = (f"g <- factor({text(group)})\ny <- {var(outcome)}\n"
                 f"res <- oneway.test(y ~ g, var.equal = {equal})\nprint(res)\n"
                 "check(\"F\", unname(res$statistic))\ncheck(\"df1\", unname(res$parameter[1]))\n"
                 "check(\"df2\", unname(res$parameter[2]))\ncheck(\"p\", res$p.value)\n")
@@ -495,9 +511,10 @@ def manifest_for(*, codebook: de.Codebook, entries: list, files: list[dict], app
                         for s in sensitive]},
         "formats": {
             "csv": "UTF-8 without byte-order mark; text quoted, numbers unquoted; an empty "
-                   "unquoted field is missing; text cells beginning with = + - @, tab or CR "
-                   "carry one protective apostrophe (codebook data_file.formula_protection)",
-            "xlsx": "Data, Codebook and Scales sheets; numbers, dates and texts typed",
+                   "unquoted field is missing; formula-protected text cells (codebook "
+                   "data_file.formula_protection): " + csv_safety.DESCRIPTION,
+            "xlsx": "Data, Codebook and Scales sheets; numbers, dates and texts typed; values "
+                    "the format cannot hold exactly are listed in limitations",
             "sav": "SPSS names (codebook spss_names), labels, value labels, measurement levels "
                    "and user-missing codes within the format's limits; no audit trail",
         },
@@ -507,6 +524,20 @@ def manifest_for(*, codebook: de.Codebook, entries: list, files: list[dict], app
             "against the engine; other analyses have none.",
         ],
     }
+
+
+def change_lines(changes: list, fmt: str) -> list[str]:
+    """English lines for the manifest: what the .xlsx (``(name, reason,
+    count)``) or .sav (``(name, message key, values)``) copy changes."""
+    from workspace_text import t
+
+    lines = []
+    for name, key, values in changes:
+        if fmt == "xlsx":
+            lines.append(t("en", f"export.xlsx.change.{key}", name=name, count=values))
+        else:
+            lines.append(t("en", key, name=name or "the file", **values))
+    return lines
 
 
 def write_bundle(path: Path, *, df: pd.DataFrame, codebook: de.Codebook, entries: list,
@@ -529,12 +560,18 @@ def write_bundle(path: Path, *, df: pd.DataFrame, codebook: de.Codebook, entries
                                      progress=progress)
             members.append((f"data/{csv_name}", (work / csv_name).read_bytes(),
                             "the data: UTF-8 CSV, formula-protected text cells"))
-            de.write_xlsx(work / xlsx_name, [de.codebook_sheet(codebook),
-                                             de.scales_sheet(codebook)], data=df)
+            xlsx_facts = de.write_xlsx(work / xlsx_name, [de.codebook_sheet(codebook),
+                                                          de.scales_sheet(codebook)], data=df)
+            xlsx_changes = xlsx_facts.get("changes") or []
             members.append((f"data/{xlsx_name}", (work / xlsx_name).read_bytes(),
-                            "the data with its Codebook and Scales sheets"))
+                            "the data with its Codebook and Scales sheets" +
+                            ("; not an exact copy (see limitations)" if xlsx_changes else "")))
+            sav_changes: list = []
             try:
-                de.write_sav(work / sav_name, df, codebook, exported=codebook.created)
+                plan = de.plan_sav(df, codebook)
+                sav_changes = plan.changes
+                de.write_sav(work / sav_name, df, codebook, plan=plan,
+                             exported=codebook.created)
             except Exception as error:      # a .sav that cannot be written is reported
                 sav_problem = f"{type(error).__name__}: {error}"
             else:
@@ -546,10 +583,15 @@ def write_bundle(path: Path, *, df: pd.DataFrame, codebook: de.Codebook, entries
                 "name": csv_name, "sha256": hashlib.sha256(members[0][1]).hexdigest(),
                 "format": "csv", "encoding": "utf-8", "bom": False, "delimiter": ",",
                 "decimal": "dot", "formula_protection": {"rule": csv_safety.RULE,
-                                       "cells": csv_facts["protected"]}}
-            members.append(("codebook/codebook.json",
-                            json.dumps(book, ensure_ascii=False, indent=1).encode("utf-8"),
+                                       "cells": csv_facts["protected"],
+                                       "description": csv_safety.DESCRIPTION}}
+            book_bytes = json.dumps(book, ensure_ascii=False, indent=1).encode("utf-8")
+            members.append(("codebook/codebook.json", book_bytes,
                             "the codebook (machine-readable)"))
+            # Next to the CSV, where the program's importer looks for it, so
+            # the bundle's CSV opens with its exact texts (review F5).
+            members.append((f"data/{Path(csv_name).stem}{csv_safety.CODEBOOK_SUFFIX}",
+                            book_bytes, "the codebook that vouches for the CSV beside it"))
             if entries:
                 de.write_xlsx(work / "results.xlsx", [
                     *results_sheets(entries),
@@ -593,6 +635,12 @@ def write_bundle(path: Path, *, df: pd.DataFrame, codebook: de.Codebook, entries
                                 project=project, rows=len(df))
         if sav_problem:
             manifest["limitations"].append(f"No .sav file: {sav_problem}")
+        manifest["limitations"] += [
+            f"data/{xlsx_name} is not an exact copy of the data, the CSV is: " + line
+            for line in change_lines(xlsx_changes, "xlsx")]
+        if not sav_problem:
+            manifest["limitations"] += [f"data/{sav_name}: " + line
+                                        for line in change_lines(sav_changes, "sav")]
         with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
             for name, data, _ in members:
                 archive.writestr(name, data)
@@ -600,7 +648,8 @@ def write_bundle(path: Path, *, df: pd.DataFrame, codebook: de.Codebook, entries
                                                          indent=1))
         return {"files": len(members) + 1, "rows": len(df),
                 "syntax": sum(1 for s in syntax.values() if s.get("r")),
-                "analyses": len(entries), "csv": f"data/{csv_name}"}
+                "analyses": len(entries), "csv": f"data/{csv_name}",
+                "xlsx_changes": xlsx_changes}
 
     def verify(temporary: Path, facts: dict) -> dict:
         checked = de.verify_zip(temporary)

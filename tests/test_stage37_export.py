@@ -10,10 +10,10 @@ use: openpyxl (.xlsx), pandas.read_csv (.csv), pyreadstat.read_sav (.sav),
 zipfile (.zip), and R for the R syntax when Rscript is installed.
 
 Documented tolerances (docs/STAGE37_EXPORT.md §4):
-- .xlsx: openpyxl writes a number with 16 significant digits, so a double
-  that needs 17 (0.1 + 0.2) reads back within 1e-15 relative; every value of
-  the fixture is exact. A whole number reads back as an int, a date as a
-  datetime at midnight.
+- .xlsx: every double is written with the shortest text that reads back
+  as the same double (0.1 + 0.2 included). A whole number reads back as an
+  int, a date as a datetime at midnight. tests/test_stage37_export_fidelity.py
+  reads the same files without openpyxl.
 - .csv: numbers are exact (repr). pandas reads a column of whole numbers as
   int64 and cannot tell ``""`` from an empty field (both NaN); text columns
   are read as text, as the codebook says; the apostrophe is removed with
@@ -28,6 +28,7 @@ import datetime as dt
 import importlib.util
 import json
 import math
+import random
 from pathlib import Path
 import re
 import shutil
@@ -536,6 +537,39 @@ class MetadataStorageTests(unittest.TestCase):
                 again.close()
 
 
+    def test_a_new_file_does_not_inherit_another_files_metadata(self):
+        """Review integrity F3: labels, value labels and missing codes belong
+        to the dataset they came with, never to a later table by name alone."""
+        from types import SimpleNamespace
+
+        s = ResearchSession()
+        wave_a = {"temp": {"label": "Wave A: -9 = refused", "missing_codes": ["-9"],
+                           "value_labels": {"-9": "refused"}, "source": "sav"}}
+        s.set_dataset(pd.DataFrame({"q1": [1.0, 2.0, -9.0], "temp": [-9.0, 3.0, 4.0]}),
+                      "waveA.sav", report=SimpleNamespace(metadata=wave_a))
+        self.assertEqual(s.variables["temp"].missing_codes, ("-9",))
+        wave_b = pd.DataFrame({"q1": [1.0, 2.0, 2.0], "temp": [-9.0, -8.5, -9.0]})
+        s.set_dataset(wave_b, "waveB.sav", report=SimpleNamespace(
+            metadata={"q1": {"label": "Wave B item", "source": "sav"}}))
+        self.assertEqual(s.variables["temp"].missing_codes, ())
+        self.assertEqual(s.variables["temp"].label, "")
+        self.assertEqual(s.variables["temp"].value_labels, ())
+        self.assertEqual(s.variables["q1"].label, "Wave B item")
+        book = codebook_of(s)
+        self.assertEqual(book.variable("temp").n_user_missing, 0)
+        self.assertEqual([c.missing for c in de.plan_sav(s.df, book).columns
+                          if c.original == "temp"], [[]])
+        s.set_dataset(pd.DataFrame({"q1": [4.0, 5.0], "temp": [1.0, 2.0]}), "unrelated.csv",
+                      report=None)
+        self.assertEqual(s.variables["q1"].label, "",
+                         "an unrelated CSV with the same columns documents nothing")
+        s.set_dataset(pd.DataFrame({"q1": [1.0], "temp": [2.0]}), "w.sav",
+                      report=SimpleNamespace(metadata={"q1": {"label": "kept",
+                                                              "source": "sav"}}))
+        s.set_dataset(s.df.copy(), "w.sav", report=None)
+        self.assertEqual(s.variables["q1"].label, "kept", "the same table keeps its metadata")
+
+
 # ============================================================= codebook
 class CodebookTests(unittest.TestCase):
     def test_the_master_fixture(self):
@@ -673,6 +707,10 @@ class ResultsAndBundleTests(unittest.TestCase):
         self.assertEqual(first["Method key"], "correlation")
         self.assertEqual(json.loads(first["Options (JSON)"]), {"method": "pearson"})
         self.assertEqual(first["Dataset SHA-256"], self.session.dataset_sha256())
+        overview = list(book["Results"].iter_rows(values_only=True))
+        named = [row[7] for row in overview[1:] if row and row[0]]
+        self.assertEqual(named, book.sheetnames[1:-1],
+                         "the overview names the sheets the workbook has (review X4)")
 
     def test_the_bundle_manifest_files_and_checksums(self):
         path = self.folder / "bundle.zip"
@@ -708,6 +746,28 @@ class ResultsAndBundleTests(unittest.TestCase):
         self.assertFalse(manifest["privacy"]["uploaded"])
         self.assertEqual(manifest["privacy"]["possibly_identifying_columns"][0]["variable"],
                          "participant_code")
+        self.assertIn("data/synthetic_master_research_n180_codebook.json", names)
+        unpacked = self.folder / "bundle_unpacked"
+        with zipfile.ZipFile(path) as archive:
+            archive.extractall(unpacked)
+        back, report = load_dataset_with_report(
+            unpacked / "data" / "synthetic_master_research_n180.csv")
+        self.assertEqual(list(back.columns), [str(c) for c in self.session.df.columns],
+                         "the bundle's CSV opens with its own codebook beside it (F5)")
+
+    def test_the_bundle_names_every_value_its_xlsx_copy_changes(self):
+        """Review X2: the manifest never lets the .xlsx pass for an exact copy."""
+        df = pd.DataFrame({"pid": ["P1", "P2"], "transcript": ["x" * 40_000, "a\x0bb"]})
+        path = self.folder / "changed.zip"
+        facts = eb.write_bundle(path, df=df, codebook=de.build_codebook(df, "d"), entries=[],
+                                app={"version": "t"})
+        with zipfile.ZipFile(path) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+        lines = [l for l in manifest["limitations"] if "not an exact copy" in l]
+        self.assertEqual(len(lines), 2, manifest["limitations"])
+        self.assertTrue(any("32,767" in l for l in lines))
+        self.assertEqual([c[:2] for c in facts["xlsx_changes"]],
+                         [["transcript", "cleaned"], ["transcript", "cut"]])
 
     @unittest.skipUnless(shutil.which("Rscript"), "R is not installed here")
     def test_the_r_syntax_reproduces_the_engine(self):
@@ -735,6 +795,96 @@ class ResultsAndBundleTests(unittest.TestCase):
         # r, p, n and the CI; R², adjusted R², F, n and b, SE, p of 3 terms; t, df, p;
         # F, df1, df2, p twice.
         self.assertEqual(checked, 5 + 13 + 3 + 4 + 4)
+
+    def run_bundle_scripts(self, session: ResearchSession, name: str) -> list[dict]:
+        """Every R script of a bundle of ``session``, run: the analyses with
+        their R output (check values found) and exit code."""
+        path = self.folder / f"{name}.zip"
+        eb.write_bundle(path, df=session.df, codebook=codebook_of(session),
+                        entries=session.results, app={"version": "test"})
+        unpacked = self.folder / name
+        with zipfile.ZipFile(path) as archive:
+            archive.extractall(unpacked)
+            manifest = json.loads(archive.read("manifest.json"))
+        runs = []
+        for analysis in manifest["analyses"]:
+            script = analysis["syntax"]["r"]
+            if script is None:
+                runs.append({"analysis": analysis, "code": None, "found": {}})
+                continue
+            run = subprocess.run(["Rscript", str(unpacked / script), str(unpacked)],
+                                 capture_output=True, text=True, timeout=120)
+            runs.append({"analysis": analysis, "code": run.returncode, "stderr": run.stderr,
+                         "found": dict(re.findall(r"^(\S+) = (\S+)$", run.stdout, flags=re.M))})
+        return runs
+
+    @unittest.skipUnless(shutil.which("Rscript"), "R is not installed here")
+    def test_r_syntax_reproduces_text_coded_groups_and_protected_names(self):
+        """Review integrity F2 and injection F6: group codes kept as text
+        ('01'/'02', '1' and '01' distinct, as the engine keeps them) and a
+        variable whose CSV header is formula-protected."""
+        from workspace_methods import run_method
+
+        rng = np.random.default_rng(7)
+        df = pd.DataFrame({"cond": ["01", "02"] * 30, "arm": ["1", "01", "2"] * 20,
+                           "score": rng.normal(50, 10, 60).round(3),
+                           "-y": rng.normal(0, 1, 60).round(4),
+                           "=g": ["=a", "-b"] * 30})
+        session = ResearchSession()
+        session.set_dataset(df, "codes.csv")
+        for column in ("cond", "arm", "=g"):
+            session.confirm_level(column, "nominal")
+        for column in ("score", "-y"):
+            session.confirm_level(column, "scale")
+        confirms = {"independent": True, "assumptions": True}
+        for key, roles, options, given in (
+                ("groups", {"outcome": "score", "group": "cond"}, {"method": "welch"}, confirms),
+                ("omnibus", {"outcome": "score", "group": "arm"}, {"method": "anova"}, confirms),
+                ("correlation", {"x": "score", "y": "-y"}, {"method": "pearson"},
+                 {"pearson": True}),
+                ("groups", {"outcome": "-y", "group": "=g"}, {"method": "welch"}, confirms)):
+            session.add_result(run_method(key, session, roles, options, given), method=key,
+                               roles=roles, options=options, confirms=given)
+        runs = self.run_bundle_scripts(session, "codes")
+        self.assertEqual(len(runs), 4)
+        for run in runs:
+            script = run["analysis"]["syntax"]["r"]
+            self.assertIsNotNone(script, run["analysis"]["syntax"])
+            self.assertEqual(run["code"], 0, (script, run.get("stderr")))
+            for name, expected in run["analysis"]["syntax"]["check_values"].items():
+                self.assertTrue(math.isclose(float(run["found"][name]), float(expected),
+                                             rel_tol=1e-9, abs_tol=1e-12),
+                                (script, name, run["found"].get(name), expected))
+
+    @unittest.skipUnless(shutil.which("Rscript"), "R is not installed here")
+    def test_the_r_unprotect_is_the_program_s_restore(self):
+        """The R scripts undo the CSV protection exactly as csv_safety.restore."""
+        header = eb.R_HEADER.format(title="t", version="v", number=1, script="s", csv='"x"')
+        function = header[header.index("unprotect <-"):header.index("names(d) <-")]
+        generator = random.Random(67)
+        alphabet = "'=+-@\t\r\nab ,;\"\uff1d\uff0b\uff0d\uff20Ж"
+        samples = ["ok;=1+1", "'-", "-c", "=a", "plain", "x;'=y"] + [
+            "".join(generator.choice(alphabet) for _ in range(generator.randint(1, 7)))
+            for _ in range(600)]
+        folder = self.folder / "unprotect"
+        folder.mkdir(exist_ok=True)
+        (folder / "in.txt").write_text("\n".join(csv_safety.protect(t).encode("utf-8").hex()
+                                                for t in samples) + "\n", encoding="ascii")
+        script = function + (
+            'h <- readLines(file.path(commandArgs(TRUE)[1], "in.txt"))\n'
+            'dec <- function(x) { b <- as.raw(strtoi(substring(x, seq(1, nchar(x), 2), '
+            'seq(2, nchar(x), 2)), 16L)); y <- rawToChar(b); Encoding(y) <- "UTF-8"; y }\n'
+            'u <- unprotect(vapply(h, dec, "", USE.NAMES = FALSE))\n'
+            'enc <- function(y) paste(sprintf("%02x", as.integer(charToRaw(enc2utf8(y)))), '
+            'collapse = "")\n'
+            'writeLines(vapply(u, enc, ""), file.path(commandArgs(TRUE)[1], "out.txt"))\n')
+        (folder / "u.R").write_text(script, encoding="utf-8")
+        run = subprocess.run(["Rscript", str(folder / "u.R"), str(folder)],
+                             capture_output=True, text=True, timeout=120)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        back = [bytes.fromhex(line).decode("utf-8")
+                for line in (folder / "out.txt").read_text(encoding="ascii").split()]
+        self.assertEqual(back, samples)
 
     def test_engine_seeds_named_in_the_manifest_are_the_engine_s(self):
         source = (ROOT / "correlation.py").read_text(encoding="utf-8")

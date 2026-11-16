@@ -64,7 +64,10 @@ LEVELS = ("unknown", "id", "nominal", "ordinal", "scale")
 
 XLSX_MAX_ROWS = 1_048_576          # rows per worksheet, the header included
 XLSX_MAX_TEXT = 32_767             # characters per cell
-_ILLEGAL_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+# Characters XML 1.0 cannot hold: C0 controls but tab, LF and CR; lone
+# surrogates; U+FFFE and U+FFFF (lxml refuses those, review X5).
+_ILLEGAL_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+XLSX_FIRST_DATE = dt.date(1900, 3, 1)  # earlier serials differ between spreadsheet programs
 _EXACT_INTEGER = 2 ** 53           # every integer up to this is a double exactly
 
 # SPSS (sav) limits, as ReadStat enforces them (checked against pyreadstat 1.3.7).
@@ -774,6 +777,42 @@ def _sav_missing(entry: VariableEntry, kind: str, values: pd.Series,
     return []
 
 
+def sav_string_width(values: pd.Series, value_labels: dict | None = None) -> int:
+    """The width in bytes pyreadstat gives a string variable: the longest
+    value in UTF-8 bytes (a missing value is an empty text), or the longest
+    value-label code in *characters*, at least 1."""
+    width = 1
+    for value in values:
+        if not is_missing(value):
+            width = max(width, len(as_text(value).encode("utf-8")))
+    for code in (value_labels or {}):
+        width = max(width, len(str(code)))
+    return width
+
+
+def _fit_sav_width(name: str, values: pd.Series, value_labels: dict, missing: list,
+                   lossy: list) -> tuple[dict, list]:
+    """Value-label codes and missing codes of a string variable that fit its
+    width. A reader takes only the first ``width`` bytes of a code: a longer
+    missing code would declare another value missing (``N/A`` in a width-1
+    variable is read as ``N``), a longer label code labels a cut value
+    (review SAV-1, SAV-6). Those are left out and listed."""
+    width = sav_string_width(values, value_labels)
+    fitting = {code: text for code, text in value_labels.items()
+               if len(str(code).encode("utf-8")) <= width}
+    dropped = [str(code) for code in value_labels if code not in fitting]
+    if dropped:
+        lossy.append((name, "export.change.value_label_width",
+                      {"codes": ", ".join(dropped), "width": width}))
+        width = sav_string_width(values, fitting)
+    kept = [code for code in missing if len(str(code).encode("utf-8")) <= width]
+    if len(kept) != len(missing):
+        lossy.append((name, "export.change.missing_width",
+                      {"codes": ", ".join(str(c) for c in missing if c not in kept),
+                       "width": width}))
+    return fitting, kept
+
+
 def _sav_format(values: pd.Series) -> str:
     numbers = pd.to_numeric(values, errors="coerce").dropna()
     numbers = numbers[np.isfinite(numbers.astype(float))]
@@ -841,6 +880,9 @@ def plan_sav(df: pd.DataFrame, codebook: Codebook) -> SavPlan:
                               {"code": _code_text(code), "limit": SAV_VALUE_LABEL_BYTES}))
         missing = _sav_missing(entry, kind, values, lossy)
         text_like = kind in ("text", "mixed", "duration")
+        if text_like:
+            value_labels, missing = _fit_sav_width(entry.name, values, value_labels, missing,
+                                                   lossy)
         if kind == "datetime_tz":
             lossy.append((entry.name, "export.change.timezone", {}))
         if kind == "mixed":
@@ -942,8 +984,114 @@ def write_sav(path: Path, df: pd.DataFrame, codebook: Codebook, *,
                          missing_ranges=missing or None, variable_measure=measure,
                          variable_format=formats or None,
                          note=sav_notes(codebook, plan, exported or _today()))
+    written = Path(path).read_bytes()
+    fixed, shorts = unique_short_names(written)
+    if shorts:
+        Path(path).write_bytes(fixed)
     return {"rows": int(len(frame)), "columns": int(frame.shape[1]),
-            "names": [c.name for c in plan.columns]}
+            "names": [c.name for c in plan.columns], "short_names": shorts}
+
+
+def _sav_dictionary(data: bytes) -> tuple[list[tuple[int, bytes]], list[tuple[int, int, int]]]:
+    """The type-2 records ((offset of the 8-byte name field, name), without
+    continuation records) and the type-7 records ((subtype, offset of the
+    data, size)) of a little-endian system file's dictionary."""
+    import struct
+
+    names: list[tuple[int, bytes]] = []
+    extensions: list[tuple[int, int, int]] = []
+    at = 176
+    while True:
+        (kind,) = struct.unpack_from("<i", data, at)
+        at += 4
+        if kind == 2:
+            width, has_label, n_missing = struct.unpack_from("<iii", data, at)
+            name_at = at + 20
+            at += 28
+            if has_label:
+                (size,) = struct.unpack_from("<i", data, at)
+                at += 4 + (size + 3) // 4 * 4
+            at += 8 * abs(n_missing)
+            if width != -1:
+                names.append((name_at, data[name_at:name_at + 8]))
+        elif kind == 3:
+            (count,) = struct.unpack_from("<i", data, at)
+            at += 4
+            for _ in range(count):
+                size = data[at + 8]
+                at += 8 + (size + 8) // 8 * 8
+        elif kind == 4:
+            (count,) = struct.unpack_from("<i", data, at)
+            at += 4 + 4 * count
+        elif kind == 6:
+            (count,) = struct.unpack_from("<i", data, at)
+            at += 4 + 80 * count
+        elif kind == 7:
+            subtype, size, count = struct.unpack_from("<iii", data, at)
+            at += 12
+            extensions.append((subtype, at, size * count))
+            at += size * count
+        elif kind == 999:
+            return names, extensions
+        else:
+            raise ExportError(f"unexpected record type {kind} in the written .sav")
+
+
+def unique_short_names(data: bytes) -> tuple[bytes, dict[str, str]]:
+    """``data`` with every 8-byte short name unique without regard to case
+    (review SAV-2). ReadStat cuts the long name to 8 bytes and upper-cases
+    ASCII letters only, and checks uniqueness byte for byte, so ``Возраст``
+    and ``возраст_группа`` both get ``Возр``/``возр``, which SPSS and PSPP
+    compare case-insensitively and then rename. A clashing short name is
+    replaced in place by ``V`` and a base-36 number of the same length
+    (``V0000001``), in the variable record, the long-names record (7/13) and
+    the very-long-string record (7/14); the long names are not changed.
+    Returns the new bytes and {old short name: new short name}."""
+    names, extensions = _sav_dictionary(data)
+    folded = lambda raw: raw.rstrip(b" ").decode("utf-8", "replace").casefold()  # noqa: E731
+    long_named = set()
+    for subtype, at, size in extensions:
+        if subtype == 13:
+            long_named |= {pair.partition(b"=")[0] for pair in data[at:at + size].split(b"\t")}
+    seen: set[str] = set()
+    taken = {folded(raw) for _, raw in names}
+    out = bytearray(data)
+    changes: dict[bytes, bytes] = {}
+    counter = 0
+    for name_at, raw in names:
+        key, short = folded(raw), raw.rstrip(b" ")
+        if key not in seen or short not in long_named or len(short) < 2:
+            seen.add(key)
+            continue
+        while True:
+            counter += 1
+            digits, n = "", counter
+            while n or not digits:
+                digits = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"[n % 36] + digits
+                n //= 36
+            candidate = ("V" + digits.rjust(len(short) - 1, "0")).encode("ascii")
+            if len(candidate) == len(short) and candidate.decode().casefold() not in taken:
+                break
+        taken.add(candidate.decode().casefold())
+        seen.add(candidate.decode().casefold())
+        out[name_at:name_at + 8] = candidate.ljust(8, b" ")
+        changes[short] = candidate
+    if not changes:
+        return data, {}
+    for subtype, at, size in extensions:
+        if subtype not in (13, 14):
+            continue
+        separator = b"\t" if subtype == 13 else b"\x00\t"
+        items = bytes(out[at:at + size]).split(separator)
+        for index, item in enumerate(items):
+            short, equals, rest = item.partition(b"=")
+            if equals and short in changes:
+                items[index] = changes[short] + b"=" + rest
+        rewritten = separator.join(items)
+        if len(rewritten) != size:
+            raise ExportError("a short name changed length")
+        out[at:at + size] = rewritten
+    return bytes(out), {a.decode("utf-8", "replace"): b.decode() for a, b in changes.items()}
 
 
 def _today() -> str:
@@ -1055,6 +1203,83 @@ def xlsx_text(value: str) -> str:
     return _ILLEGAL_XML.sub("\ufffd", value)[:XLSX_MAX_TEXT]
 
 
+# Why a value is not stored exactly as it is (the .xlsx preview, the
+# outcome, the bundle's manifest and the verification count them).
+XLSX_REASONS = ("cleaned", "cut", "big_integer", "infinity", "old_date", "timezone",
+                "duration", "time_precision")
+
+
+def _text_reasons(value: str) -> tuple[str, ...]:
+    reasons = []
+    if _ILLEGAL_XML.search(value):
+        reasons.append("cleaned")
+    if len(value) > XLSX_MAX_TEXT:
+        reasons.append("cut")
+    return tuple(reasons)
+
+
+def _excel_round_trip(stamp: dt.datetime) -> bool:
+    from openpyxl.utils.datetime import from_excel, to_excel
+
+    return from_excel(to_excel(stamp)) == stamp
+
+
+def xlsx_value(value) -> tuple[object, bool, tuple[str, ...]]:
+    """(what the worksheet cell holds, whether it is a text cell, why that
+    is not exactly ``value``). ``(value, "text")`` forces a text cell.
+
+    A spreadsheet date before 1900-03-01 is written as ISO text: the 1900
+    date system has no dates before 1900-01-01 (openpyxl would write 0 or a
+    negative serial, read back as a time), and Excel's serials 1–60 (with
+    its 1900-02-29 that never was) mean other days in LibreOffice (review
+    X1). A date-time whose fraction of a second a spreadsheet serial cannot
+    hold exactly is kept as a date-time and counted."""
+    if isinstance(value, tuple) and len(value) == 2 and value[1] == "text":
+        text = as_text(value[0])
+        return xlsx_text(text), True, _text_reasons(text)
+    if is_missing(value):
+        return None, False, ()
+    if isinstance(value, str):
+        return xlsx_text(value), True, _text_reasons(value)
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value), False, ()
+    if isinstance(value, (int, np.integer)):
+        number = int(value)
+        if abs(number) > _EXACT_INTEGER:
+            return str(number), True, ("big_integer",)   # a spreadsheet number rounds it
+        return number, False, ()
+    if isinstance(value, (float, np.floating, Decimal)):
+        number = float(value)
+        if math.isinf(number):
+            return number_text(number), True, ("infinity",)
+        return plain_number(number), False, ()
+    if isinstance(value, np.datetime64):
+        value = pd.Timestamp(value)
+    if isinstance(value, (pd.Timestamp, dt.datetime)):
+        stamp = pd.Timestamp(value)
+        if stamp.tzinfo is not None:
+            return stamp.isoformat(), True, ("timezone",)   # spreadsheets have no time zones
+        if stamp.date() < XLSX_FIRST_DATE:
+            return stamp.isoformat(sep="T"), True, ("old_date",)
+        exact = stamp.nanosecond == 0
+        stamp = stamp.to_pydatetime(warn=False)
+        if not exact or not _excel_round_trip(stamp):
+            return stamp, False, ("time_precision",)
+        return stamp, False, ()
+    if isinstance(value, dt.time) and value.tzinfo is not None:
+        return value.isoformat(), True, ("timezone",)
+    if isinstance(value, dt.date):
+        if value < XLSX_FIRST_DATE:
+            return value.isoformat(), True, ("old_date",)
+        return value, False, ()
+    if isinstance(value, dt.time):
+        return value, False, ()
+    if isinstance(value, (dt.timedelta, pd.Timedelta, np.timedelta64)):
+        return xlsx_text(as_text(value)), True, ("duration",)
+    text = as_text(value)
+    return xlsx_text(text), True, _text_reasons(text)
+
+
 class _CellWriter:
     """Typed, formula-proof cells for openpyxl's write-only mode."""
 
@@ -1063,55 +1288,88 @@ class _CellWriter:
 
         self.ws, self.Cell = ws, WriteOnlyCell
         self.cleaned = self.cut = self.text_numbers = 0
+        self.changed = 0
 
     def text(self, value: str):
-        if _ILLEGAL_XML.search(value):
-            value = _ILLEGAL_XML.sub("�", value)
-            self.cleaned += 1
-        if len(value) > XLSX_MAX_TEXT:
-            value = value[:XLSX_MAX_TEXT]
-            self.cut += 1
         cell = self.Cell(self.ws, value=value)
         cell.data_type = "s"          # never a formula, whatever the text begins with
         return cell
 
     def __call__(self, value):
-        if isinstance(value, tuple) and len(value) == 2 and value[1] == "text":
-            return self.text(as_text(value[0]))
-        if is_missing(value):
+        stored, is_text, reasons = xlsx_value(value)
+        if reasons:
+            self.changed += 1
+            self.cleaned += "cleaned" in reasons
+            self.cut += "cut" in reasons
+            self.text_numbers += "big_integer" in reasons or "infinity" in reasons
+        if stored is None:
             return None
-        if isinstance(value, str):
-            return self.text(value)
-        if isinstance(value, (bool, np.bool_)):
-            return bool(value)
-        if isinstance(value, (int, np.integer)):
-            number = int(value)
-            if abs(number) > _EXACT_INTEGER:
-                self.text_numbers += 1
-                return self.text(str(number))     # a spreadsheet number would round it
-            return number
-        if isinstance(value, (float, np.floating, Decimal)):
-            number = float(value)
-            if math.isinf(number):
-                self.text_numbers += 1
-                return self.text(number_text(number))
-            return plain_number(number)
-        if isinstance(value, (pd.Timestamp, dt.datetime)):
-            stamp = pd.Timestamp(value)
-            if stamp.tzinfo is not None:
-                return self.text(stamp.isoformat())   # spreadsheets have no time zones
-            return stamp.to_pydatetime()
-        if isinstance(value, np.datetime64):
-            return pd.Timestamp(value).to_pydatetime()
-        if isinstance(value, dt.time) and value.tzinfo is not None:
-            return self.text(value.isoformat())
-        if isinstance(value, (dt.date, dt.time)):
-            return value
-        return self.text(as_text(value))
+        return self.text(stored) if is_text else stored
+
+
+def plan_xlsx(df: pd.DataFrame) -> list[tuple[str, str, int]]:
+    """Every value of ``df`` that the Data sheet cannot hold exactly, as
+    (variable, reason, count), shown before saving (review X2, integrity
+    F1). Reasons: ``XLSX_REASONS``, and ``name_cleaned``/``name_cut`` for a
+    column name."""
+    found: list[tuple[str, str, int]] = []
+    for name in df.columns:
+        text = str(name)
+        for reason in _text_reasons(text):
+            found.append((text, "name_" + reason, 1))
+        series = df[name]
+        if pd.api.types.is_float_dtype(series.dtype) or pd.api.types.is_bool_dtype(series.dtype):
+            values = series.to_numpy(dtype=float) if pd.api.types.is_float_dtype(
+                series.dtype) else None
+            if values is None or not np.isinf(values).any():
+                continue
+        counts: dict[str, int] = {}
+        if column_kind(series) == "duration":
+            counts["duration"] = int(series.notna().sum())
+        elif pd.api.types.is_integer_dtype(series.dtype):
+            big = int((series.abs() > _EXACT_INTEGER).sum()) if len(series) else 0
+            if big:
+                counts["big_integer"] = big
+        else:
+            for value in series.tolist():
+                for reason in xlsx_value(value)[2]:
+                    counts[reason] = counts.get(reason, 0) + 1
+        found += [(text, reason, counts[reason]) for reason in XLSX_REASONS if counts.get(reason)]
+    return found
+
+
+def xlsx_changed_cells(df: pd.DataFrame) -> int:
+    """How many data cells :func:`plan_xlsx` says are not stored exactly."""
+    return sum(count for _, reason, count in plan_xlsx(df) if not reason.startswith("name_"))
+
+
+class _ExactNumbers:
+    """While writing: openpyxl writes every number with ``%.16g``, which
+    rounds a double that needs 17 significant digits (0.1 + 0.2, review
+    X3). Its cell writer is given the shortest text that reads back as the
+    same double (``repr``) instead."""
+
+    def __enter__(self):
+        import openpyxl.cell._writer as writer
+
+        self.module, self.original = writer, writer.safe_string
+        original = self.original
+
+        def exact(value):
+            if isinstance(value, (float, np.floating)) and not isinstance(value, bool) and \
+                    math.isfinite(value):
+                return float.__repr__(float(value))
+            return original(value)
+        writer.safe_string = exact
+        return self
+
+    def __exit__(self, *exc):
+        self.module.safe_string = self.original
+        return False
 
 
 def _sheet_title(title: str, used: set[str]) -> str:
-    clean = re.sub(r"[\[\]:*?/\\]", "_", title).strip("'") or "Sheet"
+    clean = _ILLEGAL_XML.sub("_", re.sub(r"[\[\]:*?/\\]", "_", title)).strip("'") or "Sheet"
     clean = clean[:31]
     candidate, number = clean, 1
     while candidate.casefold() in used:
@@ -1154,7 +1412,7 @@ def _data_columns(df: pd.DataFrame) -> list[tuple[bool, list]]:
             if ready is not None:
                 columns.append((True, ready))
                 continue
-        if kind in ("category", "duration"):
+        if kind == "category":
             columns.append((False, [None if is_missing(v) else (as_text(v), "text")
                                     for v in series]))
         else:
@@ -1166,16 +1424,22 @@ def write_xlsx(path: Path, sheets: list[Sheet], *, data: pd.DataFrame | None = N
                data_title: str = "Data", progress: Progress | None = None) -> dict:
     """A workbook of ``sheets`` (in order); ``data`` (if given) is written
     first as the sheet ``data_title``, streamed row by row."""
-    from openpyxl import Workbook
-    from openpyxl.utils import get_column_letter
-
     if data is not None and len(data) + 1 > XLSX_MAX_ROWS:
         raise ExportError(f"{len(data)} rows do not fit in one worksheet "
                           f"({XLSX_MAX_ROWS - 1:,} at most)")
+    with _ExactNumbers():
+        return _write_xlsx(path, sheets, data=data, data_title=data_title, progress=progress)
+
+
+def _write_xlsx(path: Path, sheets: list[Sheet], *, data: pd.DataFrame | None,
+                data_title: str, progress: Progress | None) -> dict:
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+
     workbook = Workbook(write_only=True)
     used: set[str] = set()
     facts = {"sheets": [], "rows": None, "columns": None, "cleaned": 0, "cut": 0,
-             "text_numbers": 0}
+             "text_numbers": 0, "changed_cells": 0, "changes": []}
     writers = []
     if data is not None:
         ws = workbook.create_sheet(_sheet_title(data_title, used))
@@ -1185,7 +1449,7 @@ def write_xlsx(path: Path, sheets: list[Sheet], *, data: pd.DataFrame | None = N
         for index, name in enumerate(data.columns, start=1):
             ws.column_dimensions[get_column_letter(index)].width = min(
                 40, max(10, len(str(name)) + 2))
-        ws.append([cells.text(str(c)) for c in data.columns])
+        ws.append([cells.text(xlsx_text(str(c))) for c in data.columns])
         total = len(data)
         columns = _data_columns(data)
         for index in range(total):
@@ -1195,7 +1459,7 @@ def write_xlsx(path: Path, sheets: list[Sheet], *, data: pd.DataFrame | None = N
                 progress(index + 1, total)
         if progress is not None:
             progress(total, total)
-        facts.update(rows=total, columns=int(data.shape[1]))
+        facts.update(rows=total, columns=int(data.shape[1]), changed_cells=cells.changed)
         facts["sheets"].append(ws.title)
     for sheet in sheets:
         ws = workbook.create_sheet(_sheet_title(sheet.title, used))
@@ -1210,6 +1474,8 @@ def write_xlsx(path: Path, sheets: list[Sheet], *, data: pd.DataFrame | None = N
         facts["sheets"].append(ws.title)
     if not facts["sheets"]:
         raise ExportError("Choose at least one part of the workbook.")
+    if data is not None:
+        facts["changes"] = [list(change) for change in plan_xlsx(data)]
     workbook.save(str(path))
     for cells in writers:
         facts["cleaned"] += cells.cleaned
@@ -1314,16 +1580,43 @@ def _signature(path: Path, expected: tuple[bytes, ...]) -> bytes:
     return head
 
 
+def _same_cell(read, stored, is_text: bool) -> bool:
+    """Whether a re-read worksheet value is the value written."""
+    if stored is None or (is_text and stored == ""):
+        return read is None or read == ""           # openpyxl reads "" as no value
+    if is_text:
+        return isinstance(read, str) and read == stored
+    if isinstance(stored, bool):
+        return read is stored or read == stored and isinstance(read, bool)
+    if isinstance(stored, (int, float)):
+        return isinstance(read, (int, float)) and not isinstance(read, bool) and \
+            float(read) == float(stored)
+    if isinstance(stored, dt.datetime):
+        return isinstance(read, dt.datetime) and abs(read - stored) < dt.timedelta(
+            milliseconds=1)
+    if isinstance(stored, dt.date):
+        return isinstance(read, dt.datetime) and read == dt.datetime.combine(stored, dt.time())
+    if isinstance(stored, dt.time):
+        return isinstance(read, dt.time) and read.replace(microsecond=0) == \
+            stored.replace(microsecond=0)
+    return read == stored
+
+
 def verify_xlsx(path: Path, *, rows: int | None, header: list[str] | None,
-                sheets: list[str]) -> dict:
+                sheets: list[str], data: pd.DataFrame | None = None) -> dict:
     """Re-open the workbook (openpyxl, read-only): signature, sheets, the data
-    header and the number of data rows."""
+    header and the number of data rows; with ``data``, every data cell
+    against the value written. Cells the format cannot hold exactly
+    (:func:`xlsx_value`) must hold exactly their planned replacement; they
+    are counted as ``changed_cells`` (review integrity F1). Any other
+    difference fails the check."""
     from openpyxl import load_workbook
 
     _signature(path, (XLSX_SIGNATURE,))
     if not zipfile.is_zipfile(path):
         raise VerificationFailed(f"{path.name} is not a valid workbook")
     book = load_workbook(str(path), read_only=True, data_only=False)
+    changed = 0
     try:
         if book.sheetnames != list(sheets):
             raise VerificationFailed(f"sheets {book.sheetnames} instead of {sheets}")
@@ -1335,12 +1628,35 @@ def verify_xlsx(path: Path, *, rows: int | None, header: list[str] | None,
             first = [("" if v is None else str(v)) for v in first]
             if first != list(header):
                 raise VerificationFailed("the data header does not match the variables")
-            counted = sum(1 for _ in iterator)
+            if data is None:
+                counted = sum(1 for _ in iterator)
+            else:
+                columns = [data[c].tolist() for c in data.columns]
+                kinds = [column_kind(data[c]) for c in data.columns]
+                counted = 0
+                for index, row in enumerate(iterator):
+                    counted += 1
+                    if index >= len(data):
+                        continue
+                    row = list(row) + [None] * (len(columns) - len(row))
+                    for position, values in enumerate(columns):
+                        value = values[index]
+                        if kinds[position] == "category" and not is_missing(value):
+                            value = (as_text(value), "text")
+                        stored, is_text, reasons = xlsx_value(value)
+                        if not _same_cell(row[position], stored, is_text):
+                            raise VerificationFailed(
+                                f"row {index + 2}, {data.columns[position]}: the cell does "
+                                "not hold the value written")
+                        changed += bool(reasons)
             if rows is not None and counted != rows:
                 raise VerificationFailed(f"{counted} data rows re-read instead of {rows}")
     finally:
         book.close()
-    return {"signature": "xlsx (zip)", "rows": counted, "sheets": list(sheets)}
+    checked = {"signature": "xlsx (zip)", "rows": counted, "sheets": list(sheets)}
+    if data is not None and header is not None:
+        checked["changed_cells"] = changed
+    return checked
 
 
 def verify_csv(path: Path, *, rows: int, header: list[str], bom: bool,
@@ -1465,9 +1781,13 @@ def export_xlsx(path: Path, df: pd.DataFrame | None, codebook: Codebook | None, 
         return facts
 
     def verify(temporary: Path, facts: dict) -> dict:
-        return verify_xlsx(temporary, rows=len(data) if data is not None else None,
-                           header=[xlsx_text(str(c)) for c in data.columns]
-                           if data is not None else None, sheets=titles)
+        checked = verify_xlsx(temporary, rows=len(data) if data is not None else None,
+                              header=[xlsx_text(str(c)) for c in data.columns]
+                              if data is not None else None, sheets=titles, data=data)
+        if data is not None and checked.get("changed_cells") != facts.get("changed_cells"):
+            raise VerificationFailed(f"{checked.get('changed_cells')} changed cells re-read "
+                                     f"instead of {facts.get('changed_cells')}")
+        return checked
 
     return save_atomic(path, produce, verify)
 

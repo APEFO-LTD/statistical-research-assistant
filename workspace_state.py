@@ -106,8 +106,12 @@ def suggest_level(name: str, values: pd.Series) -> tuple[str, str, int, bool]:
 
 
 def build_dictionary(df: pd.DataFrame,
-                     previous: dict[str, VariableInfo] | None = None) -> dict[str, VariableInfo]:
-    """Variable dictionary; confirmations survive a re-import of the same column."""
+                     previous: dict[str, VariableInfo] | None = None, *,
+                     keep_metadata: bool = True) -> dict[str, VariableInfo]:
+    """Variable dictionary; confirmations survive a re-import of the same
+    column. The documented metadata (labels, value labels, user-missing
+    codes) comes along only with ``keep_metadata``: when the table is the
+    same dataset (a prepared version of it, or the same content)."""
     previous = previous or {}
     result = {}
     for name in df.columns:
@@ -119,7 +123,7 @@ def build_dictionary(df: pd.DataFrame,
         old = previous.get(str(name))
         if old is not None and old.storage == storage and old.confirmed != "unknown":
             info = replace(info, confirmed=old.confirmed, confirmed_in=old.confirmed_in)
-        if old is not None and old.storage == storage:
+        if keep_metadata and old is not None and old.storage == storage:
             # What the data documents about the column stays with it.
             info = replace(info, label=old.label, value_labels=old.value_labels,
                            missing_codes=old.missing_codes, metadata_source=old.metadata_source)
@@ -274,13 +278,19 @@ class ResearchSession:
         if df is None or df.columns.empty:
             raise ValueError("No variables found in this file.")
         same_columns = self.df is not None and list(self.df.columns) == list(df.columns)
+        prepared = origin == "prepared" and self.df is not None
         # A prepared table is made from the table on screen (Stage 36.8, K3):
         # the columns that are still there keep their confirmed levels.
-        keep = same_columns or (origin == "prepared" and self.df is not None)
-        self.variables = build_dictionary(df, self.variables if keep else None)
+        keep = same_columns or prepared
+        # Labels, value labels and missing codes belong to the dataset they
+        # came with (review integrity F3): they stay for a prepared version
+        # or the same content, never for another file by column name alone.
+        same_content = same_columns and not prepared and self._same_table(df)
+        self.variables = build_dictionary(df, self.variables if keep else None,
+                                          keep_metadata=prepared or same_content)
         metadata = getattr(report, "metadata", None)
         if metadata:
-            self.set_metadata(metadata, notify=False)
+            self.set_metadata(metadata, notify=False, replace_all=not prepared)
         self.df = df
         self._digest = None
         self.source_name = name
@@ -290,6 +300,17 @@ class ResearchSession:
         self.dataset_survey_id = survey_id
         self.guided = {}
         self.notify("dataset")
+
+    def _same_table(self, df: pd.DataFrame) -> bool:
+        """Whether ``df`` holds exactly the table on screen (its SHA-256)."""
+        import hashlib
+
+        if self.df is None:
+            return False
+        if df is self.df:
+            return True
+        table = df.to_csv(index=False, lineterminator="\n").encode("utf-8")
+        return hashlib.sha256(table).hexdigest() == self.dataset_sha256()
 
     def dataset_sha256(self) -> str:
         """SHA-256 of the table on screen, as results record it (its CSV

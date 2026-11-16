@@ -3480,10 +3480,93 @@ T.update({
     "export.change.big_integer": ("{name}: integers above 2^53 lose their last digits in SPSS",
                                   "{name}: veseli skaitļi virs 2^53 SPSS zaudē pēdējos ciparus",
                                   "{name}: целые числа больше 2^53 теряют последние цифры в SPSS"),
+    "export.change.missing_width": (
+        "{name}: missing code(s) longer than the variable's {width} byte(s) cannot be declared "
+        "in SPSS: {codes}",
+        "{name}: trūkstošo vērtību kodus, kas garāki par mainīgā {width} baitiem, SPSS nevar "
+        "deklarēt: {codes}",
+        "{name}: коды пропусков длиннее переменной ({width} байт) нельзя объявить в SPSS: "
+        "{codes}"),
+    "export.change.value_label_width": (
+        "{name}: labels of codes longer than the variable's {width} byte(s) are left out: "
+        "{codes}",
+        "{name}: etiķetes kodiem, kas garāki par mainīgā {width} baitiem, izlaistas: {codes}",
+        "{name}: метки кодов длиннее переменной ({width} байт) пропущены: {codes}"),
     "export.change.value_label_code": (
         "{name}: the label of code {code} is left out (not a number)",
         "{name}: koda {code} etiķete izlaista (nav skaitlis)",
         "{name}: метка кода {code} пропущена (не число)"),
+    "export.xlsx.changes_title": (
+        "{count} value(s) the .xlsx format cannot hold exactly: not an exact copy",
+        "Vērtības, ko .xlsx formāts nevar saglabāt precīzi: {count} — tā nav precīza kopija",
+        "Значений, которые формат .xlsx не может сохранить точно: {count} — это не точная копия"),
+    "export.xlsx.changes_hint": (
+        "To keep every value exactly, export CSV (.csv): it holds them as they are, and its "
+        "codebook keeps the types.",
+        "Lai saglabātu katru vērtību precīzi, eksportējiet CSV (.csv): tas tās glabā, kādas tās "
+        "ir, un tā kodu grāmata saglabā tipus.",
+        "Чтобы сохранить каждое значение точно, экспортируйте CSV (.csv): он хранит их как есть, "
+        "а его кодовая книга сохраняет типы."),
+    "export.xlsx.changes_bundle": (
+        "The bundle's CSV keeps these values exactly; its .xlsx copy changes them as listed.",
+        "Paketes CSV šīs vērtības saglabā precīzi; tās .xlsx kopijā tās mainās, kā norādīts.",
+        "CSV в пакете сохраняет эти значения точно; его копия .xlsx меняет их, как указано."),
+    "export.xlsx.change.cleaned": (
+        "{name}: {count} text(s) hold characters XML cannot carry; each becomes \ufffd",
+        "{name}: {count} teksti satur rakstzīmes, ko XML nevar ietvert; katra kļūst par \ufffd",
+        "{name}: текстов с символами, недопустимыми в XML: {count}; каждый становится \ufffd"),
+    "export.xlsx.change.cut": (
+        "{name}: {count} text(s) longer than 32,767 characters are cut (the spreadsheet limit)",
+        "{name}: {count} teksti, garāki par 32 767 rakstzīmēm, tiek apgriezti (izklājlapas "
+        "robeža)",
+        "{name}: текстов длиннее 32 767 символов: {count}; они обрезаются (предел таблицы)"),
+    "export.xlsx.change.big_integer": (
+        "{name}: {count} integer(s) above 2^53 are written as text (a spreadsheet number would "
+        "round them)",
+        "{name}: {count} veseli skaitļi virs 2^53 ierakstīti kā teksts (izklājlapas skaitlis "
+        "tos noapaļotu)",
+        "{name}: целых чисел больше 2^53: {count}; записаны как текст (число в таблице их "
+        "округлило бы)"),
+    "export.xlsx.change.infinity": (
+        "{name}: {count} infinite value(s) are written as the text inf or -inf",
+        "{name}: {count} bezgalīgas vērtības ierakstītas kā teksts inf vai -inf",
+        "{name}: бесконечных значений: {count}; записаны как текст inf или -inf"),
+    "export.xlsx.change.old_date": (
+        "{name}: {count} date(s) before 1 March 1900 are written as ISO text (spreadsheet "
+        "programs read those dates differently)",
+        "{name}: {count} datumi pirms 1900. gada 1. marta ierakstīti kā ISO teksts "
+        "(izklājlapu programmas tos lasa dažādi)",
+        "{name}: дат ранее 1 марта 1900 г.: {count}; записаны как текст ISO (программы "
+        "электронных таблиц читают их по-разному)"),
+    "export.xlsx.change.timezone": (
+        "{name}: {count} time(s) with a time zone are written as ISO text",
+        "{name}: {count} laiki ar laika joslu ierakstīti kā ISO teksts",
+        "{name}: значений времени с часовым поясом: {count}; записаны как текст ISO"),
+    "export.xlsx.change.duration": (
+        "{name}: {count} duration(s) are written as text",
+        "{name}: {count} ilgumi ierakstīti kā teksts",
+        "{name}: длительностей: {count}; записаны как текст"),
+    "export.xlsx.change.time_precision": (
+        "{name}: {count} time(s) lose a fraction of a millisecond (a spreadsheet date holds "
+        "less)",
+        "{name}: {count} laiki zaudē milisekundes daļu (izklājlapas datums glabā mazāk)",
+        "{name}: значений времени, теряющих долю миллисекунды: {count} (дата в таблице "
+        "хранит меньше)"),
+    "export.xlsx.change.name_cleaned": (
+        "{name}: the variable name holds characters XML cannot carry; they become \ufffd",
+        "{name}: mainīgā nosaukumā ir rakstzīmes, ko XML nevar ietvert; tās kļūst par \ufffd",
+        "{name}: в имени переменной есть символы, недопустимые в XML; они становятся \ufffd"),
+    "export.xlsx.change.name_cut": (
+        "{name}: the variable name is cut to 32,767 characters",
+        "{name}: mainīgā nosaukums apgriezts līdz 32 767 rakstzīmēm",
+        "{name}: имя переменной обрезано до 32 767 символов"),
+    "export.saved_changed": (
+        "Not an exact copy: {count} value(s) were changed for the .xlsx format, as listed "
+        "before saving ({columns}). Export .csv to keep them exactly.",
+        "Nav precīza kopija: {count} vērtības mainītas .xlsx formāta dēļ, kā norādīts pirms "
+        "saglabāšanas ({columns}). Eksportējiet .csv, lai tās saglabātu precīzi.",
+        "Не точная копия: значений, изменённых для формата .xlsx: {count}, как указано до "
+        "сохранения ({columns}). Экспортируйте .csv, чтобы сохранить их точно."),
     "export.sensitive_title": ("{count} column(s) may identify participants",
                                "Kolonnas, kas var identificēt dalībniekus: {count}",
                                "Столбцы, по которым можно узнать участников: {count}"),

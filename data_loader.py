@@ -638,6 +638,77 @@ def sav_renames(notes) -> dict[str, str]:
     return renames
 
 
+PYTHON_CODECS = {"windows-1251": "cp1251", "windows-1257": "cp1257", "windows-1252": "cp1252",
+                 "utf-8": "utf-8", "iso-8859-5": "iso8859_5", "koi8-r": "koi8_r"}
+
+
+def _read_sav_without_long_names(path: Path):
+    """Review SAV-3: ReadStat refuses a long-names record (7/13) that holds
+    the byte 0xFF, which windows-1251 uses for 'я' and windows-1257 for '˙'
+    (its name grammar expects UTF-8, where that byte never occurs). Read
+    the file with that record's subtype changed (ReadStat skips records it
+    does not know), then decode the long names here, with the file's own
+    character encoding. Returns (frame, meta, {short name: long name})."""
+    import io
+    import struct
+
+    import pyreadstat
+
+    data = bytearray(Path(path).read_bytes())
+    if data[:4] not in (b"$FL2", b"$FL3") or struct.unpack_from("<i", data, 64)[0] != 2:
+        raise ValueError("not a little-endian system file")
+    at, records = 176, []
+    while True:
+        (kind,) = struct.unpack_from("<i", data, at)
+        at += 4
+        if kind == 2:
+            _width, has_label, n_missing = struct.unpack_from("<iii", data, at)
+            at += 28
+            if has_label:
+                (size,) = struct.unpack_from("<i", data, at)
+                at += 4 + (size + 3) // 4 * 4
+            at += 8 * abs(n_missing)
+        elif kind == 3:
+            (count,) = struct.unpack_from("<i", data, at)
+            at += 4
+            for _ in range(count):
+                at += 8 + (data[at + 8] + 8) // 8 * 8
+        elif kind == 4:
+            at += 4 + 4 * struct.unpack_from("<i", data, at)[0]
+        elif kind == 6:
+            at += 4 + 80 * struct.unpack_from("<i", data, at)[0]
+        elif kind == 7:
+            subtype, size, count = struct.unpack_from("<iii", data, at)
+            records.append((subtype, at, bytes(data[at + 12:at + 12 + size * count])))
+            at += 12 + size * count
+        elif kind == 999:
+            break
+        else:
+            raise ValueError(f"record type {kind}")
+    long_record = next(((at, body) for subtype, at, body in records if subtype == 13), None)
+    if long_record is None or b"\xff" not in long_record[1]:
+        raise ValueError("no long-names record that ReadStat refuses")
+    struct.pack_into("<i", data, long_record[0], 1013)   # a subtype nobody reads
+    frame, meta = pyreadstat.read_sav(io.BytesIO(bytes(data)), user_missing=True)
+    declared = next((body.decode("ascii", "replace").strip().lower()
+                     for subtype, _, body in records if subtype == 20), "")
+    if not declared:
+        page = next((struct.unpack_from("<8i", body)[7] for subtype, _, body in records
+                     if subtype == 3 and len(body) >= 32), 0)
+        declared = f"windows-{page}" if page else ""
+    codec = PYTHON_CODECS.get(declared) or (meta.file_encoding or "").lower() or "cp1251"
+    shorts = {str(c).upper(): str(c) for c in frame.columns}
+    long_names = {}
+    for pair in long_record[1].split(b"\t"):
+        short, equals, long = pair.partition(b"=")
+        if not equals:
+            continue
+        column = shorts.get(short.decode(codec, "replace").upper())
+        if column is not None:
+            long_names[column] = long.decode(codec, "replace")
+    return frame, meta, long_names
+
+
 def _load_sav(path: Path, options: ImportOptions | None = None
               ) -> tuple[pd.DataFrame, ImportReport]:
     """An SPSS file: values as stored, user-missing values as missing (or
@@ -646,18 +717,26 @@ def _load_sav(path: Path, options: ImportOptions | None = None
     keep_codes = (options or ImportOptions()).user_missing == "codes"
     import pyreadstat
 
+    warnings: list[str] = []
+    long_names: dict[str, str] = {}
     try:
         frame, meta = pyreadstat.read_sav(str(path), user_missing=True)
     except Exception as error:   # pyreadstat raises its own error types
-        raise ValueError(f"The SPSS file could not be read: {error}") from error
-    warnings: list[str] = []
+        try:
+            frame, meta, long_names = _read_sav_without_long_names(path)
+        except Exception:
+            raise ValueError(f"The SPSS file could not be read: {error}") from error
+        warnings.append("This file's long variable names could not be read by ReadStat (a "
+                        "byte it does not accept, such as 'я' in windows-1251); they were "
+                        "read separately from the file's long-names record.")
     if frame.shape[1] > 1000 or frame.shape[0] * frame.shape[1] > MAX_CELLS:
         raise ValueError(
             "Dataset exceeds 5 million cells or 1,000 columns. "
             "Split the source file into smaller research datasets."
         )
     renames = sav_renames(meta.notes)
-    names = [renames.get(str(c), str(c)) for c in frame.columns]
+    names = [long_names.get(str(c), str(c)) for c in frame.columns]
+    names = [renames.get(n, n) for n in names]
     if len({n.casefold() for n in names}) != len(names):
         names = [str(c) for c in frame.columns]
         warnings.append("The original variable names in the file's notes clash; the SPSS "

@@ -78,6 +78,44 @@ class DataExportTests(WorkspaceCase):
         self.assertEqual(json.loads((self.root / "preferences.json").read_text())["export"]
                          ["formats"]["data"], "xlsx")
 
+    def test_cut_or_replaced_cells_are_named_before_and_after_saving(self):
+        """Review X2, integrity F1: no exact-copy claim when the .xlsx format
+        changes values; each column and count is listed before saving, with
+        CSV as the exact alternative, and the outcome says so too."""
+        self.ws.app.session.set_dataset(pd.DataFrame({
+            "pid": ["P1", "P2"], "transcript": ["x" * 40_000, "a\x0bb"],
+            "counter": pd.array([2 ** 60 + 1, 3], dtype="Int64")}), "interviews.csv")
+        self.ws.click("nav-data")
+        before = "\n".join(texts(self.ws, "export-xlsx-changes"))
+        self.assertIn(T("export.xlsx.changes_title", count=3), before)
+        self.assertIn(T("export.xlsx.change.cut", name="transcript", count=1), before)
+        self.assertIn(T("export.xlsx.change.cleaned", name="transcript", count=1), before)
+        self.assertIn(T("export.xlsx.change.big_integer", name="counter", count=1), before)
+        self.assertIn(T("export.xlsx.changes_hint"), before)
+        self.ws.click("export-save-data")
+        feedback = " ".join(texts(self.ws, "export-feedback-data"))
+        self.assertRegex(feedback, r"32.?767|cut|replaced|Not an exact copy")
+        self.assertIn(T("export.saved_changed", count=3, columns="transcript, counter"),
+                      feedback)
+
+    def test_an_exact_copy_lists_no_change(self):
+        self.open_master()
+        self.assertEqual(self.ws.find_all("export-xlsx-changes"), [])
+
+    def test_another_project_does_not_show_the_previous_export(self):
+        """Review integrity F9, integration F3."""
+        from test_stage368_acceptance import create_project_in_ui
+
+        create_project_in_ui(self.ws, "Fictional study A")
+        self.ws.app.session.set_dataset(pd.DataFrame({"x": [1.0, 2.0]}), "a.csv")
+        self.ws.click("nav-data")
+        self.ws.click("export-save-data")
+        self.assertTrue(self.ws.find_all("export-feedback-data"))
+        create_project_in_ui(self.ws, "Fictional study B")
+        self.ws.app.session.set_dataset(pd.DataFrame({"y": [3.0]}), "b.csv")
+        self.ws.click("nav-data")
+        self.assertEqual(self.ws.find_all("export-feedback-data"), [])
+
     def test_participant_codes_are_flagged_and_nothing_is_uploaded(self):
         self.open_master()
         warning = " ".join(texts(self.ws, "export-sensitive"))
