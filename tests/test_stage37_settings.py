@@ -354,6 +354,17 @@ class WorkspaceSettingsTests(unittest.TestCase):
         ws.app.hub.confirm_delete(info.id, info.title)
         self.assertTrue(ws.find("project-delete-cancel").autofocus)
 
+    def test_u11_never_asks_a_non_editable_dropdown_to_take_the_focus(self):
+        # Flet's non-editable dropdown refuses the focus; asked anyway, its
+        # opened menu ignored the first arrow key (PR #79, stage37-hypothesis).
+        from workspace_shell import WorkspaceApp
+
+        self.assertFalse(WorkspaceApp.can_take_focus(ft.Dropdown(label="First variable")))
+        self.assertTrue(WorkspaceApp.can_take_focus(ft.Dropdown(label="Find", editable=True)))
+        self.assertTrue(WorkspaceApp.can_take_focus(ft.TextField(label="Find variables")))
+        self.assertFalse(WorkspaceApp.can_take_focus(ft.Button("Run", disabled=True)))
+        self.assertFalse(WorkspaceApp.can_take_focus(ft.Text("Step 2")))
+
     def test_u10_the_research_question_uses_the_card_width(self):
         ws = self.workspace()
         ws.type("project-new-title", "Fictional width study")

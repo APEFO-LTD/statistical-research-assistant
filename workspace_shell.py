@@ -510,13 +510,11 @@ class WorkspaceApp:
                        if getattr(c, "data", None) == target), None)
         if holder is None:
             return
-        focusable = (ft.Button, ft.TextButton, ft.IconButton, ft.TextField, ft.Dropdown)
         if first_inside:
             control = next((c for c in self._descendants(holder) if c is not holder
-                            and isinstance(c, focusable) and not getattr(c, "disabled", False)),
-                           None)
+                            and self.can_take_focus(c)), None)
         else:
-            control = holder if isinstance(holder, focusable) else None
+            control = holder if self.can_take_focus(holder) else None
         if control is None:
             return
         self.focused = getattr(control, "data", None) or target
@@ -525,6 +523,21 @@ class WorkspaceApp:
             self.page.run_task(control.focus)  # one rebuilt in place is told to
         except Exception:                     # no client (tests): recorded only
             pass
+
+    @staticmethod
+    def can_take_focus(control) -> bool:
+        """A control the keyboard focus can be moved to. A dropdown that is
+        not editable cannot: Flet gives its field a focus node that refuses
+        focus (``canRequestFocus = editable``), and a request for it anyway
+        (``autofocus`` + ``focus()``) leaves the opened menu deaf to the first
+        arrow key — the first Down after "Create the analysis for H1" was lost
+        and Sex was chosen instead of UCLA (Windows journey stage37-hypothesis,
+        PR #79). Such a request goes to the next control that can take it."""
+        if getattr(control, "disabled", False):
+            return False
+        if isinstance(control, ft.Dropdown):
+            return bool(getattr(control, "editable", False))
+        return isinstance(control, (ft.Button, ft.TextButton, ft.IconButton, ft.TextField))
 
     focused: str | None = None                # what the last focus request reached
 

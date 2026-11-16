@@ -132,6 +132,13 @@ class Stage37HypothesisJourneyTests(unittest.TestCase):
                 self.assertEqual((ws.app.route, ws.app.section), ("analyze", "variables"))
                 self.assertEqual(ws.find("role-x", ft.Dropdown).label, T("role.x"))
                 self.assertEqual(record_count(), 1, "the link is recorded")
+                # U11 moves the focus into step 2, but never to the dropdown:
+                # it cannot take the focus, and asked anyway its menu ignored
+                # the first arrow key (Windows: Sex chosen instead of UCLA).
+                self.assertFalse(ws.find("role-x", ft.Dropdown).autofocus)
+                self.assertEqual(ws.app.focused, "role-y:search")
+                self.assertEqual([c.data for c in ws.controls() if getattr(c, "autofocus", False)],
+                                 ["role-y:search"])
 
                 # UCLA with the eight scales, Spearman, Run.
                 self.assertEqual([o.text for o in ws.find("role-x", ft.Dropdown).options],
