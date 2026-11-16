@@ -856,10 +856,12 @@ class Gui:
         time.sleep(settle)
         return element
 
-    def type_into(self, label: str, text: str, *, clear: bool = True, index: int = 0):
+    def type_into(self, label: str | None, text: str, *, clear: bool = True, index: int = 0,
+                  regex: str | None = None):
         from pywinauto import keyboard
 
-        field = self.find(label, control_type="Edit", index=index)
+        field = self.find(label if regex is None else None, regex=regex, control_type="Edit",
+                          index=index)
         field.click_input()
         time.sleep(0.3)
         if clear:
@@ -4856,6 +4858,13 @@ SCALES_NAME = "SUP_AVG"
 SCALES_SEARCH = "SYN_SUP_??"           # the twelve items (not the fixture's own score)
 SCALES_ITEMS = tuple(f"SYN_SUP_{n:02d}" for n in range(1, 13))
 SCALES_LEVEL = "ordinal"               # the level the fixture's items are confirmed with
+# A field with a hint is named "<label>\n<hint>" in UI Automation (run
+# 43932075077: "Name of the new score\ne.g. LON_SUM"), so it is found by its
+# label at the start of its name.
+def field_named(label: str) -> str:
+    return "^" + re.escape(label) + r"(\n[\s\S]*)?$"
+
+
 SCALES_REGISTER_SQL = ("SELECT detail FROM events WHERE kind = 'scale_register' "
                        "ORDER BY id DESC LIMIT 1")
 
@@ -4899,7 +4908,7 @@ def scales_register_steps(gui: Gui, journey: Journey, offered: int) -> None:
         find_text(gui, T("scales.add"), exact=True, control_type="Button", timeout=60,
                   moves=80)
         gui.click(T("scales.add"), control_type="Button")
-        gui.type_into(T("scales.name"), SCALES_NAME)
+        gui.type_into(None, SCALES_NAME, regex=field_named(T("scales.name")))
         gui.type_into(T("vars.search"), SCALES_SEARCH)
         gui.wait_text(scales_count(0, offered))
     clicks = []

@@ -785,7 +785,13 @@ class VariablePickerJourneyTests(MasterFixture, unittest.TestCase):
             ws.click("nav-data")
             self.assertEqual(label(ws, "scales-add"), T("scales.add"))
             ws.click("scales-add")
-            self.assertEqual(ws.find("scales-name").label, T("scales.name"))
+            field = ws.find("scales-name")
+            self.assertEqual(field.label, T("scales.name"))
+            # UI Automation names a field with a hint "<label>\n<hint>".
+            self.assertRegex(f"{field.label}\n{field.hint_text}",
+                             e2e.field_named(T("scales.name")))
+            self.assertRegex(field.label, e2e.field_named(T("scales.name")))
+            self.assertNotRegex(T("scales.name") + " x", e2e.field_named(T("scales.name")))
             ws.type("scales-name", e2e.SCALES_NAME)
             searches = [c for c in ws.controls() if isinstance(c, ft.TextField)
                         and c.label == T("vars.search")]
