@@ -709,6 +709,25 @@ class StartupCheckTests(unittest.TestCase):
         self.assertEqual(check.ui_override("classic"), "classic")
         self.assertIsNone(check.ui_override(None))
 
+    def test_an_ab_comparison_judges_each_build_by_its_own_start(self):
+        # The startup record of the "before" build (2f9af71, classic start)
+        # has no "interface"; a Stage 37 build names its interface.
+        import check_gui_startup as check
+        import startup_ab
+
+        before = {"outcome": "ok", "workspace_present": False, "has_home_banner": True}
+        after = {"outcome": "ok", "workspace_present": True, "has_home_banner": False,
+                 "interface": "workspace"}
+        self.assertEqual(check.interface_errors(before, check.own_start_interface(before)), [])
+        self.assertEqual(check.interface_errors(after, check.own_start_interface(after)), [])
+        # Not weaker for a Stage 37 build: the classic Home alone is a failure.
+        broken = {"outcome": "ok", "workspace_present": False, "has_home_banner": True,
+                  "interface": "classic"}
+        self.assertTrue(check.interface_errors(broken, check.own_start_interface(broken)))
+        command = startup_ab.check_command(Path("before.exe"), Path("out"), 240)
+        self.assertIn("--own-start", command)
+        self.assertNotIn("--classic", command)
+
 
 class DraftTextTests(unittest.TestCase):
     def test_every_new_text_has_three_languages_and_is_listed_for_review(self):

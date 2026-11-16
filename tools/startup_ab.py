@@ -27,11 +27,19 @@ CHECK = Path(__file__).resolve().parent / "check_gui_startup.py"
 METRICS = ("window_visible_after_s", "interface_ready_reported_s")
 
 
+def check_command(exe: Path, out: Path, timeout: float) -> list[str]:
+    """The startup check of one launch. ``--own-start``: every build is
+    judged by its own normal start (since Stage 37 the research workspace;
+    a "before" build from earlier starts in the classic interface)."""
+    return [sys.executable, str(CHECK), str(exe), str(out), "--timeout", str(timeout),
+            "--own-start"]
+
+
 def run_once(exe: Path, out: Path, timeout: float) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     completed = subprocess.run(
-        [sys.executable, str(CHECK), str(exe), str(out), "--timeout", str(timeout)],
-        capture_output=True, text=True, timeout=timeout + 120)
+        check_command(exe, out, timeout), capture_output=True, text=True,
+        timeout=timeout + 120)
     result_path = out / "gui-startup-result.json"
     try:
         result = json.loads(result_path.read_text(encoding="utf-8"))

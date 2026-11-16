@@ -12,6 +12,8 @@ Since Stage 37 (issue #68) the normal start shows the research workspace;
 ``--classic`` starts the classic interface instead (``SRA_UI=classic``) and
 checks that it is still there. ``--workspace`` (``SRA_UI=workspace``) is
 kept for older workflow steps: it checks the same as the normal start.
+``--own-start`` (``tools/startup_ab.py``) checks the normal start against
+the build's own start interface: a build before Stage 37 starts classic.
 
 While the app starts, the window is captured every 0.5 s. The check fails if
 
@@ -161,6 +163,16 @@ def interface_errors(smoke: dict, expected: str) -> list[str]:
         "the research workspace is not on screen (the normal start since Stage 37)"]
 
 
+def own_start_interface(smoke: dict) -> str:
+    """The normal start of the build that wrote ``smoke`` (``--own-start``):
+    a build that names its interface in the startup record (Stage 37 and
+    later) starts in the research workspace; an earlier build, which does
+    not, starts in the classic interface. Each build of an A/B comparison
+    is so judged by its own start, and a Stage 37 build still has to show
+    the workspace."""
+    return "workspace" if "interface" in smoke else "classic"
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("exe", type=Path)
@@ -172,6 +184,9 @@ def main(argv=None) -> int:
                              "the normal start")
     parser.add_argument("--classic", action="store_true",
                         help="start the classic interface (SRA_UI=classic) and check it")
+    parser.add_argument("--own-start", action="store_true",
+                        help="the normal start, checked against the build's own start "
+                             "interface (A/B with a build before Stage 37)")
     args = parser.parse_args(argv)
     expected = "classic" if args.classic else "workspace"
     if os.name != "nt":
@@ -243,6 +258,8 @@ def main(argv=None) -> int:
         smoke = json.loads(result_path.read_text(encoding="utf-8"))
         if smoke.get("outcome") != "ok":
             errors.append(f"startup outcome: {smoke.get('outcome')}: {(smoke.get('error') or '')[-400:]}")
+        if args.own_start:
+            expected = own_start_interface(smoke)
         errors.extend(interface_errors(smoke, expected))
         if smoke.get("splash_present") or smoke.get("failure_present"):
             errors.append("splash or failure view still on screen after startup")
