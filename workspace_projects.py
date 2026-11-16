@@ -267,6 +267,10 @@ class ProjectHub:
         for name in ("analyze", "results", "reports"):
             self.app.pages[name].reset()
         self.app.pages["project"].hypotheses.reset()
+        data = self.app.pages.get("data")
+        if data is not None and getattr(data, "export", None) is not None:
+            # The previous project's export outcome (review integration F3).
+            data.export.feedback = None
 
     async def create(self, e=None):
         title = self.new_title.strip()

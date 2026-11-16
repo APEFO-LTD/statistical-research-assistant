@@ -25,7 +25,7 @@ The fixture was built from generic statistical model requirements, **not derived
 
 See [Stage 37 next specification](../../../docs/STAGE37_NEXT_SPEC.md) and GitHub Issues #66–#70.
 
-**Status:** generator and requirements only. This branch does not implement .sav/.xlsx exports, RAG, mediation/moderation or new UI functionality.
+**Status (integration branch `claude/stage37-integration`):** the generator and its requirements, plus the Stage 37 increments below, merged from their branches ([`docs/STAGE37_INTEGRATION.md`](../../../docs/STAGE37_INTEGRATION.md)).
 
 **Stage 37 methods increment (Issue #66, branch `claude/stage37-methods`).**
 
@@ -34,3 +34,5 @@ See [Stage 37 next specification](../../../docs/STAGE37_NEXT_SPEC.md) and GitHub
 - The public synthetic mapping of constructs, coping dimensions and hypotheses is [`synthetic_construct_mapping.json`](synthetic_construct_mapping.json). In the generator, coping group 0 is M; groups 2 and 5 play "avoidance-like" (+X) and groups 3 and 6 "assertive-like" (−X).
 - The generator above is unchanged (v1).
 - `generate_master_fixture_v2.py` is a separate, stdlib-only generator (240 cases, `SYN2_` columns). It adds what v1 cannot show (independent review S6): consistent mediation, a coping dimension tied negatively to Y, covariate effects, reverse-keyed items with a scoring key in its spec JSON, and missingness that depends on age and employment. Its test is `tests/test_stage37_fixture_v2.py`.
+
+**Stage 37 export increment (Issue #67, branch `claude/stage37-export`).** Verification task 3 (export to .xlsx, .csv and .sav, reopened with independent readers) is implemented on `claude/stage37-export` and tested on this fixture (`docs/STAGE37_EXPORT.md`; `tests/test_stage37_export*.py`; Windows journey `export-data`, not yet run on Windows).

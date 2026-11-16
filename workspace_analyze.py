@@ -1274,8 +1274,10 @@ class ResultsPage:
         self.feedback: dict[int, tuple[str, str]] = {}
         self.figure_number = "1"
         from workspace_assistant import AssistantPanel
+        from workspace_export import ExportPanel
 
         self.assistant = AssistantPanel(self)    # Stage 36 §12: AI drafts, per result
+        self.export = ExportPanel(app, "results")    # Stage 37 (#67): one Export action
 
     # Stage 36.8 (K2): the researcher's note and reviewed checks are kept on
     # each result (ResultEntry.note / .reviewed) and saved with the project.
@@ -1290,6 +1292,7 @@ class ResultsPage:
     def reset(self) -> None:
         """Another project: nothing said about its results' exports."""
         self.feedback = {}
+        self.export.feedback = None
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
@@ -1315,7 +1318,8 @@ class ResultsPage:
             ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=tk.SPACE_5)],
                 spacing=tk.SPACE_4)
         return app.constrained(ft.Column(
-            [body, wc.caption(self.app.ui, session_note(app), data="results-note")],
+            [body, self.export.build(),
+             wc.caption(self.app.ui, session_note(app), data="results-note")],
             spacing=tk.SPACE_3), tk.CONTENT_MAX_WIDTH + 200)
 
     def footer(self) -> ft.Control | None:
@@ -1813,6 +1817,9 @@ class ReportsPage:
         self.opened: set[str] = set()
         self.feedback: tuple[str, str] | None = None
         self._preview: ft.Text | None = None   # updated in place while typing
+        from workspace_export import ExportPanel
+
+        self.export = ExportPanel(app, "reports")    # Stage 37 (#67): one Export action
 
     # Stage 36.8 (K2): the study title, the chosen sections (36.6) and the
     # report language (default: the interface's) belong to the project: they
@@ -1837,6 +1844,7 @@ class ReportsPage:
         self.include_stale = False
         self.feedback = None
         self._preview = None
+        self.export.feedback = None
 
     def _blocked(self) -> bool:
         stale = [e for e in self.app.session.report_entries() if e.stale_reasons]
@@ -1923,6 +1931,7 @@ class ReportsPage:
             ]
         if self.feedback:
             body.append(wc.notice(ui, self.feedback[0], self.feedback[1], data="reports-feedback"))
+        body.append(self.export.build())
         return app.constrained(ft.Column([header, *body, wc.caption(
             ui, session_note(app), data="reports-note")], spacing=tk.SPACE_4,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH), tk.READING_MAX_WIDTH + 240)

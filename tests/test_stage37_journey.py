@@ -57,9 +57,10 @@ def to_top(ws, key: str) -> None:
 
 class JourneyOrderTests(unittest.TestCase):
     def test_the_hypothesis_journey_follows_the_eighteen(self):
-        self.assertEqual(len(e2e.JOURNEYS), 19)
+        # The first journey after the 18; the journeys of the other Stage 37
+        # branches follow it (combined order: test_stage368_review_journeys).
         self.assertEqual(list(e2e.JOURNEYS)[:18][-2:], ["confirmations", "report-composition"])
-        self.assertEqual(list(e2e.JOURNEYS)[18:], ["stage37-hypothesis"])
+        self.assertEqual(list(e2e.JOURNEYS)[18], "stage37-hypothesis")
         self.assertNotIn("stage37-hypothesis", e2e.STARTS_ITSELF)
 
 

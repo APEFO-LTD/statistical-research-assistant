@@ -550,16 +550,27 @@ def survey_codebook(root: str | Path, survey_id: str) -> dict[str, Any]:
 
 
 def save_survey_codebook(
-    root: str | Path, survey_id: str, path: str | Path
+    root: str | Path, survey_id: str, path: str | Path, *,
+    data_file: str | Path | None = None,
 ) -> Path:
+    """The codebook as JSON. ``data_file``: the CSV exported with it; the
+    codebook then records that file's SHA-256 and formula protection, so the
+    program's importer can give back the exact answers (csv_safety)."""
+    import csv_safety
+
     destination = Path(path).expanduser().resolve()
     if destination.suffix.lower() != ".json" or not destination.parent.is_dir():
         raise ValueError("Choose an existing folder and a .json file.")
+    book = survey_codebook(root, survey_id)
+    if data_file is not None:
+        book = {"format": csv_safety.CODEBOOK_FORMAT, **book,
+                "data_file": csv_safety.data_file(Path(data_file).expanduser().resolve())}
     destination.write_text(
-        json.dumps(survey_codebook(root, survey_id), ensure_ascii=False, indent=2),
+        json.dumps(book, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     return destination
+
 
 
 def save_survey_csv(root: str | Path, survey_id: str, path: str | Path) -> Path:
@@ -571,5 +582,25 @@ def save_survey_csv(root: str | Path, survey_id: str, path: str | Path) -> Path:
     frame = responses_dataframe(root, survey_id)
     if frame.empty:
         raise ValueError("There are no responses to export.")
+    import csv_safety
+
+    # A text answer that begins with = + - @ is written with a leading
+    # apostrophe, so no spreadsheet runs it as a formula (csv_safety).
+    frame, _ = csv_safety.protect_frame(frame)
     frame.to_csv(destination, index=False, encoding="utf-8-sig")
     return destination
+
+
+def export_survey_responses(root: str | Path, survey_id: str,
+                            path: str | Path) -> tuple[Path, Path]:
+    """The questionnaire responses as CSV and, next to it, the codebook
+    ``<name>_codebook.json`` that records the CSV's SHA-256 and formula
+    protection, so the program's importer gives back the exact answers
+    (csv_safety). Both interfaces (the classic Survey panel and the
+    workspace's Questionnaires page) export with this one function."""
+    import csv_safety
+
+    written = save_survey_csv(root, survey_id, path)
+    codebook = save_survey_codebook(root, survey_id, csv_safety.codebook_path(written),
+                                    data_file=written)
+    return written, codebook

@@ -7,15 +7,22 @@ the integrated tree (docs/STAGE37_INTEGRATION.md):
   moderated path of Model 7 or 14) decide 0b's design step of a task, and
   the Word report holds 0b's hypothesis rows and methods' path-model results
   side by side.
+* export × 0b and methods: the Results workbook keeps methods' path-model
+  quantities unrounded with their bootstrap seed and 0b's hypothesis
+  snapshot in its provenance; the reproducibility bundle's Word report holds
+  0b's hypothesis rows.
 
 Synthetic data only.
 """
 
 from __future__ import annotations
 
+from io import BytesIO
+import json
 from pathlib import Path
 import sys
 import unittest
+import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -73,11 +80,11 @@ class ConfirmationScopeTests(unittest.TestCase):
         self.assertFalse(facts.design_ready, "given for m1, not for m2")
 
 
-class WordReportTests(Case):
-    """0b's Hypotheses section and evidence table next to methods' path model."""
+class TwoResults(Case):
+    """H1's correlations (0b's link and snapshot) and a path model (methods)."""
 
-    def test_the_report_holds_the_hypothesis_rows_and_the_path_model(self):
-        ws, _ = self.planned()
+    def two_results(self):
+        ws, hid = self.planned()
         ws.app.navigate("project")
         ws.click("next-create-analysis")
         run_correlations(ws)
@@ -91,7 +98,15 @@ class WordReportTests(Case):
         mediation = session.add_result(run, (), method="mediation", roles=MEDIATION_ROLES,
                                        options=options)
         session.toggle_report(mediation.id)
-        session.update_report(language="en")
+        return ws, hid, correlation, mediation
+
+
+class WordReportTests(TwoResults):
+    """0b's Hypotheses section and evidence table next to methods' path model."""
+
+    def test_the_report_holds_the_hypothesis_rows_and_the_path_model(self):
+        ws, _, _, _ = self.two_results()
+        ws.app.session.update_report(language="en")
         ws.run(ws.app.pages["reports"]._export_docx())
         document = Document(str(ws.saved[-1]))
         text = "\n".join(p.text for p in document.paragraphs)
@@ -105,6 +120,50 @@ class WordReportTests(Case):
         cells = [c for t in tables for row in t for c in row]
         self.assertTrue(any(c.startswith("Indirect effect via SocialJoining") for c in cells),
                         "the path model's effects table")
+
+
+
+class ExportTests(TwoResults):
+    def test_the_results_workbook_keeps_the_path_model_and_the_hypothesis(self):
+        from openpyxl import load_workbook
+
+        ws, hid, correlation, mediation = self.two_results()
+        ws.click("nav-results")
+        ws.click("export-save-results")
+        book = load_workbook(ws.saved[-1], read_only=True)
+        self.addCleanup(book.close)
+        self.assertEqual(len(book.sheetnames), 2 + 2, book.sheetnames)
+        rows = {}
+        for name in book.sheetnames[1:3]:
+            for row in book[name].iter_rows(values_only=True):
+                if len(row) > 1 and isinstance(row[0], str):
+                    rows.setdefault(row[0], row[1])
+        indirect = mediation.run.result.estimate("indirect:m0")
+        self.assertEqual(rows["indirect:m0"], indirect.value, "unrounded (methods)")
+        self.assertEqual(rows["indirect:m0.ci_low"], indirect.ci_low)
+        provenance = [row for row in book[book.sheetnames[-1]].iter_rows(values_only=True)
+                      if row and row[0] in ("R1", "R2")]
+        columns = next(row for row in book[book.sheetnames[-1]].iter_rows(values_only=True)
+                       if row and row[0] == "Result")
+        by = {row[0]: dict(zip(columns, row)) for row in provenance}
+        self.assertEqual(json.loads(by["R1"]["Hypothesis (JSON)"])["id"], hid, "0b's snapshot")
+        self.assertEqual(json.loads(by["R2"]["Seeds (JSON)"])["resamples"], 1000)
+        self.assertIn("seed", json.loads(by["R2"]["Seeds (JSON)"]))
+
+    def test_the_bundle_word_report_holds_the_hypothesis_rows(self):
+        ws, _, _, _ = self.two_results()
+        ws.app.session.update_report(language="en")
+        ws.click("nav-reports")
+        ws.click("export-save-reports")
+        with zipfile.ZipFile(ws.saved[-1]) as archive:
+            name = next(n for n in archive.namelist()
+                        if n.startswith("report/") and n.endswith(".docx"))
+            document = Document(BytesIO(archive.read(name)))
+            manifest = json.loads(archive.read("manifest.json"))
+        text = "\n".join(p.text for p in document.paragraphs)
+        self.assertIn("H1 (primary): " + H1, text)
+        self.assertIn("Mediation (PROCESS-equivalent Model 4)", text)
+        self.assertEqual(len(manifest["analyses"]), 2)
 
 
 if __name__ == "__main__":

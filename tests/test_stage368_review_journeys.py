@@ -69,12 +69,19 @@ def notes_value(ws) -> str:
     return field.value or ""
 
 
+# The Stage 37 journeys after the 18 of the release candidate, in the order of
+# the integration merges (0b, export; then the library and the UX journeys).
+STAGE37_JOURNEYS = ["stage37-hypothesis", "export-data"]
+
+
 class JourneyOrderTests(unittest.TestCase):
     def test_the_review_journeys_follow_the_others(self):
-        # Stage 37.0b appends one journey (stage37-hypothesis) after these 18;
-        # their order is unchanged (tests/test_stage37_journey.py).
         self.assertEqual(list(e2e.JOURNEYS)[16:18], ["confirmations", "report-composition"])
-        self.assertEqual(len(e2e.JOURNEYS), 19)
+        # Stage 37 (integration, docs/STAGE37_INTEGRATION.md): each branch
+        # appends its journeys after these 18, which run unchanged and in
+        # their order; the combined order is the order of the merges.
+        self.assertEqual(list(e2e.JOURNEYS)[18:], STAGE37_JOURNEYS)
+        self.assertEqual(len(e2e.JOURNEYS), 18 + len(STAGE37_JOURNEYS))
 
 
 class ConfirmationsJourneyTests(unittest.TestCase):
