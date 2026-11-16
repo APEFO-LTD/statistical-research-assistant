@@ -35,6 +35,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
+import unicodedata
 
 import ai_assist
 import ai_context
@@ -147,18 +148,32 @@ def location(passage) -> str:
     return " · ".join(parts) or "start of the document"
 
 
+def _plain(text: str) -> str:
+    """Text as the model and the preview read it: no invisible format
+    characters (zero-width space, soft hyphen, word joiner, BOM …) and
+    compatibility forms folded (fullwidth ＜ and small-form ﹤ are "<",
+    fullwidth letters are letters), so that no spelling of a tag survives
+    the escaping below (independent review injection F6)."""
+    text = "".join(c for c in str(text) if unicodedata.category(c) != "Cf")
+    return unicodedata.normalize("NFKC", text)
+
+
+_TAG = re.compile(r"(?i)<(\s*/?\s*)(source|question)")
+
+
 def _attribute(value: str) -> str:
-    return " ".join(str(value).replace('"', "'").replace("<", "‹").replace(">", "›").split())[:160]
+    return " ".join(_plain(value).replace('"', "'").replace("<", "‹").replace(">", "›")
+                    .split())[:160]
 
 
 def _quoted(text: str) -> str:
-    """Passage text that cannot close its <source> element or open another."""
-    text = re.sub(r"(?i)<\s*/\s*source", "< /source", text)
-    return re.sub(r"(?i)<\s*source", "< source", text)
+    """Passage text that cannot close its <source> element, open another or
+    add a <question>: "< /source", "< source", "< question"."""
+    return _TAG.sub(lambda m: "< " + m.group(1).strip() + m.group(2), _plain(text))
 
 
 def _question(text: str) -> str:
-    return re.sub(r"(?i)<\s*/\s*question", "< /question", text)
+    return _quoted(text)
 
 
 def build_request(question: str, hits, *, language: str = "en") -> AskRequest:
