@@ -246,5 +246,38 @@ class F1ModelBoundConfirmationTests(unittest.TestCase):
                 ws.close()
 
 
+class F2RestoredSpearmanTests(unittest.TestCase):
+    """Integration F2: the S10 note added to a single Spearman correlation at
+    the permutation floor does not make a result saved by the previous
+    version count as "recalculated report differs"."""
+
+    def test_a_report_saved_before_the_s10_note_still_verifies(self):
+        import hashlib
+        from types import SimpleNamespace
+
+        import project_session
+        from workspace_methods import run_method
+        from workspace_state import ResearchSession
+
+        rng = np.random.default_rng(42)
+        x = rng.normal(0, 1, 120)
+        y = x + rng.normal(0, .5, 120)
+        session = ResearchSession()
+        session.set_dataset(pd.DataFrame({"x": x, "y": y}), "fictional.csv")
+        session.confirm_level("x", "scale")
+        session.confirm_level("y", "scale")
+        now = run_method("correlation", session, {"x": "x", "y": "y"}, {"method": "spearman"},
+                         {"pearson": False})
+        self.assertIn("This p (.001) is the smallest", now.report)
+        saved = "\n".join(line for line in now.report.split("\n")
+                          if not line.startswith("This p (.001) is the smallest"))
+        self.assertTrue(hashlib.sha256(saved.encode()).hexdigest().startswith(
+            "08d80a0b7d464955"), "the report the previous version (2f9af71) saved")
+        self.assertTrue(project_session.same_report(SimpleNamespace(report=saved), now))
+        other = saved.replace("ρ", "r", 1)
+        self.assertFalse(project_session.same_report(SimpleNamespace(report=other), now),
+                         "any other difference is still found")
+
+
 if __name__ == "__main__":
     unittest.main()
