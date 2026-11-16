@@ -62,6 +62,44 @@ Journeys (synthetic data only; see JOURNEYS):
                  (review K2, spec G) report order, a note, a reviewed check,
                  title, a section left out and Latvian, kept over a restart
                  and in the Word report; none of it in a second project
+* stage37-hypothesis
+                 (Stage 37.0b, AC-16) a typed question, H1 and a saved plan;
+                 the analysis created for H1 and run; its check acknowledged
+                 with a reason; "Tests H1"; the hypothesis rows in the Word
+                 report; restart: plan, records, snapshot and report rows
+                 back; a priority change without a reason refused; the
+                 protocol records read from the database, never fewer
+* export-data    (Stage 37, #67) the synthetic 180-case master fixture
+                 exported from the Data page's Export card as .xlsx, .sav
+                 and .csv through the Save dialog; each file read here with
+                 openpyxl, pyreadstat or pandas and compared cell by cell;
+                 the last format remembered in the settings file
+* research-library
+                 (Stage 37.3, #69) a project's research library: a synthetic
+                 PDF added in the Open dialog, searched offline, the cited
+                 page opened in the page viewer, the document removed with
+                 one action, the search then finds nothing; checked on disk
+* startup-workspace
+                 (Stage 37, #68) the program starts in the research workspace
+                 without SRA_UI; the classic interface is one click away and
+                 back; chosen as the start interface it opens at the next
+                 start, and the choice is kept in the settings file
+* settings-language
+                 (Stage 37, #68) an earlier version's Russian preference
+                 survives the upgrade (the program starts in Russian, the top
+                 bar offers EN and LV only, Settings show Russian); LV in the
+                 top bar, restart, Latvian; text size 125 % on screen
+* variable-picker
+                 (Stage 37, Issue #68, review UX-3) the 98-column master
+                 fixture: variables not offered as items are named with the
+                 reason; 20 items chosen by their name group in one action;
+                 α as numpy computes it; Repeat with changes: a new task,
+                 nothing confirmed; one item found by typing and left out
+                 with Tab and Space; α of 19 items; the first task unchanged
+
+The program starts as a researcher starts it: no ``SRA_UI`` (Stage 37: the
+research workspace is the normal start). ``Gui.start_ui`` forces one for a
+journey that needs it.
 
 Every step is recorded in OUT_DIR: a screenshot, the UI Automation tree
 when something is missing, an animated recording per journey
@@ -106,6 +144,14 @@ def T(key: str, **values) -> str:
     from workspace_text import T as TABLE
 
     text = TABLE[key][0]
+    return text.format(**values) if values else text
+
+
+def text_in(language: str, key: str, **values) -> str:
+    """The interface text for ``key`` in ``language`` (en, lv or ru)."""
+    from workspace_text import LANGS, T as TABLE
+
+    text = TABLE[key][LANGS.index(language)]
     return text.format(**values) if values else text
 
 
@@ -218,6 +264,9 @@ class Gui:
         self.frames: list = []
         self._recording = None
         self.step_index = 0
+        # SRA_UI for the program's starts: None is the normal start (Stage 37:
+        # the research workspace, or the researcher's choice in Settings).
+        self.start_ui: str | None = None
 
     # ----------------------------------------------------------- lifecycle
     def environment(self) -> dict:
@@ -229,13 +278,14 @@ class Gui:
         env.update({
             # A clean machine: neither the runner's Python nor Tesseract.
             "PATH": f"{system}\\System32;{system};{system}\\System32\\Wbem",
-            "SRA_UI": "workspace",
             "SRA_LOG_DIR": str(self.out / "app-logs"),
             # Every document reading writes its stage timings here (ocr_profile).
             "SRA_OCR_PROFILE": str(self.out / "ocr-profiles"),
         })
         if not self.real_data:
             env["SRA_DATA_DIR"] = str(self.data_dir)
+        if self.start_ui:
+            env["SRA_UI"] = self.start_ui
         return env
 
     def start(self, timeout: float = 300, *, ready: str | None = None) -> None:
@@ -643,8 +693,31 @@ class Gui:
         except Exception:
             return False
         left, top, right, bottom = self.window_box()
-        return (rect.width() > 0 and rect.height() > 0 and rect.top >= top + 60
-                and rect.bottom <= bottom - 30 and rect.left >= left and rect.right <= right)
+        # The sidebar reaches the bottom of the window's client area: its last
+        # entry (the classic interface) ends about 20 px above the window's
+        # outer edge, whatever the window's size. Only the window frame
+        # (WINDOW_FRAME, also the overhang of a maximized window) hides it.
+        limit = bottom - (self.WINDOW_FRAME if rect.right <= left + 260 else 30)
+        # The context bar's own controls sit right under the title bar.
+        upper = top + (self.TITLE_BAR if self.top_bar_control(element) else 60)
+        return (rect.width() > 0 and rect.height() > 0 and rect.top >= upper
+                and rect.bottom <= limit and rect.left >= left and rect.right <= right)
+
+    def in_top_bar(self, element) -> bool:
+        """In the context bar above the page (project, dataset, theme,
+        languages): it never scrolls."""
+        try:
+            rect = element.element_info.rectangle
+        except Exception:
+            return False
+        left, top, _, _ = self.window_box()
+        return rect.left >= left + 240 and rect.bottom <= top + self.CONTEXT_BAR
+
+    def top_bar_control(self, element) -> bool:
+        """One of the context bar's controls a journey clicks (EN, LV)."""
+        return self.in_top_bar(element) and any(
+            re.search(pattern, element.element_info.name or "")
+            for pattern in TOP_BAR_CONTROLS)
 
     def wheel(self, clicks: int, at=None) -> None:
         from pywinauto import mouse
@@ -658,10 +731,14 @@ class Gui:
     # import review, by its sticky footer: a click there lands on them.
     STATUS_LINE = 45
     CONTEXT_BAR = 115
+    WINDOW_FRAME = 8
+    TITLE_BAR = 30
     _footer_cache = (0.0, None)
 
     def footer_top(self):
-        """Where the import review's sticky footer starts (None: no footer)."""
+        """Where a sticky footer starts (None: no footer): the import review's,
+        or (Stage 37.0b) the next-action bar below Data, Analyze, Results and
+        Reports, found by its fixed label "Next step" on its first line."""
         stamp, top = self._footer_cache
         if time.monotonic() - stamp < 2.0:
             return top
@@ -672,6 +749,9 @@ class Gui:
                     for name in (T("imp.back"), T("imp.next"), T("imp.create_draft"))
                     for e in self.query(name, control_type="Button")
                     if e.element_info.rectangle.top > bottom - 260]
+            # The bar's own padding and border lie above its label.
+            tops += [e.element_info.rectangle.top - 6 for e in self.query(T("footer.next_step"))
+                     if e.element_info.rectangle.top > bottom - 480]
             top = min(tops) - 12 if tops else None
         self._footer_cache = (time.monotonic(), top)
         return top
@@ -695,6 +775,8 @@ class Gui:
             return True                       # the sticky footer itself
         if (info.name or "") in self.banner_actions():
             return True                       # the update banner sits above the context bar
+        if self.top_bar_control(element):
+            return True                       # the context bar's own controls (EN, LV)
         limit = bottom - self.STATUS_LINE
         footer = self.footer_top()
         if footer is not None:
@@ -720,17 +802,22 @@ class Gui:
         return element
 
     def find(self, name=None, *, regex=None, control_type=None, timeout: float = 15,
-             scroll: bool = True, index: int = 0, visible: bool = True):
+             scroll: bool = True, index: int = 0, visible: bool = True,
+             page_only: bool = False):
         """The ``index``-th element with this name (or regex), on screen.
 
         Waits for it; then scrolls the page down, then up, the way a person
-        looks for a control below or above the visible part.
+        looks for a control below or above the visible part. ``page_only``
+        leaves out the context bar above the page (its language group is
+        named "Language" too: "Язык. English").
         """
         deadline = time.monotonic() + timeout
         settle_until = time.monotonic() + min(4.0, timeout)
         moves, direction = 0, -1
         while True:
             found = self.query(name, regex=regex, control_type=control_type)
+            if page_only:
+                found = [e for e in found if not self.in_top_bar(e)]
             if len(found) > index:
                 element = found[index]
                 if not visible or self.clickable(element):
@@ -756,9 +843,9 @@ class Gui:
 
     # ------------------------------------------------------------- actions
     def click(self, name=None, *, regex=None, control_type=None, index: int = 0,
-              timeout: float = 15, settle: float = 0.8):
+              timeout: float = 15, settle: float = 0.8, page_only: bool = False):
         element = self.find(name, regex=regex, control_type=control_type, index=index,
-                            timeout=timeout)
+                            timeout=timeout, page_only=page_only)
         info = element.element_info
         if info.control_type in ("RadioButton", "CheckBox"):
             # On the button itself: its row spans the page (see check()).
@@ -769,10 +856,12 @@ class Gui:
         time.sleep(settle)
         return element
 
-    def type_into(self, label: str, text: str, *, clear: bool = True, index: int = 0):
+    def type_into(self, label: str | None, text: str, *, clear: bool = True, index: int = 0,
+                  regex: str | None = None):
         from pywinauto import keyboard
 
-        field = self.find(label, control_type="Edit", index=index)
+        field = self.find(label if regex is None else None, regex=regex, control_type="Edit",
+                          index=index)
         field.click_input()
         time.sleep(0.3)
         if clear:
@@ -861,12 +950,20 @@ class Gui:
             element.click_input()
             return "click"
 
-    def choose(self, label: str, option: str, *, index: int = 0, options=None):
+    def choose(self, label: str, option: str, *, index: int = 0, options=None,
+               current: str | None = None):
         """Pick ``option`` in the dropdown named ``label``: open it through UI
         Automation and press the entry that appeared with the menu (the page
         may hold a checkbox of the same name: the ANCOVA form lists the
         covariates). Where the open menu exposes no entries (the method form,
-        runs 13-14), choose like a keyboard user: Down to the entry, Enter."""
+        runs 13-14), choose like a keyboard user: Down to the entry, Enter.
+
+        ``current``: the entry the field shows, when the journey knows it.
+        UI Automation exposes no value of a Flet dropdown (it reads ''), and
+        the menu of a freshly built dropdown opens with that entry highlighted
+        (see :func:`keyboard_keys`): from '' the keys would be counted from
+        the wrong place (PR #79, startup-workspace: two Downs from "Research
+        workspace" wrapped round to it again and nothing changed)."""
         from pywinauto import keyboard
 
         kinds_menu = ("MenuItem", "ListItem", "Button", "Text", "Custom", "Group")
@@ -916,12 +1013,10 @@ class Gui:
         focused = self.focused()
         expect(focused.process_id == self.window_pid and not self.system_menu_open(),
                f"the dropdown {label!r} does not have the keyboard focus")
-        current = self.value(field)
-        start = options.index(current) if current in options else -1
-        moves = options.index(option) - start
+        current = self.value(field) or current or ""
         print(f"  [choose] choosing entry {options.index(option) + 1} of {len(options)} by "
               f"keyboard (from {current!r})", flush=True)
-        keyboard.send_keys(("{DOWN}" if moves > 0 else "{UP}") * abs(moves))
+        keyboard.send_keys(keyboard_keys(options, option, current))
         time.sleep(0.4)
         keyboard.send_keys("{ENTER}")
         time.sleep(0.9)
@@ -1075,6 +1170,15 @@ class Gui:
             with contextlib.suppress(Exception):
                 keyboard.send_keys("{ESC}")
             time.sleep(0.5)
+        # A modal dialog of the program ignores Esc: the legacy-data offer
+        # (Issue #80: a failed step left it open and blocked the next
+        # journey). Its "Not now" / "Close" change no research data.
+        import data_ui
+
+        for name in (data_ui.t("en", "later"), data_ui.t("en", "close")):
+            with contextlib.suppress(Exception):
+                if self.query(name, control_type="Button"):
+                    self.click(name, control_type="Button", timeout=3)
         with contextlib.suppress(Exception):
             self.click(T("nav.home"), control_type=("Button", "Text"), timeout=8)
 
@@ -1181,6 +1285,48 @@ def nav(gui: Gui, key: str) -> None:
     gui.click(regex="^" + re.escape(T(key)) + r"(\n\d+)?$", control_type=("Button", "Text"))
 
 
+def wait_for(condition, timeout: float = 10, interval: float = 0.5):
+    """``condition()``'s first true value within ``timeout`` seconds (else
+    its last value)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        value = condition()
+        if value or time.monotonic() > deadline:
+            return value
+        time.sleep(interval)
+
+
+def open_method_form(gui: Gui, title: str, first_field: str, *, wait: float = 10) -> None:
+    """Open a method's form from its card in "All methods" and wait for the
+    form's ``first_field``. In run 43894133123 (project-a, 90d0b40) the click
+    on the ANCOVA card was lost: the catalogue stayed, the window's system
+    menu stood open at the end of the step, and the next step reported no
+    "Outcome". The step now ends with the form on screen; a lost click is
+    logged, the menu closed and the card clicked once more."""
+    # A method card is named by its title and its summary.
+    card = "^" + re.escape(title) + r"(\n|$)"
+    kinds = ("Button", "Text", "Group", "Custom")
+    gui.click(regex=card, control_type=kinds)
+    if not wait_for(lambda: gui.query(first_field), timeout=wait):
+        print(f"  [click] the form of {title!r} did not open (system menu open: "
+              f"{gui.system_menu_open()}); clicking the card again", flush=True)
+        gui.close_menus()
+        gui.click(regex=card, control_type=kinds)
+    gui.find(first_field, timeout=15)
+
+
+def keyboard_keys(options: list[str], option: str, current: str = "") -> str:
+    """The keys that move the open menu of a Flet dropdown to ``option``
+    (Enter follows). Flutter's DropdownMenu (material_ui 1.6.0,
+    ``_DropdownMenuState``) opens a freshly built dropdown with the entry its
+    field shows highlighted (its search finds that label), and with nothing
+    highlighted when the field is empty; Down from nothing goes to the first
+    entry, and Down/Up wrap round. ``current``: the entry the field shows."""
+    start = options.index(current) if current in options else -1
+    moves = options.index(option) - start
+    return ("{DOWN}" if moves > 0 else "{UP}") * abs(moves)
+
+
 def option_label(name: str, level: str) -> str:
     return f"{name} · {T('level.' + level)}"
 
@@ -1275,9 +1421,7 @@ def journey_project_a(gui: Gui, work: Path, journey: Journey) -> None:
         gui.click(T("analyze.mode.all"), control_type=("Button", "Text"))
         from workspace_methods import METHODS
 
-        # A method card is named by its title and its summary.
-        gui.click(regex="^" + re.escape(METHODS["ancova"].title) + r"(\n|$)",
-                  control_type=("Button", "Text", "Group", "Custom"))
+        open_method_form(gui, METHODS["ancova"].title, T("role.outcome"))
     with journey.step("choose outcome, group and covariate"):
         gui.choose(T("role.outcome"), option_label("wellbeing", "scale"), options=ANCOVA_OPTIONS)
         gui.choose(T("role.group"), option_label("group", "nominal"), options=ANCOVA_OPTIONS)
@@ -1898,6 +2042,55 @@ def seed_preview_data() -> tuple[Path, str]:
     return folder, info.id
 
 
+def _luminance(rgb) -> float:
+    def channel(value: int) -> float:
+        c = value / 255
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = rgb[:3]
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+
+
+def measured_contrast(image) -> dict:
+    """WCAG contrast of the text in a screenshot ``image`` (a PIL image of
+    one text element): the background is the most frequent colour, the text
+    the colour of the core of its strokes, i.e. of the 1 % of the pixels
+    farthest from the background in luminance (anti-aliased edges lie
+    between the two; a stray pixel does not decide). Issue #80 (P1):
+    measured on the installed program's own pixels, not on the colours the
+    code asks for."""
+    pixels = list(image.convert("RGB").getdata())
+    if not pixels:
+        return {"ratio": 1.0, "background": None, "text": None}
+    counts: dict = {}
+    for pixel in pixels:
+        counts[pixel] = counts.get(pixel, 0) + 1
+    background = max(counts, key=counts.get)
+    base = _luminance(background)
+
+    def ratio(pixel) -> float:
+        a = _luminance(pixel)
+        return (max(a, base) + 0.05) / (min(a, base) + 0.05)
+
+    seen, text = 0, background
+    for colour in sorted(counts, key=ratio, reverse=True):
+        seen += counts[colour]
+        text = colour
+        if seen >= 0.01 * len(pixels):
+            break
+    return {"ratio": round(ratio(text), 2), "background": "#%02X%02X%02X" % background,
+            "text": "#%02X%02X%02X" % text}
+
+
+def element_contrast(gui: Gui, element) -> dict:
+    """:func:`measured_contrast` of ``element``'s rectangle on the screen."""
+    box = element.element_info.rectangle
+    left, top, right, bottom = gui.window_box()
+    crop = (max(box.left, left) - left, max(box.top, top) - top,
+            min(box.right, right) - left, min(box.bottom, bottom) - top)
+    return measured_contrast(gui.grab().crop(crop))
+
+
 def journey_legacy_migration(gui: Gui, work: Path, journey: Journey) -> None:
     """A researcher who used a preview build installs the application: the
     first start offers to copy the earlier data, copies and checks it, and
@@ -1915,11 +2108,36 @@ def journey_legacy_migration(gui: Gui, work: Path, journey: Journey) -> None:
         gui.wait_text(PREVIEW_PROJECT, scroll=False)
         gui.wait_text(PREVIEW_SURVEY, scroll=False)
         gui.shot("earlier data offered")
+    with journey.step("the dialog's texts measured on screen (contrast)"):
+        # Issue #80 (P1): light text stood on a near-white surface. The
+        # title, the body and the path are measured on the screenshot of
+        # their own rectangles (WCAG AA, 4.5:1). The dialog's title sits
+        # where the page's context bar is, which Gui.find does not count as
+        # clickable: visible=False, only its rectangle is read. The verdict
+        # comes after the dialog is closed, so that a failure here never
+        # leaves the modal dialog over the next journey.
+        measured = {}
+        # The path as the dialog writes it (the folder the program found,
+        # which may be spelled otherwise than the driver's): by its place.
+        path = "^" + re.escape(str(folder)) + "$|" + re.escape(r"\Your Company" + "\\")
+        for role, name, regex in (("title", data_ui.t("en", "title"), None),
+                                  ("body", data_ui.t("en", "found"), None),
+                                  ("path", None, path)):
+            try:
+                element = gui.find(name, regex=regex, scroll=False, visible=False,
+                                   timeout=10)
+                measured[role] = element_contrast(gui, element)
+            except Exception as error:          # judged below, after Close
+                measured[role] = {"ratio": 0.0, "error": f"{type(error).__name__}: {error}"}
+        journey.facts["migration_contrast"] = measured
     with journey.step("copy it and see every copy checked"):
         gui.click(data_ui.t("en", "copy"), control_type="Button")
         gui.wait_text("Each copy was checked against its original", timeout=90, scroll=False)
         gui.shot("earlier data copied")
         gui.click(data_ui.t("en", "close"), control_type="Button")
+    with journey.step("the dialog's texts were readable (WCAG AA, 4.5:1)"):
+        low = {role: m for role, m in measured.items() if m["ratio"] < 4.5}
+        expect(not low, f"text below 4.5:1 in the migration dialog: {low}")
     with journey.step("the copied project opens"):
         open_project(gui, PREVIEW_PROJECT)
     with journey.step("the copies are in the data folder, the originals unchanged"):
@@ -2111,6 +2329,9 @@ STAGE36_PROJECT = "Fictional Stage 36 study"
 # UI Automation names a chip by its label, then ". " and its tooltip (or a
 # new line and its explanation), e.g. "5. Method. The recommended method…".
 CHIP_END = r"(\.|\n|$)"
+# The context bar's own controls a journey clicks: the EN and LV quick
+# choices (Stage 37), with or without their tooltip.
+TOP_BAR_CONTROLS = (r"^(EN|LV)(\.|\n|$)",)
 
 
 def stage36_options() -> list[str]:
@@ -2200,7 +2421,7 @@ STAGE36_CHARTS_PROJECT = "Fictional Stage 36 charts"
 def click_chip(gui: Gui, label: str) -> None:
     """A chip or tile: named by its label, sometimes followed by a tooltip."""
     gui.click(regex="^" + re.escape(label) + CHIP_END,
-              control_type=("Button", "Text", "Group", "Custom"))
+              control_type=("Button", "Text", "Group", "Custom"), page_only=True)
 
 
 def journey_stage36_charts(gui: Gui, work: Path, journey: Journey) -> None:
@@ -3619,12 +3840,24 @@ def section_box(gui: Gui, language: str, key: str = LEFT_OUT):
 
 def open_interpretation(gui: Gui) -> None:
     """Open a result's Interpretation section (it holds the researcher's
-    note), unless it is open already: a click on an open section closes it."""
-    header, _ = find_text(gui, regex="^" + re.escape(T("results.interpretation")) + r"(\n|$)")
+    note), unless it is open already: a click on an open section closes it.
+
+    The search for the note scrolls the page down, so the section's header
+    is looked up again, and scrolled back into view, right before each
+    press. Pressing the header found before that search clicked where it had
+    been: once the page is long enough to scroll it out of view (the Export
+    card of Stage 37 made the Results page longer by its height), the click
+    landed above the content and the section never opened (PR #78 run
+    43498631988)."""
+    pattern = "^" + re.escape(T("results.interpretation")) + r"(\n|$)"
+    find_text(gui, regex=pattern)
     for attempt in range(3):
         with contextlib.suppress(StepFailure):
             find_text(gui, T("results.notes"), exact=True, timeout=6, moves=3)
             return
+        header, _ = find_text(gui, regex=pattern, first="up")
+        if not gui.clickable(header):
+            raise StepFailure("the Interpretation header cannot be scrolled into view")
         if attempt == 0:
             header.click_input()
         else:
@@ -3854,6 +4087,1019 @@ def journey_report_composition(gui: Gui, work: Path, journey: Journey) -> None:
         shot_at(gui, box, "second project report settings")
 
 
+# ------------------------------------- Stage 37.0b: the hypothesis workflow
+STAGE37_PROJECT = "Fictional Stage 37 hypothesis study"
+STAGE37_QUESTION = "Is loneliness related to how students cope with stress?"
+STAGE37_H1 = "Loneliness is negatively associated with the coping scales"
+STAGE37_REASON = "Fictional: the p-values are two-sided; each sign is compared with H1."
+
+
+def stage37_kinds() -> list[str]:
+    """The kinds of research question, as the plan's dropdown lists them."""
+    from research_workflow import QUESTION_TYPES
+
+    return [T(f"goal.{kind}") for kind in QUESTION_TYPES]
+
+
+def stage37_directions() -> list[str]:
+    return [T(f"plan.direction.{d}") for d in ("two-sided", "greater", "less")]
+
+
+def stage37_priorities() -> list[str]:
+    return [T(f"plan.priority.{p}") for p in ("primary", "secondary", "exploratory")]
+
+
+def stage37_check_text() -> str:
+    """The check a one-sided H1 gets with a Spearman batch (two-sided p)."""
+    from workspace_text import T as TABLE
+
+    return TABLE["check.dir_twosided"][0].format(h=1, direction=T("plan.direction.less"),
+                                                 method="Spearman’s ρ")
+
+
+def stage37_report_fragments() -> tuple[str, ...]:
+    """The hypothesis rows the Word report must hold (research_report)."""
+    import research_report as rr
+
+    text = rr.TEXT["en"]
+    tested = text["tested_by"].split("{calculation}")[0].format(
+        number=1, task=T("task.title_relate", x="UCLA", count=8))
+    return (f"H1 (primary): {STAGE37_H1}",
+            text["hyp_direction"].format(number=1, direction=T("plan.direction.less"),
+                                         alpha="0.05", version=1),
+            tested + "Spearman’s ρ; 8 tests; correction: Holm (familywise error)",
+            "Acknowledged (" + text["about.H-DIR-TWOSIDED"] + ")",
+            "Reason: " + STAGE37_REASON, text["evidence"], *text["evidence_columns"])
+
+
+def protocol_rows(gui: Gui, title: str) -> list[tuple]:
+    """(id, kind, reason) of every protocol record, in the order written
+    (the project's database, read-only)."""
+    return [tuple(row) for row in project_query(
+        gui, title, "SELECT id, kind, reason FROM protocol_records ORDER BY rowid")]
+
+
+def to_top(gui: Gui, key: str) -> None:
+    """Back to the top of a page: the mouse wheel over an inner list scrolls
+    that list, not the page, so the page is left and opened again."""
+    nav(gui, "nav.data" if key != "nav.data" else "nav.results")
+    nav(gui, key)
+
+
+def journey_stage37_hypothesis(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37.0b (design AC-16) on the packaged program: a typed research
+    question, H1 (primary, a direction) and a saved plan version; the
+    analysis created for H1 and run on the synthetic UCLA/SACS table; the
+    check that appears acknowledged with a reason; Results says "Tests H1";
+    the Word report, saved through the Save dialog, holds the hypothesis
+    rows; after a restart the plan, the records, the result's snapshot and
+    the report rows come back; a priority changed after results without a
+    reason is explained and nothing is saved. The project's database is
+    read read-only at each step: the protocol records stay and their count
+    never decreases. UI Automation reports every button as enabled
+    (docs/STAGE368_A11Y_AND_LOCALE.md §1): the database, not a button state,
+    is the evidence. tests/test_stage37_journey.py walks the same flow."""
+    from stage36_fixtures import SCALES, generator
+
+    title = STAGE37_PROJECT
+    task_title = T("task.title_relate", x="UCLA", count=8)
+    csv = generator().create_csv(work)
+    counts: list[int] = []
+
+    def record_count() -> int:
+        count = len(protocol_rows(gui, title))
+        counts.append(count)
+        expect(counts == sorted(counts), f"the protocol records decreased: {counts}")
+        return count
+
+    create_project(gui, journey, title)
+    with journey.step("Q1: the research question and its kind"):
+        gui.wait_text(T("plan.q.from_project"), timeout=20)    # Q1 is there by itself
+        gui.type_into(T("plan.q.text", n=1), STAGE37_QUESTION)
+        gui.choose(T("plan.q.type"), T("goal.relate"), options=stage37_kinds())
+        gui.wait_text(T("next.add_hypothesis", q=1), timeout=20)
+    with journey.step("H1: primary, less (one-sided)"):
+        gui.click(T("next.add_hypothesis_button", q=1), control_type="Button")
+        gui.type_into(T("plan.h.text"), STAGE37_H1)
+        gui.choose(T("plan.h.direction"), T("plan.direction.less"),
+                   options=stage37_directions())
+    with journey.step("Save plan version"):
+        gui.click(T("plan.save"), control_type="Button")
+        gui.wait_text(T("plan.saved", version=1), timeout=20)
+        (plan,) = project_query(gui, title, "SELECT plan FROM plan_versions")[0]
+        saved = json.loads(plan)
+        journey.facts["plan_version_1"] = saved
+        hypothesis = saved["hypotheses"][0]
+        expect(saved.get("plan_format") == 2 and saved["questions"][0]["type"] == "relate"
+               and saved["questions"][0]["text"] == STAGE37_QUESTION,
+               f"the typed question was not saved: {saved.get('questions')}")
+        expect((hypothesis["text"], hypothesis["direction"], hypothesis["priority"])
+               == (STAGE37_H1, "less", "primary"), f"H1 as saved: {hypothesis}")
+        record_count()
+    open_data(gui, journey, csv)
+    accept_levels(gui, journey)
+    with journey.step("Create the analysis for H1"):
+        to_top(gui, "nav.project")
+        gui.wait_text(T("next.create_analysis", h=1), timeout=20, scroll=False)
+        gui.click(T("next.create_analysis_button", h=1), control_type="Button")
+        gui.find(T("role.x"), timeout=20)          # Analyze opens at the variables
+        expect(record_count() == 1, "the link of the task to H1 was not recorded")
+    with journey.step("UCLA with the eight scales, Spearman, Run"):
+        gui.choose(T("role.x"), option_label("UCLA", "scale"), options=stage36_options())
+        gui.click(T("pick.all_scale", count=9), control_type="Button")
+        gui.check(option_label("Age", "scale"), False)
+        gui.click(T("rec.use_instead"), control_type="Button", index=0)   # Spearman
+        gui.click(regex="^" + re.escape(T("rec.run", method="")) + "Spearman",
+                  control_type="Button")
+        gui.wait_text(task_title, timeout=180)
+        runs = project_query(gui, title, "SELECT provenance FROM runs")
+        expect(len(runs) == 1, f"results in the project: {len(runs)}")
+        snapshot = json.loads(runs[0][0]).get("hypothesis") or {}
+        journey.facts["snapshot"] = snapshot
+        expect(snapshot.get("id") == hypothesis["id"] and snapshot.get("plan_version") == 1
+               and snapshot.get("direction") == "less",
+               f"the result does not keep H1 as planned: {snapshot}")
+    with journey.step("a check appears: H1 is one-sided, the p-values two-sided"):
+        to_top(gui, "nav.project")
+        gui.wait_text(T("next.decide", h=1), timeout=20, scroll=False)
+        gui.click(T("next.show_checks", h=1), control_type="Button")
+        element, _ = find_text(gui, stage37_check_text(), timeout=30)
+        shot_at(gui, element, "the check of H1")
+    with journey.step("acknowledge it, with a reason"):
+        before = record_count()
+        gui.click(T("hyp.acknowledge"), control_type="Button")
+        gui.type_into(T("hyp.reason"), STAGE37_REASON)
+        gui.click(T("hyp.save_record"), control_type="Button")
+        gui.wait_text(T("hyp.recorded"), timeout=20)
+        rows = protocol_rows(gui, title)
+        journey.facts["records"] = [(kind, reason) for _, kind, reason in rows]
+        expect(record_count() == before + 1 and rows[-1][1:] == ("acknowledgement",
+                                                                 STAGE37_REASON),
+               f"the acknowledgement was not recorded with its reason: {rows}")
+    with journey.step("Results shows Tests H1"):
+        nav(gui, "nav.results")
+        element, _ = find_text(gui, T("results.tests", h=1, text=STAGE37_H1), timeout=30)
+        shot_at(gui, element, "Tests H1")
+        gui.click(T("results.add_report"), control_type="Button")
+        gui.find(T("results.in_report"), control_type="Button", timeout=20)
+    with journey.step("the Word report"):
+        nav(gui, "nav.reports")
+    first = work / "stage37_hypothesis.docx"
+    save_via_dialog(gui, journey, T("reports.export_docx"), first, kind="docx",
+                    contains=stage37_report_fragments())
+    with journey.step("the Word report: one row of H1 in its table"):
+        import research_report as rr
+
+        table = next((t for t in docx_tables(first)
+                      if t and tuple(t[0]) == tuple(rr.TEXT["en"]["evidence_columns"])), None)
+        journey.facts["evidence_table"] = table
+        expect(table is not None and len(table) == 2 and table[1][0] == "H1 (primary)"
+               and table[1][1].startswith("Spearman ρ: UCLA with 8 variables (current)"),
+               f"the table Hypotheses and evidence: {table}")
+    with journey.step("restart the program and open the project"):
+        before_restart = [row[0] for row in protocol_rows(gui, title)]
+        gui.stop()
+        gui.start()
+        open_project(gui, title)
+    with journey.step("after the restart: the plan and the records are back"):
+        from workspace_hypotheses import alpha_text
+
+        line = " · ".join(("H1", T("plan.priority.primary"), T("plan.direction.less"),
+                           f"α = {alpha_text(0.05)}"))
+        find_text(gui, line, timeout=30)
+        gui.click(T("hyp.show"), control_type="Button")
+        element, _ = find_text(gui, T("hyp.check.acknowledged", reason=STAGE37_REASON),
+                               timeout=30)
+        shot_at(gui, element, "the acknowledgement after the restart")
+        after = [row[0] for row in protocol_rows(gui, title)]
+        expect(after[:len(before_restart)] == before_restart and record_count() >= len(
+            before_restart), f"records before the restart {before_restart}, after {after}")
+    with journey.step("after the restart: the result still tests H1"):
+        nav(gui, "nav.results")
+        find_text(gui, T("results.tests", h=1, text=STAGE37_H1), timeout=30)
+    with journey.step("after the restart: the report rows"):
+        nav(gui, "nav.reports")
+    second = work / "stage37_hypothesis_after_restart.docx"
+    save_via_dialog(gui, journey, T("reports.export_docx"), second, kind="docx",
+                    contains=stage37_report_fragments())
+    with journey.step("a priority changed after results without a reason: nothing saved"):
+        to_top(gui, "nav.project")
+        gui.choose(T("plan.h.priority"), T("plan.priority.secondary"),
+                   options=stage37_priorities())
+        gui.click(T("plan.save"), control_type="Button")
+        element, _ = find_text(gui, T("plan.reason_needed", h=1), timeout=30)
+        shot_at(gui, element, "the reason is asked for")
+        versions = project_query(gui, title, "SELECT COUNT(*) FROM plan_versions")[0][0]
+        journey.facts["plan_versions_after_refusal"] = versions
+        expect(versions == 1, f"a plan version was saved without the reason: {versions}")
+    with journey.step("the project database, read-only: the records are kept"):
+        rows = protocol_rows(gui, title)
+        journey.facts["record_counts"] = counts + [len(rows)]
+        expect([kind for _, kind, _ in rows] == ["link", "acknowledgement"],
+               f"protocol records at the end: {rows}")
+        expect(counts == sorted(counts) and len(rows) >= max(counts),
+               f"the record count decreased: {counts + [len(rows)]}")
+        roles = [json.loads(r[0]) for r in project_query(gui, title, "SELECT roles FROM runs")]
+        expect(len(roles) == 1 and sorted(roles[0].get("ys") or ()) == sorted(SCALES),
+               f"the result's variables: {roles}")
+
+
+# ======================================================== Stage 37 (#67): export
+EXPORT_PROJECT = "Fictional export study"
+EXPORT_FILES = (("xlsx", "export_master.xlsx"), ("sav", "export_master.sav"),
+                ("csv", "export_master.csv"))
+MASTER_GENERATOR = ROOT / "tests" / "fixtures" / "stage37" / "generate_master_fixture.py"
+
+
+def master_fixture(folder: Path) -> Path:
+    """The synthetic 180-case master fixture (stdlib generator) in ``folder``."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("stage37_master_fixture", MASTER_GENERATOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    csv_path, _ = module.generate(Path(folder))
+    return Path(csv_path)
+
+
+def master_source(csv_path: Path) -> dict:
+    """The fixture as the driver reads it itself (the csv module, no pandas
+    and nothing of the program): its header and the text of every cell."""
+    import csv
+
+    with open(csv_path, encoding="utf-8", newline="") as stream:
+        rows = list(csv.reader(stream))
+    return {"header": rows[0], "rows": rows[1:]}
+
+
+def export_options() -> list[str]:
+    """The entries of the Data page's format dropdown, in order."""
+    from workspace_export import FORMATS
+
+    return [T(f"export.format.{key}") for key in FORMATS["data"]]
+
+
+def _same_cell(text: str, value) -> bool:
+    """A cell of the source CSV against the value an independent reader gave."""
+    import math
+
+    if text == "":
+        return value is None or value == "" or (isinstance(value, float) and math.isnan(value))
+    try:
+        number = float(text)
+    except ValueError:
+        return str(value) == text
+    if isinstance(value, str) or value is None:
+        return False
+    return float(value) == number
+
+
+def check_export(path: Path, kind: str, source: dict) -> dict:
+    """The exported file opened with a reader the program does not use for
+    writing it, every cell compared with the source CSV: openpyxl (.xlsx),
+    pyreadstat (.sav), pandas.read_csv (.csv, with the codebook beside it)."""
+    expect(path.is_file() and path.stat().st_size > 0, f"{path.name} was not written")
+    header, rows = source["header"], source["rows"]
+    facts = {"file": path.name, "bytes": path.stat().st_size, "rows": len(rows)}
+    if kind == "xlsx":
+        from openpyxl import load_workbook
+
+        expect(path.read_bytes()[:4] == b"PK\x03\x04", f"{path.name} is not a workbook")
+        with zipfile.ZipFile(path) as archive:
+            xml = "".join(archive.read(n).decode("utf-8") for n in archive.namelist()
+                          if n.startswith("xl/worksheets/"))
+        expect("<f>" not in xml and "<f " not in xml, f"{path.name} holds a formula")
+        book = load_workbook(path, read_only=True)
+        try:
+            facts["sheets"] = book.sheetnames
+            expect(book.sheetnames[:2] == ["Data", "Codebook"], f"sheets: {book.sheetnames}")
+            data = list(book["Data"].iter_rows(values_only=True))
+            codebook = list(book["Codebook"].iter_rows(values_only=True))
+        finally:
+            book.close()
+        expect(list(data[0]) == header, "the Data header is not the fixture's")
+        expect(len(data) - 1 == len(rows), f"{len(data) - 1} data rows instead of {len(rows)}")
+        for number, (row, back) in enumerate(zip(rows, data[1:]), start=2):
+            back = list(back) + [None] * (len(header) - len(back))
+            for name, text, value in zip(header, row, back):
+                expect(_same_cell(text, value), f"row {number}, {name}: {text!r} -> {value!r}")
+        names = [r[0] for r in codebook[1:len(header) + 1]]
+        expect(names == header, "the Codebook does not list every variable")
+        facts["cells"] = len(rows) * len(header)
+    elif kind == "sav":
+        import pyreadstat
+
+        expect(path.read_bytes()[:4] == b"$FL2", f"{path.name} is not an SPSS file")
+        frame, meta = pyreadstat.read_sav(str(path), user_missing=True)
+        expect(list(frame.columns) == header, "the .sav variables are not the fixture's")
+        expect(len(frame) == len(rows), f"{len(frame)} rows instead of {len(rows)}")
+        for number, row in enumerate(rows):
+            for name, text in zip(header, row):
+                expect(_same_cell(text, frame[name].iloc[number]),
+                       f"row {number + 2}, {name}: {text!r} -> {frame[name].iloc[number]!r}")
+        facts.update(encoding=meta.file_encoding, cells=len(rows) * len(header),
+                     measures=sorted(set(meta.variable_measure.values())))
+    elif kind == "csv":
+        import json
+
+        import pandas as pd
+
+        import csv_safety
+
+        expect(path.read_bytes()[:3] == b"\xef\xbb\xbf", f"{path.name} has no UTF-8 mark")
+        frame = pd.read_csv(path, encoding="utf-8-sig", dtype={"participant_code": str},
+                            keep_default_na=False, na_values=[""])
+        expect(list(frame.columns) == header, "the CSV header is not the fixture's")
+        expect(len(frame) == len(rows), f"{len(frame)} rows instead of {len(rows)}")
+        for number, row in enumerate(rows):
+            for name, text in zip(header, row):
+                expect(_same_cell(text, frame[name].iloc[number]),
+                       f"row {number + 2}, {name}: {text!r} -> {frame[name].iloc[number]!r}")
+        book = json.loads(csv_safety.codebook_path(path).read_text(encoding="utf-8"))
+        expect(book["data_file"]["sha256"] == csv_safety.sha256_file(path),
+               "the codebook does not vouch for the CSV")
+        facts.update(codebook=csv_safety.codebook_path(path).name,
+                     cells=len(rows) * len(header))
+    return facts
+
+
+def remembered_export(preferences: Path) -> str | None:
+    """The Data page's export format the program remembered: key ``export``
+    of the settings file (Stage 37 integration; ``preferences.json`` before)."""
+    import json
+
+    try:
+        data = json.loads(preferences.read_text(encoding="utf-8"))
+        return data["export"]["formats"]["data"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def journey_export_data(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37 (#67): the synthetic 180-case master fixture opened in a
+    project, then exported from the Data page's one Export card as .xlsx,
+    .sav and .csv, each through the native Save dialog. Every file is opened
+    here with an independent reader and compared cell by cell with the
+    fixture as the driver reads it itself. The last format chosen is
+    remembered in the settings file (settings.json of the data folder).
+    tests/test_stage37_export_journey.py
+    walks the same flow in the harness."""
+    csv_path = master_fixture(work / "stage37-master")
+    source = master_source(csv_path)
+    create_project(gui, journey, EXPORT_PROJECT)
+    open_data(gui, journey, csv_path)
+    with journey.step("the Export card offers a copy of the data first"):
+        nav(gui, "nav.data")
+        gui.wait_text(T("export.title.data"))
+        gui.find(T("export.save.xlsx"), control_type=("Button", "Text"))
+    options = export_options()
+    for kind, name in EXPORT_FILES:
+        target = work / name
+        with journey.step(f"export .{kind} in the Windows Save dialog"):
+            if kind != "xlsx":
+                gui.choose(T("export.format"), T(f"export.format.{kind}"), options=options)
+            if kind == "sav":
+                gui.wait_text(T("export.sav.limits")[:60])
+            gui.click(T(f"export.save.{kind}"), control_type=("Button", "Text"))
+            gui.file_dialog(target, save=True)
+            gui.wait_text(target.name, timeout=90)
+            gui.wait_text(T("export.saved", path="", rows="", columns="",
+                            signature="").split(":")[0], timeout=30)
+        with journey.step(f"the .{kind} file read with an independent reader"):
+            journey.facts[name] = check_export(target, kind, source)
+    with journey.step("the last format is remembered"):
+        remembered = remembered_export(settings_file(gui))
+        journey.facts["remembered_format"] = remembered
+        expect(remembered == "csv", f"the remembered format is {remembered!r}, not csv")
+
+
+# ====================================== Stage 37.3: the research library (#69)
+# tests/test_stage37_library_journey.py walks the same flow in the harness.
+LIBRARY_PROJECT = "Fictional library study"
+LIBRARY_QUERY = "avoidant coping mediator"
+LIBRARY_PAGE = 2                     # the page of the synthetic review that holds it
+# "page 2 · Coping as a mediator · D3F9A1B2C-p2.1": where the passage is, its cite ID.
+LIBRARY_WHERE = re.compile(r"^page 2 · Coping as a mediator · (D[0-9A-F]{8,}-p2\.1)$")
+
+
+def library_document(work: Path) -> Path:
+    """The synthetic three-page PDF review the journey adds (text layer;
+    the passage it searches for is on page 2)."""
+    import library_fixtures as fx
+
+    return fx.write(fx.EN_REVIEW, work / "library", "pdf")
+
+
+def library_texts() -> dict[str, str]:
+    """The English texts the journey waits for, in the order it meets them."""
+    import library_fixtures as fx
+    from workspace_text import count_text
+
+    title, passages = fx.EN_REVIEW.title, count_text("en", 5, "passages")
+    return {
+        "open": T("library.open_library"), "title": T("library.title"),
+        "local": T("library.local"), "add": T("library.add"),
+        "added": T("library.added_message", title=title, passages=passages),
+        "query": T("library.query"), "search": T("library.search"),
+        "count": T("library.count", shown=1, total=1),
+        "open_page": T("library.open_page", page=LIBRARY_PAGE),
+        "viewer": T("library.viewer_title", title=title, page=LIBRARY_PAGE, pages=3),
+        "close": T("common.close"), "remove": T("library.remove"),
+        "removed": T("library.removed", title=title, passages=passages),
+        "nothing": T("library.no_results", query=LIBRARY_QUERY),
+    }
+
+
+def library_counts(gui: Gui, title: str) -> dict:
+    """The project's library on disk, read here: documents, passages, rows of
+    the search index (FTS5's docsize table) and stored files."""
+    import sqlite3
+
+    folder = project_database(gui, title).parent / "library"
+    database = folder / "library.sqlite3"
+    if not database.is_file():
+        return {"exists": False}
+    with contextlib.closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro",
+                                            uri=True)) as con:
+        counts = {"exists": True,
+                  "documents": con.execute("SELECT COUNT(*) FROM documents").fetchone()[0],
+                  "passages": con.execute("SELECT COUNT(*) FROM chunks").fetchone()[0],
+                  "backend": dict(con.execute("SELECT key, value FROM meta")).get("backend")}
+        try:
+            counts["index_rows"] = con.execute(
+                "SELECT COUNT(*) FROM chunk_index_docsize").fetchone()[0]
+        except sqlite3.Error:
+            counts["index_rows"] = con.execute(
+                "SELECT COUNT(DISTINCT chunk_id) FROM postings").fetchone()[0]
+    sources = folder / "sources"
+    counts["stored_files"] = len([p for p in sources.iterdir() if p.is_file()]
+                                 if sources.is_dir() else [])
+    return counts
+
+
+def journey_research_library(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37.3 (#69): the project's research library, offline. Create a
+    project; open its library from the Project page; add a synthetic PDF in
+    the Windows Open dialog (indexed on this computer); search it; open the
+    cited passage in the program's page viewer at its page; remove the
+    document with one action; the same search finds nothing, and the index
+    holds no row of it. Nothing goes to an AI provider (no key is used).
+    Disabled states are never asserted (UI Automation reports every button
+    as enabled)."""
+    texts = library_texts()
+    pdf = library_document(work)
+    create_project(gui, journey, LIBRARY_PROJECT)
+    before = ai_traffic(gui, LIBRARY_PROJECT)
+    with journey.step("open the research library from the project page"):
+        gui.click(texts["open"], control_type=("Button", "Text"), timeout=30)
+        gui.wait_text(texts["local"], timeout=20)
+        element, _ = find_text(gui, texts["title"], exact=True, first="up")
+        shot_at(gui, element, "the research library, local only")
+    with journey.step(f"add {pdf.name} in the Windows Open dialog"):
+        gui.click(texts["add"], control_type=("Button", "Text"))
+        gui.file_dialog(pdf, save=False)
+        element, _ = find_text(gui, texts["added"], timeout=120, first="up")
+        shot_at(gui, element, "the document is indexed")
+        added = library_counts(gui, LIBRARY_PROJECT)
+        journey.facts["after_adding"] = added
+        expect(added.get("documents") == 1 and added.get("passages") == 5
+               and added.get("index_rows") == 5 and added.get("stored_files") == 1,
+               f"the library on disk after adding: {added}")
+    with journey.step(f"search “{LIBRARY_QUERY}” offline"):
+        gui.type_into(texts["query"], LIBRARY_QUERY)
+        gui.click(texts["search"], control_type="Button")
+        find_text(gui, texts["count"], timeout=30)
+        element, where = find_text(gui, regex=LIBRARY_WHERE.pattern, timeout=30)
+        journey.facts["citation"] = LIBRARY_WHERE.match(where).group(1)
+        shot_at(gui, element, "the passage with its page, section and cite ID")
+    with journey.step("open the citation at its page in the program's page viewer"):
+        gui.click(texts["open_page"], control_type=("Button", "Text"))
+        element, _ = find_text(gui, texts["viewer"], exact=True, timeout=30)
+        shot_at(gui, element, "the cited page")
+        gui.click(texts["close"], control_type="Button")
+        time.sleep(1.0)
+        expect(not gui.has_text(texts["viewer"]), "the page viewer did not close")
+    with journey.step("remove the document with one action"):
+        gui.click(texts["remove"], control_type=("Button", "Text"))
+        element, _ = find_text(gui, texts["removed"], timeout=30, first="up")
+        shot_at(gui, element, "the document is removed")
+        removed = library_counts(gui, LIBRARY_PROJECT)
+        journey.facts["after_removing"] = removed
+        expect(removed.get("documents") == 0 and removed.get("passages") == 0
+               and removed.get("index_rows") == 0 and removed.get("stored_files") == 0,
+               f"the library on disk after removing: {removed}")
+    with journey.step("the same search no longer finds it"):
+        gui.click(texts["search"], control_type="Button")
+        element, _ = find_text(gui, texts["nothing"], timeout=30)
+        shot_at(gui, element, "nothing found after removing")
+    with journey.step("nothing was sent to an AI provider"):
+        after = ai_traffic(gui, LIBRARY_PROJECT)
+        journey.facts["ai_traffic"] = {"before": before, "after": after}
+        expect(after == before, f"AI traffic recorded: before {before}, after {after}")
+
+
+# ------------------------------------------- Stage 37 (#68): start and settings
+# What the classic interface shows (its own texts, interface_layout).
+CLASSIC_BANNER = "YOUR RESEARCH WORKSPACE"
+CLASSIC_OPEN_WORKSPACE = "Open the research workspace"
+# An earlier version's preferences file with Russian chosen (the upgrade).
+UPGRADE_PREFERENCES = {"language": "ru", "recent_files": [], "appearance": "windows"}
+START_OPTIONS = ["Research workspace", "Classic interface"]
+LANGUAGE_OPTIONS = ["English", "Latviešu", "Русский"]
+
+
+def settings_file(gui: Gui) -> Path:
+    """The settings file of this run's data folder (``user_settings``)."""
+    return data_folder(gui) / "settings.json"
+
+
+def stored_settings(gui: Gui) -> dict:
+    """The settings file as the program wrote it (empty if there is none)."""
+    with contextlib.suppress(OSError, ValueError):
+        value = json.loads(settings_file(gui).read_text(encoding="utf-8"))
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def wait_setting(gui: Gui, key: str, expected, timeout: float = 15):
+    """Wait until the program has saved ``key`` (a write follows the click)."""
+    deadline = time.monotonic() + timeout
+    while True:
+        value = stored_settings(gui).get(key)
+        if value == expected or time.monotonic() > deadline:
+            return value
+        time.sleep(0.5)
+
+
+def legacy_preferences() -> Path:
+    """Where versions before Stage 37 kept the language (only read since)."""
+    import app_preferences
+
+    return app_preferences.preferences_path()
+
+
+def restore_settings(gui: Gui, **values) -> None:
+    """Put the given settings back in the file while the program is stopped
+    (a journey that failed half-way leaves the next ones a known start)."""
+    from user_settings import UserSettings
+
+    UserSettings.load(settings_file(gui), migrate=False).update(**values)
+
+
+def nav_in(gui: Gui, language: str, key: str) -> None:
+    """``nav`` in another interface language."""
+    gui.click(regex="^" + re.escape(text_in(language, key)) + r"(\n\d+)?$",
+              control_type=("Button", "Text"))
+
+
+def segment(label: str) -> str:
+    """A segmented button by its label: UI Automation may add its tooltip
+    ("LV. Latviešu" or "LV\nLatviešu"), as for a chip."""
+    return "^" + re.escape(label) + CHIP_END
+
+
+def quick_languages(gui: Gui) -> dict[str, bool]:
+    """Which language buttons the top bar shows (named by their code)."""
+    return {code: bool(gui.query(regex=segment(code.upper()), control_type="Button"))
+            for code in ("en", "lv", "ru")}
+
+
+def text_height(gui: Gui, name: str) -> int:
+    """The height on screen of the text ``name`` (the page heading)."""
+    element = gui.find(name, control_type=("Text", "Group", "Custom"), scroll=False,
+                       visible=False)
+    return element.element_info.rectangle.height()
+
+
+def journey_startup_workspace(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37 (#68) on the packaged program: started as a researcher starts
+    it (no SRA_UI), the program opens the research workspace, not the
+    classic interface and not "Open the preview". The classic interface is
+    one click away (the sidebar) and the classic Home leads back. Chosen in
+    Settings as the start interface, the classic interface opens at the next
+    start; the choice is in the settings file. The workspace is chosen again
+    at the end. tests/test_stage37_shell_journeys.py walks the same flow."""
+    previous = gui.start_ui
+    gui.start_ui = None
+    try:
+        with journey.step("a normal start opens the research workspace"):
+            gui.stop()
+            gui.start()                          # ready: Home's "Create project"
+            expect(not gui.has_text(CLASSIC_BANNER), "the classic interface opened first")
+            stored = stored_settings(gui)
+            journey.facts["start_interface_stored"] = stored.get("start_interface")
+            journey.facts["settings_file"] = str(settings_file(gui))
+            expect(stored.get("start_interface") in (None, "workspace"),
+                   f"start interface stored: {stored.get('start_interface')!r}")
+            gui.find(T("nav.classic"), control_type=("Button", "Text"), scroll=False)
+            gui.shot("the research workspace at start")
+        with journey.step("the classic interface is one click away"):
+            gui.click(T("nav.classic"), control_type=("Button", "Text"))
+            gui.wait_text(CLASSIC_BANNER, timeout=30, scroll=False)
+            gui.find(CLASSIC_OPEN_WORKSPACE, control_type="Button", scroll=False)
+            gui.shot("classic interface")
+        with journey.step("and the classic Home leads back to the workspace"):
+            gui.click(CLASSIC_OPEN_WORKSPACE, control_type="Button")
+            gui.find(T("project.create"), timeout=30, scroll=False, visible=False)
+        with journey.step("Settings: the classic interface as the start interface"):
+            nav(gui, "nav.settings")
+            click_chip(gui, T("settings.section.start"))      # the hub's index
+            # The field shows the stored choice (checked above): the menu
+            # opens on it, one Down reaches the classic interface.
+            gui.choose(T("settings.start_interface"), T("settings.start.classic"),
+                       options=START_OPTIONS, current=T("settings.start.workspace"))
+            saved = wait_setting(gui, "start_interface", "classic")
+            journey.facts["start_interface_chosen"] = saved
+            expect(saved == "classic", f"start interface saved: {saved!r}")
+        with journey.step("the next start opens the classic interface"):
+            gui.stop()
+            gui.start(ready=CLASSIC_OPEN_WORKSPACE)
+            expect(gui.has_text(CLASSIC_BANNER), "the classic Home is not shown")
+            gui.shot("classic interface at start")
+        with journey.step("the research workspace as the start interface again"):
+            gui.click(CLASSIC_OPEN_WORKSPACE, control_type="Button")
+            gui.find(T("project.create"), timeout=30, scroll=False, visible=False)
+            nav(gui, "nav.settings")
+            click_chip(gui, T("settings.section.start"))
+            gui.choose(T("settings.start_interface"), T("settings.start.workspace"),
+                       options=START_OPTIONS, current=T("settings.start.classic"))
+            saved = wait_setting(gui, "start_interface", "workspace")
+            expect(saved == "workspace", f"start interface saved: {saved!r}")
+            gui.stop()
+            gui.start()
+            expect(not gui.has_text(CLASSIC_BANNER), "the classic interface opened")
+    finally:
+        gui.start_ui = previous
+        if stored_settings(gui).get("start_interface") not in (None, "workspace"):
+            gui.stop()
+            with contextlib.suppress(Exception):
+                restore_settings(gui, start_interface="workspace")
+            gui.start()
+
+
+def journey_settings_language(gui: Gui, work: Path, journey: Journey) -> None:
+    """Stage 37 (#68) on the packaged program: a researcher who chose
+    Russian in a version before Stage 37 installs this one. That version
+    kept the language in ~/.statistical_research_assistant/preferences.json;
+    the settings file does not exist yet. The program starts in Russian, the
+    top bar offers EN and LV only, Settings show Russian, and the old file
+    is unchanged. LV in the top bar, a restart: Latvian. Text size 125 %
+    makes the text on screen larger. English and 100 % at the end.
+    tests/test_stage37_shell_journeys.py walks the same flow."""
+    legacy = legacy_preferences()
+    original = legacy.read_bytes() if legacy.is_file() else None
+    previous = gui.start_ui
+    gui.start_ui = None
+    try:
+        with journey.step("an earlier version's Russian preference (the upgrade)"):
+            gui.stop()
+            legacy.parent.mkdir(parents=True, exist_ok=True)
+            legacy.write_text(json.dumps(UPGRADE_PREFERENCES), encoding="utf-8")
+            before = legacy.read_bytes()
+            settings_file(gui).unlink(missing_ok=True)       # this version never ran
+        with journey.step("the program starts in Russian"):
+            gui.start(ready=text_in("ru", "project.create"))
+            stored = stored_settings(gui)
+            journey.facts["settings_after_upgrade"] = {
+                key: stored.get(key) for key in ("language", "migrated")}
+            expect(stored.get("language") == "ru", f"language saved: {stored.get('language')!r}")
+            expect(legacy.read_bytes() == before, "the earlier version's file was changed")
+            gui.find(text_in("ru", "nav.analyze"), control_type=("Button", "Text"), scroll=False)
+            gui.shot("Russian after the upgrade")
+        with journey.step("the top bar offers EN and LV only"):
+            quick = quick_languages(gui)
+            journey.facts["top_bar_languages"] = quick
+            expect(quick == {"en": True, "lv": True, "ru": False}, f"top bar: {quick}")
+        with journey.step("Settings show Russian"):
+            nav_in(gui, "ru", "nav.settings")
+            click_chip(gui, text_in("ru", "settings.section.language"))
+            gui.wait_text(text_in("ru", "settings.language_note"), timeout=30)
+            field = None
+            for kinds in (("ComboBox",), ("Edit",)):
+                found = gui.query(text_in("ru", "settings.language"), control_type=kinds)
+                if found:
+                    field = found[0]
+                    break
+            shown = gui.value(field) if field is not None else ""
+            journey.facts["settings_language_shown"] = shown
+            expect(shown == "Русский" or gui.has_text("Русский"),
+                   f"Settings do not show Russian: {shown!r}")
+            gui.shot("Settings in Russian")
+        with journey.step("LV in the top bar"):
+            gui.click(regex=segment("LV"), control_type="Button")
+            gui.wait_text(text_in("lv", "settings.language_note"), timeout=30)
+            saved = wait_setting(gui, "language", "lv")
+            expect(saved == "lv", f"language saved: {saved!r}")
+        with journey.step("after a restart: Latvian"):
+            gui.stop()
+            gui.start(ready=text_in("lv", "project.create"))
+            gui.find(text_in("lv", "nav.analyze"), control_type=("Button", "Text"), scroll=False)
+            journey.facts["language_after_restart"] = stored_settings(gui).get("language")
+            gui.shot("Latvian after the restart")
+        with journey.step("text size 125 %: the text on screen is larger"):
+            nav_in(gui, "lv", "nav.settings")
+            click_chip(gui, text_in("lv", "settings.section.typography"))
+            label = text_in("lv", "settings.text_size")      # the label above the sizes
+            normal = text_height(gui, label)
+            gui.click(regex=segment("125 %"), control_type="Button")
+            saved = wait_setting(gui, "text_scale", 125)
+            time.sleep(1.5)
+            larger = text_height(gui, label)
+            journey.facts["label_height_px"] = {"100": normal, "125": larger}
+            expect(saved == 125, f"text size saved: {saved!r}")
+            expect(normal > 0 and larger / normal >= 1.15,
+                   f"the label is {normal} px at 100 % and {larger} px at 125 %")
+            gui.shot("text size 125 %")
+        with journey.step("back to 100 % and English"):
+            click_chip(gui, text_in("lv", "settings.section.typography"))
+            gui.click(regex=segment("100 %"), control_type="Button")
+            gui.click(regex=segment("EN"), control_type="Button")
+            gui.wait_text(T("settings.language_note"), timeout=30)
+            expect(wait_setting(gui, "language", "en") == "en", "English was not saved")
+            expect(wait_setting(gui, "text_scale", 100) == 100, "100 % was not saved")
+    finally:
+        gui.start_ui = previous
+        if original is None:
+            legacy.unlink(missing_ok=True)
+        else:
+            legacy.write_bytes(original)
+        stored = stored_settings(gui)
+        if stored.get("language") != "en" or stored.get("text_scale", 100) != 100:
+            gui.stop()
+            with contextlib.suppress(Exception):
+                restore_settings(gui, language="en", text_scale=100)
+            gui.start()
+
+
+# ---------------------- Stage 37 (Issue #68, review UX-3): the variable panel
+VARIABLE_PANEL_PROJECT = "Fictional variable picker study"
+PANEL_STEM = "SYN_LON_"
+PANEL_ITEMS = tuple(f"{PANEL_STEM}{n:02d}" for n in range(1, 21))
+PANEL_DROPPED = "SYN_LON_20"           # the one item the repeated analysis leaves out
+# Item diagnostics of more than 12 items report α without ω:
+# "Cronbach’s α = 0.91; McDonald’s ω = Not calculated; k = 20, n = 180."
+ALPHA_SUMMARY = re.compile(r"Cronbach’s α = (?P<alpha>[−-]?\d*\.\d+);[^;]*; "
+                           r"k = (?P<k>\d+), n = (?P<n>\d+)")
+# What each part of the journey costs a researcher, counted by the rule of
+# tools/ux_metrics.py (a click or a box 1; typed fields apart).
+PANEL_ACTIONS = {
+    "items_by_name_group": {"clicks": 1, "boxes": 0, "typed": 0},
+    "repeat_with_one_item_fewer": {"clicks": 2, "boxes": 2, "typed": 1},
+}
+
+
+# Issue #80 (P0): the scales register crashed on the installed Flet 1.1.2
+# program at the first item box clicked after "Add a scale" (RuntimeError:
+# Frozen controls cannot be updated). The journey clicks its item boxes with
+# the mouse, as a person does: 22 clicks, ticking and unticking, then reads
+# the register the program saved in the project.
+SCALES_NAME = "SUP_AVG"
+SCALES_SEARCH = "SYN_SUP_??"           # the twelve items (not the fixture's own score)
+SCALES_ITEMS = tuple(f"SYN_SUP_{n:02d}" for n in range(1, 13))
+SCALES_LEVEL = "ordinal"               # the level the fixture's items are confirmed with
+# A field with a hint is named "<label>\n<hint>" in UI Automation (run
+# 43932075077: "Name of the new score\ne.g. LON_SUM"), so it is found by its
+# label at the start of its name.
+def field_named(label: str) -> str:
+    return "^" + re.escape(label) + r"(\n[\s\S]*)?$"
+
+
+SCALES_REGISTER_SQL = ("SELECT detail FROM events WHERE kind = 'scale_register' "
+                       "ORDER BY id DESC LIMIT 1")
+
+
+def scales_clicks() -> list[tuple[str, bool, int]]:
+    """(item, ticked after the click, items selected after it): all twelve
+    ticked, every second one unticked, two ticked again, one unticked and
+    ticked again (22 clicks)."""
+    chosen: list[str] = []
+    plan = [(item, True) for item in SCALES_ITEMS]
+    plan += [(item, False) for item in SCALES_ITEMS[1::2]]
+    plan += [("SYN_SUP_04", True), ("SYN_SUP_08", True)]
+    plan += [("SYN_SUP_01", False), ("SYN_SUP_01", True)]
+    out = []
+    for item, value in plan:
+        if value:
+            chosen.append(item)
+        else:
+            chosen.remove(item)
+        out.append((item, value, len(chosen)))
+    return out
+
+
+def scales_expected() -> list[str]:
+    """The items of the scale after :func:`scales_clicks`, in data order."""
+    chosen: set[str] = set()
+    for item, value, _ in scales_clicks():
+        (chosen.add if value else chosen.discard)(item)
+    return [item for item in SCALES_ITEMS if item in chosen]
+
+
+def scales_count(selected: int, offered: int) -> str:
+    return T("vars.count_shown", selected=selected, total=offered,
+             shown=len(SCALES_ITEMS))
+
+
+def scales_register_steps(gui: Gui, journey: Journey, offered: int) -> None:
+    """The scales register on the Data page, clicked with the mouse."""
+    with journey.step("scales register: a scale added, named and its items searched"):
+        nav(gui, "nav.data")
+        find_text(gui, T("scales.add"), exact=True, control_type="Button", timeout=60,
+                  moves=80)
+        gui.click(T("scales.add"), control_type="Button")
+        gui.type_into(None, SCALES_NAME, regex=field_named(T("scales.name")))
+        gui.type_into(T("vars.search"), SCALES_SEARCH)
+        gui.wait_text(scales_count(0, offered))
+    clicks = []
+    with journey.step("22 mouse clicks on the item boxes of the scale"):
+        for item, value, selected in scales_clicks():
+            box = gui.find(option_label(item, SCALES_LEVEL), control_type="CheckBox")
+            expect(toggle_state(box) in (int(not value), None),
+                   f"{item} is already {'ticked' if value else 'clear'}")
+            rect = box.element_info.rectangle
+            box.click_input(coords=(min(20, rect.width() // 2), rect.height() // 2))
+            # The program's own count follows each click (a click whose
+            # handler raised leaves it as it was).
+            gui.wait_text(scales_count(selected, offered), timeout=20, scroll=False)
+            clicks.append(item)
+        focused = gui.focused()
+        journey.facts["scales_clicks"] = len(clicks)
+        journey.facts["scales_focus_after_clicks"] = f"{focused.control_type}: {focused.name}"
+        expect((focused.name or "") != T("scales.name"),
+               "a click on an item box moved the keyboard focus to the scale's name")
+        gui.shot("scales register after 22 clicks")
+    with journey.step("the register saved in the project is the one on screen"):
+        rows = project_query(gui, VARIABLE_PANEL_PROJECT, SCALES_REGISTER_SQL)
+        expect(rows, "no scales register in the project")
+        register = json.loads(rows[0][0])
+        scales = register.get("scales") or []
+        journey.facts["scales_register"] = scales
+        expect(len(scales) == 1 and scales[0].get("name") == SCALES_NAME,
+               f"the register holds {[d.get('name') for d in scales]}")
+        expect(scales[0].get("items") == scales_expected(),
+               f"saved items {scales[0].get('items')}, expected {scales_expected()}")
+
+
+# master_fixture(): the export journey's (above), the same generator; the
+# integration keeps one definition (docs/STAGE37_INTEGRATION.md).
+
+
+def panel_offered(csv_path: Path) -> int:
+    """How many variables the item panel offers once the suggested levels
+    are accepted: every column but the identifier and the two-valued code
+    (suggested as nominal), as the program suggests them."""
+    import pandas as pd
+
+    from workspace_state import build_dictionary
+
+    variables = build_dictionary(pd.read_csv(csv_path))
+    return sum(1 for info in variables.values() if info.suggested in ("ordinal", "scale"))
+
+
+def panel_texts(offered: int) -> dict[str, str]:
+    """The names and texts the journey presses and waits for."""
+    pattern, k = f"{PANEL_STEM}*", len(PANEL_ITEMS)
+    return {
+        "group": T("vars.group", pattern=pattern, count=k),
+        "search": T("vars.search"),
+        "selected": T("vars.count", selected=k, total=offered),
+        "found": T("vars.count_shown", selected=k, total=offered, shown=1),
+        "left_out": T("vars.count_shown", selected=k - 1, total=offered, shown=1),
+        "identifier": T("vars.why.identifier", names="participant_code"),
+        "repeat": T("results.repeat"),
+        "dropped": option_label(PANEL_DROPPED, "ordinal"),
+    }
+
+
+def focus_on(gui: Gui, name: str, tabs: int = 25) -> list[str]:
+    """Press Tab until the keyboard focus is on the control named ``name``;
+    the names the focus passed, for the record."""
+    passed = []
+    for _ in range(tabs):
+        gui.keys("{TAB}")
+        focused = gui.focused()
+        passed.append(f"{focused.control_type}: {focused.name or ''}"[:80])
+        if (focused.name or "") == name:
+            return passed
+    raise StepFailure(f"Tab never reached {name!r}; the focus passed {passed}")
+
+
+def journey_variable_picker(gui: Gui, work: Path, journey: Journey) -> None:
+    """Issue #68 (review UX-3, U2 and D7) on the packaged program, on the
+    98-column master fixture: the item list offers only what a scale's items
+    can be and says why not the rest; the 20 SYN_LON items are chosen by
+    their name group in one action; their reliability agrees with the
+    driver's own numpy α. Then *Repeat with changes* opens the analysis as
+    a new task with the same 20 items and NOTHING confirmed (K1); one item
+    is found by typing and left out with the keyboard (Tab, Space); the
+    construct is confirmed again; α of the 19 items agrees with numpy; the
+    project holds two tasks, the first unchanged. The researcher's actions
+    are counted (PANEL_ACTIONS). Issue #80: then 22 mouse clicks on the item
+    boxes of the scales register, and the register saved in the project.
+    tests/test_stage37_variable_panel.py walks the same flow."""
+    csv_path = master_fixture(work / "stage37-master")
+    offered = panel_offered(csv_path)
+    texts = panel_texts(offered)
+    alpha, n = independent_alpha(csv_path, PANEL_ITEMS)
+    fewer, same_n = independent_alpha(csv_path, PANEL_ITEMS[:-1])
+    journey.facts["driver"] = {"alpha_20_numpy": round(alpha, 6), "alpha_19_numpy":
+                               round(fewer, 6), "n_complete": n, "offered": offered}
+    create_project(gui, journey, VARIABLE_PANEL_PROJECT)
+    open_data(gui, journey, csv_path)
+    with journey.step("confirm the measurement levels of the 98 variables"):
+        nav(gui, "nav.data")
+        # The bulk acceptance sits below the 98-row dictionary (≈ 5,500 px):
+        # further than Gui.find scrolls.
+        find_text(gui, T("data.accept_confirm"), exact=True, control_type="CheckBox",
+                  timeout=180, moves=80)
+        gui.check(T("data.accept_confirm"))
+        gui.click(T("data.accept_suggestions"), control_type="Button")
+        gui.wait_text(T("next.analyze"))
+    actions = {}
+    with journey.step("the item list says which variables it does not offer, and why"):
+        nav(gui, "nav.analyze")
+        gui.click(T("analyze.mode.guided"), control_type=("Button", "Text"))
+        click_chip(gui, T("goal.scale"))
+        element, text = find_text(gui, texts["identifier"])
+        journey.facts["not_offered"] = text
+        expect("employed_code" in text, f"the nominal code is not explained: {text!r}")
+        expect(not gui.query(regex=r"^participant_code · ", control_type="CheckBox"),
+               "the identifier is offered as an item")
+        shot_at(gui, element, "variables not offered, with the reason")
+    with journey.step(f"the 20 {PANEL_STEM} items in one action: their name group"):
+        # A button with a tooltip may carry it in its name ("…\n<tooltip>").
+        gui.click(regex="^" + re.escape(texts["group"]) + CHIP_END, control_type="Button")
+        actions["items_by_name_group"] = {"clicks": 1, "boxes": 0, "typed": 0}
+        element, _ = find_text(gui, texts["selected"], exact=True)
+        shot_at(gui, element, "twenty items selected by their name group")
+    with journey.step("one construct confirmed, Run: α as the driver computes it"):
+        for confirmation in scale_check_confirmations():
+            gui.check(confirmation)
+        gui.click(regex=run_button(), control_type="Button")
+        element, text = find_text(gui, regex=ALPHA_SUMMARY.pattern, timeout=300, first="up")
+        shown = ALPHA_SUMMARY.search(text).groupdict()
+        journey.facts["first_summary"] = text
+        expect((int(shown["k"]), int(shown["n"])) == (len(PANEL_ITEMS), n),
+               f"k = {shown['k']}, n = {shown['n']}; expected 20 items and {n} respondents")
+        expect(same_as_shown(alpha, shown["alpha"]),
+               f"α shown {shown['alpha']}, the driver's numpy α {alpha:.4f}")
+        shot_at(gui, element, "alpha of the twenty items")
+    repeat = {"clicks": 0, "boxes": 0, "typed": 0}
+    with journey.step("Repeat with changes: a new task, the same 20 items, nothing confirmed"):
+        gui.click(regex="^" + re.escape(texts["repeat"]) + CHIP_END, control_type="Button")
+        repeat["clicks"] += 1
+        find_text(gui, regex=template_pattern("task.copy_notice").pattern, first="up")
+        find_text(gui, texts["selected"], exact=True)
+        states = confirmation_states(gui, scale_check_confirmations())
+        journey.facts["confirmations_in_the_copy"] = states
+        expect(all(state == 0 for state in states.values()),
+               f"a confirmation was copied into the new task: {states}")
+    with journey.step(f"keyboard: {PANEL_DROPPED} found by typing, left out with Tab and Space"):
+        gui.type_into(texts["search"], PANEL_DROPPED)
+        repeat["typed"] += 1
+        find_text(gui, texts["found"], exact=True)
+        journey.facts["tab_order"] = focus_on(gui, texts["dropped"])
+        gui.keys("{SPACE}")
+        repeat["boxes"] += 1
+        element, _ = find_text(gui, texts["left_out"], exact=True)
+        shot_at(gui, element, "one item left out with the keyboard")
+    with journey.step("the construct confirmed again, Run: α of 19 items as numpy computes it"):
+        for confirmation in scale_check_confirmations():
+            gui.check(confirmation)
+            repeat["boxes"] += 1
+        gui.click(regex=run_button(), control_type="Button")
+        repeat["clicks"] += 1
+        element, text = find_text(gui, regex=r"k = 19, n = \d+", timeout=300, first="up")
+        shown = ALPHA_SUMMARY.search(text).groupdict()
+        journey.facts["second_summary"] = text
+        expect(int(shown["n"]) == same_n and same_as_shown(fewer, shown["alpha"]),
+               f"α shown {shown['alpha']} (n = {shown['n']}), the driver's numpy α of the "
+               f"19 items {fewer:.4f} (n = {same_n})")
+        shot_at(gui, element, "alpha of nineteen items")
+    actions["repeat_with_one_item_fewer"] = repeat
+    journey.facts["actions"] = actions
+    expect(actions == PANEL_ACTIONS, f"the journey took {actions}, not {PANEL_ACTIONS}")
+    with journey.step("two tasks in the project: the first unchanged, the copy re-confirmed"):
+        rows = project_query(gui, VARIABLE_PANEL_PROJECT,
+                             "SELECT id, selection, confirms, state FROM research_tasks "
+                             "ORDER BY position")
+        tasks = [{"id": task_id, "items": json.loads(selection).get("items") or [],
+                  "confirms": json.loads(confirms), "state": json.loads(state)}
+                 for task_id, selection, confirms, state in rows]
+        journey.facts["tasks"] = [{"items": len(t["items"]), "confirms": t["confirms"],
+                                   "copied_from_first": t["state"].get("copied_from")
+                                   == tasks[0]["id"]} for t in tasks]
+        expect(len(tasks) == 2, f"{len(tasks)} tasks in the project")
+        expect(tasks[0]["items"] == list(PANEL_ITEMS), "the first task was changed")
+        expect(tasks[1]["items"] == list(PANEL_ITEMS[:-1]), "the copy holds other items")
+        expect(tasks[1]["state"].get("copied_from") == tasks[0]["id"],
+               "the copy does not name the task it was copied from")
+        expect(tasks[1]["confirms"] == {"one_construct": True},
+               f"the copy's confirmations: {tasks[1]['confirms']}")
+    scales_register_steps(gui, journey, offered)
+
+
 # Journeys that prepare the machine and start the program themselves.
 STARTS_ITSELF = {"legacy-migration", "installed-reopen", "update-a-to-b"}
 
@@ -3893,6 +5139,20 @@ JOURNEYS = {
     # Stage 36.8 review findings K1 and K2 (#62), after the journeys above.
     "confirmations": journey_confirmations,
     "report-composition": journey_report_composition,
+    # Stage 37.0b (design AC-16): the hypothesis workflow, after the 18
+    # journeys above, which run unchanged and in their order.
+    "stage37-hypothesis": journey_stage37_hypothesis,
+    # Stage 37 (#67), after the 18 journeys above, which run unchanged.
+    "export-data": journey_export_data,
+    # Stage 37.3 (#69): the research library, after the 18 journeys above.
+    "research-library": journey_research_library,
+    # Stage 37 (#68): the normal start and the settings, after the journeys
+    # above (each restores English, 100 % and the workspace as the start).
+    "startup-workspace": journey_startup_workspace,
+    "settings-language": journey_settings_language,
+    # Stage 37 (Issue #68, review UX-3): the variable panel and repeating an
+    # analysis as a new task, after the journeys above.
+    "variable-picker": journey_variable_picker,
 }
 
 
@@ -3928,6 +5188,16 @@ def main(argv=None) -> int:
     preferences = Path.home() / ".statistical_research_assistant" / "preferences.json"
     with contextlib.suppress(OSError):
         preferences.unlink()        # default (English) preferences
+    if args.real_data:
+        # The installed program's own settings file (Stage 37): English, 100 %
+        # and the workspace at start; its other settings are kept.
+        with contextlib.suppress(Exception):
+            from user_settings import UserSettings
+
+            real = Path(os.environ["LOCALAPPDATA"]) / "StatisticalResearchAssistant" / "settings.json"
+            if real.is_file():
+                UserSettings.load(real, migrate=False).update(
+                    language="en", text_scale=100, start_interface="workspace")
     gui = Gui(args.exe.resolve(), data, out, real_data=args.real_data)
     report = {"exe": str(args.exe), "journeys": []}
     started = time.monotonic()

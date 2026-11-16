@@ -67,9 +67,32 @@ def run_from_record(record: RunRecord, figure: bytes | None):
     )
 
 
+# Note lines a later version adds to a report without changing any number
+# (Stage 37, review S10: the Spearman permutation floor). A result saved
+# before a note existed is compared without it (review integration F2).
+ADDED_NOTES = (
+    "This p (.001) is the smallest a two-sided permutation estimate with 1,999 resamples "
+    "can give:",
+)
+
+
+def _without_added_notes(report: str) -> str:
+    return "\n".join(line for line in report.split("\n")
+                     if not line.startswith(ADDED_NOTES))
+
+
 def same_report(first, second) -> bool:
-    return (sha256_bytes(first.report.encode("utf-8"))
-            == sha256_bytes(second.report.encode("utf-8")))
+    """The recalculated report is the saved one: byte for byte, or after
+    leaving out the note lines of ``ADDED_NOTES`` (only when the saved report
+    has none of them, i.e. it was saved before they existed)."""
+    if (sha256_bytes(first.report.encode("utf-8"))
+            == sha256_bytes(second.report.encode("utf-8"))):
+        return True
+    saved = first.report
+    if any(line.startswith(ADDED_NOTES) for line in saved.split("\n")):
+        return False
+    return (sha256_bytes(saved.encode("utf-8"))
+            == sha256_bytes(_without_added_notes(second.report).encode("utf-8")))
 
 
 @dataclass(frozen=True)
@@ -151,6 +174,8 @@ class ProjectBinding:
         # Stage 36.8 (K2): the researcher's entries as saved in the project.
         self._saved_notes: dict[int, tuple[str, frozenset]] = {}  # entry id -> (note, reviewed)
         self._saved_report = ReportSettings()
+        # Stage 37 (#67): the variable metadata as saved for the dataset in use.
+        self._saved_metadata: dict | None = None
         self.message: tuple[str, str] | None = None  # (text key, tone) for the UI
         session.subscribe(self._on_session)
         atexit.register(_release_at_exit, weakref.ref(self))
@@ -230,6 +255,7 @@ class ProjectBinding:
         self._saved_charts = {}
         self._saved_notes = {}
         self._saved_report = ReportSettings()
+        self._saved_metadata = None
         for entry in self.session.results:
             entry.record_id = None
             entry.stale_reasons = ()
@@ -240,8 +266,8 @@ class ProjectBinding:
             finally:
                 self._restoring = False
 
-    def duplicate(self, project_id: str) -> ProjectInfo:
-        return self._store().duplicate(project_id)
+    def duplicate(self, project_id: str, warnings: list[str] | None = None) -> ProjectInfo:
+        return self._store().duplicate(project_id, warnings=warnings)
 
     def set_archived(self, project_id: str, archived: bool) -> ProjectInfo:
         if self.project is not None and self.project.id == project_id:
@@ -257,9 +283,18 @@ class ProjectBinding:
     def restore_deleted(self, path: Path) -> ProjectInfo:
         return self._store().restore_deleted(path)
 
-    def export(self, project_id: str, destination: Path, survey_root: Path | None) -> Path:
+    def export(self, project_id: str, destination: Path, survey_root: Path | None,
+               warnings: list[str] | None = None) -> Path:
         """A ``.sra`` backup; uses its own database connections (worker-thread safe)."""
-        return self._store().export_package(project_id, destination, survey_root=survey_root)
+        return self._store().export_package(project_id, destination, survey_root=survey_root,
+                                            warnings=warnings)
+
+    def export_for_format(self, project_id: str, destination: Path,
+                          survey_root: Path | None) -> tuple[Path, int]:
+        """A ``.sra`` copy for an older version (format 5), without the
+        protocol records (Stage 37.0b); the project itself is not changed."""
+        return self._store().export_for_format(project_id, destination, 5,
+                                               survey_root=survey_root)
 
     def restore(self, source: Path, survey_root: Path | None) -> tuple[ProjectInfo, list[str]]:
         """Restore a ``.sra`` backup as a project (worker-thread safe)."""
@@ -333,6 +368,14 @@ class ProjectBinding:
         session.set_dataset(frame, record.name, path=record.source_path, origin=origin,
                             survey_id=record.survey_id)
         self.dataset_id = record.id
+        # Stage 37 (#67): the labels, value labels and user-missing codes the
+        # project keeps for this dataset (no change event: nothing to save).
+        try:
+            metadata = project.variable_metadata(record.id)
+        except ProjectError:
+            metadata = {}
+        session.set_metadata(metadata, notify=False, replace_all=True)
+        self._saved_metadata = session.metadata()
         saved = project.levels(record.id)
         for name in list(session.variables):
             row = saved.get(name) or {}
@@ -464,6 +507,8 @@ class ProjectBinding:
                 self._save_dataset()
             elif what == "dictionary":
                 self._save_levels()
+            elif what == "metadata":
+                self._save_metadata()
             elif what == "results":
                 self._save_results()
             elif what == "report":
@@ -590,7 +635,21 @@ class ProjectBinding:
         self.dataset_id = record.id
         self._saved_levels = {}
         self._save_levels()
+        self._saved_metadata = None
+        self._save_metadata()
         self._refresh_stale()
+
+    def _save_metadata(self) -> None:
+        """Labels, value labels and user-missing codes of the dataset in use
+        (Stage 37, #67), written when they differ from what is saved."""
+        if self.dataset_id is None:
+            return
+        current = self.session.metadata()
+        if current == self._saved_metadata or (not current and self._saved_metadata is None):
+            self._saved_metadata = current
+            return
+        self.project.save_variable_metadata(self.dataset_id, current)
+        self._saved_metadata = current
 
     def _current_levels(self) -> dict[str, tuple[str, str]]:
         return {name: (info.confirmed, info.confirmed_in)

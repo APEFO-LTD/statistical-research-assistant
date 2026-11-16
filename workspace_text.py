@@ -558,6 +558,18 @@ T: dict[str, tuple[str, str, str]] = {
         "{provider} neatbildēja laikā, tāpēc melnraksts netiek rādīts. Pieprasījums netika nosūtīts atkārtoti, jo {provider} to joprojām var apstrādāt (un par to iekasēt maksu). Mēģiniet vēlāk vai izvēlieties ātrāku modeli nekā “{model}” sadaļā Iestatījumi → AI pakalpojumu sniedzēji.",
         "{provider} не ответил вовремя, поэтому черновик не показан. Запрос не отправлен повторно: {provider} может всё ещё обработать его (и выставить за него счёт). Повторите попытку позже или выберите более быструю модель, чем «{model}», в «Настройки» → «Провайдеры ИИ».",
     ),
+    "assistant.error.uncertain": (
+        "The connection to {provider} closed after the request was sent and before a reply "
+        "came, so no draft is shown. {provider} may have received the request (and may bill "
+        "it); it was not sent again. Check your usage with {provider} before sending it once "
+        "more.",
+        "Savienojums ar {provider} pārtrūka pēc pieprasījuma nosūtīšanas, pirms pienāca atbilde, "
+        "tāpēc melnraksts netiek rādīts. {provider} pieprasījumu, iespējams, saņēma (un var par "
+        "to iekasēt maksu); tas netika nosūtīts atkārtoti. Pirms sūtāt to vēlreiz, pārbaudiet "
+        "lietojumu pie {provider}.",
+        "Соединение с {provider} прервалось после отправки запроса, до получения ответа, поэтому "
+        "черновик не показан. {provider} мог получить запрос (и выставить за него счёт); повторно "
+        "он не отправлен. Прежде чем отправить его ещё раз, проверьте расход у {provider}."),
     "assistant.error.unsupported": (
         "{provider} refused this request for the model “{model}”: the model may not answer a plain text request like this one (for example a model for images, audio or tools), or the request is too long for it. Choose another model in Settings → AI providers.",
         "{provider} noraidīja šo pieprasījumu modelim “{model}”: šis modelis, iespējams, neatbild uz šādu vienkāršu teksta pieprasījumu (piemēram, tas ir attēlu, audio vai rīku modelis), vai pieprasījums tam ir pārāk garš. Izvēlieties citu modeli sadaļā Iestatījumi → AI pakalpojumu sniedzēji.",
@@ -768,6 +780,13 @@ T: dict[str, tuple[str, str, str]] = {
     "project.duplicate": ("Duplicate", "Dublēt", "Дублировать"),
     "project.duplicated": ("Created the copy “{title}”.", "Izveidota kopija “{title}”.",
                            "Создана копия «{title}»."),
+    "project.library_left_out_copy": (
+        "The research library could not be read, so the copy was made without it; the library "
+        "itself was not changed.",
+        "Pētījuma bibliotēku neizdevās nolasīt, tāpēc kopija izveidota bez tās; pati bibliotēka "
+        "netika mainīta.",
+        "Исследовательскую библиотеку не удалось прочитать, поэтому копия создана без неё; сама "
+        "библиотека не изменена."),
     "project.backup": ("Back up…", "Rezerves kopija…", "Резервная копия…"),
     "project.backup_title": ("Save a project backup", "Saglabāt projekta rezerves kopiju",
                              "Сохранить резервную копию проекта"),
@@ -778,6 +797,13 @@ T: dict[str, tuple[str, str, str]] = {
     ),
     "project.backup_saved": ("Backup saved: {path}", "Rezerves kopija saglabāta: {path}",
                              "Резервная копия сохранена: {path}"),
+    "project.library_left_out_backup": (
+        "The research library could not be read, so this backup was made without it; "
+        "everything else is in it, and the library itself was not changed.",
+        "Pētījuma bibliotēku neizdevās nolasīt, tāpēc šī rezerves kopija izveidota bez tās; "
+        "viss pārējais tajā ir, un pati bibliotēka netika mainīta.",
+        "Исследовательскую библиотеку не удалось прочитать, поэтому эта резервная копия создана "
+        "без неё; всё остальное в ней есть, а сама библиотека не изменена."),
     "project.archive": ("Archive", "Arhivēt", "В архив"),
     "project.unarchive": ("Return from the archive", "Atgriezt no arhīva", "Вернуть из архива"),
     "project.archived": ("Archived “{title}”.", "Arhivēts “{title}”.", "Проект «{title}» перемещён в архив."),
@@ -1982,6 +2008,221 @@ T: dict[str, tuple[str, str, str]] = {
 }
 
 
+# Stage 37 (issue #68): start interface, language choices, one Settings hub,
+# text size, density and typeface. The LV and RU texts are drafts for the
+# native-speaker review (docs/STAGE37_UX_SHELL.md lists every key);
+# DRAFT_KEYS keeps the list for the locale audit.
+_STAGE37_SHELL = {
+    "context.language_menu": ("Language: {name}. All languages",
+                              "Valoda: {name}. Visas valodas",
+                              "Язык: {name}. Все языки"),
+    "context.language_settings": ("Language settings…", "Valodas iestatījumi…",
+                                  "Настройки языка…"),
+    "home.continue_title": ("Continue where you left off", "Turpiniet, kur pārtraucāt",
+                            "Продолжить с того места, где вы остановились"),
+    "home.continue_body": (
+        "Your last session ended in the project “{title}”, on {page}. The project opens only "
+        "when you choose it.",
+        "Jūsu pēdējā sesija beidzās projektā “{title}”, lapā “{page}”. Projekts tiek atvērts "
+        "tikai tad, kad to izvēlaties.",
+        "Последний сеанс закончился в проекте «{title}», на странице «{page}». Проект "
+        "открывается, только когда вы его выберете."),
+    "home.continue_button": ("Continue: {page}", "Turpināt: {page}", "Продолжить: {page}"),
+    "help.interfaces": ("Research workspace and classic interface",
+                        "Pētījumu darba vide un klasiskā saskarne",
+                        "Исследовательская среда и классический интерфейс"),
+    "help.interfaces.body": (
+        "The research workspace is the normal start of the program. The classic interface, "
+        "with the same engine and the same data, stays available: “Classic interface” in the "
+        "sidebar or the button below. Settings choose which of the two opens at start.",
+        "Pētījumu darba vide ir programmas parastais sākums. Klasiskā saskarne ar to pašu "
+        "dzinēju un tiem pašiem datiem paliek pieejama: “Klasiskā saskarne” sānjoslā vai poga "
+        "zemāk. Iestatījumos var izvēlēties, kura no tām atveras startā.",
+        "Исследовательская среда — обычный запуск программы. Классический интерфейс с тем же "
+        "движком и теми же данными остаётся доступным: «Классический интерфейс» на боковой "
+        "панели или кнопка ниже. В настройках можно выбрать, какой из них открывается при "
+        "запуске."),
+    "help.settings_open": ("Open Settings", "Atvērt iestatījumus", "Открыть настройки"),
+    "settings.subtitle": (
+        "Everything you choose here is kept on this computer for the next start and applies "
+        "at once.",
+        "Viss, ko šeit izvēlaties, tiek saglabāts šajā datorā nākamajai palaišanai un "
+        "darbojas uzreiz.",
+        "Всё, что вы выбираете здесь, сохраняется на этом компьютере для следующего запуска "
+        "и действует сразу."),
+    "settings.sections": ("On this page", "Šajā lapā", "На этой странице"),
+    "settings.section.appearance": ("Appearance", "Izskats", "Внешний вид"),
+    "settings.section.typography": ("Text and density", "Teksts un blīvums",
+                                    "Текст и плотность"),
+    "settings.section.typography_body": (
+        "The interface uses the Windows fonts Segoe UI or Segoe UI Variable. Text size and "
+        "density apply to every page.",
+        "Saskarne izmanto Windows fontus Segoe UI vai Segoe UI Variable. Teksta lielums un "
+        "blīvums attiecas uz visām lapām.",
+        "Интерфейс использует шрифты Windows Segoe UI или Segoe UI Variable. Размер текста и "
+        "плотность применяются ко всем страницам."),
+    "settings.section.language": ("Language", "Valoda", "Язык"),
+    "settings.section.start": ("Start", "Palaišana", "Запуск"),
+    "settings.section.projects": ("Projects and data folder", "Projekti un datu mape",
+                                  "Проекты и папка данных"),
+    "settings.section.backups": ("Backups", "Rezerves kopijas", "Резервные копии"),
+    "settings.section.updates": ("Updates", "Atjauninājumi", "Обновления"),
+    "settings.section.ai": ("AI privacy", "MI un privātums", "ИИ и конфиденциальность"),
+    "settings.section.reset": ("Reset settings or delete data",
+                               "Atiestatīt iestatījumus vai dzēst datus",
+                               "Сброс настроек или удаление данных"),
+    "settings.theme.system": ("System", "Kā sistēmā", "Как в системе"),
+    "settings.theme_note": (
+        "System follows the app mode chosen in Windows (light or dark).",
+        "“Kā sistēmā” seko Windows izvēlētajam lietotņu režīmam (gaišs vai tumšs).",
+        "«Как в системе» следует режиму приложений, выбранному в Windows (светлый или тёмный)."),
+    "settings.text_size": ("Text size", "Teksta lielums", "Размер текста"),
+    "settings.text_size_note": (
+        "Applies to every page at once. Small helper text never becomes smaller than 12 px.",
+        "Attiecas uz visām lapām uzreiz. Mazais palīgteksts nekad nekļūst mazāks par 12 px.",
+        "Применяется сразу ко всем страницам. Мелкий вспомогательный текст никогда не "
+        "становится меньше 12 px."),
+    "settings.density": ("Density", "Blīvums", "Плотность"),
+    "settings.density.comfortable": ("Comfortable", "Ērts", "Свободная"),
+    "settings.density.compact": ("Compact", "Kompakts", "Компактная"),
+    "settings.typeface": ("Typeface", "Burtveidols", "Шрифт"),
+    "settings.typeface.segoe": ("Segoe UI · Windows", "Segoe UI · Windows",
+                                "Segoe UI · Windows"),
+    "settings.typeface.segoe_variable": ("Segoe UI Variable · Windows 11",
+                                         "Segoe UI Variable · Windows 11",
+                                         "Segoe UI Variable · Windows 11"),
+    "settings.typeface_note": (
+        "Fonts come from Windows; the program installs none. Where a font is missing, the next "
+        "one with Latvian and Cyrillic letters is used.",
+        "Fonti tiek ņemti no Windows; programma neinstalē nevienu. Ja fonta nav, tiek izmantots "
+        "nākamais, kurā ir latviešu un kirilicas burti.",
+        "Шрифты берутся из Windows; программа не устанавливает ни одного. Если шрифта нет, "
+        "используется следующий, в котором есть латышские и кириллические буквы."),
+    "settings.language_note": (
+        "English and Latviešu are also in the top bar. Every language, Русский included, is in "
+        "the globe menu beside them. Your choice is kept for the next start.",
+        "English un Latviešu ir arī augšējā joslā. Visas valodas, arī Русский, ir globusa "
+        "izvēlnē blakus tām. Jūsu izvēle tiek saglabāta nākamajai palaišanai.",
+        "English и Latviešu есть также на верхней панели. Все языки, включая русский, есть в "
+        "меню с глобусом рядом с ними. Ваш выбор сохраняется для следующего запуска."),
+    "settings.start_interface": ("Interface at start", "Saskarne palaišanas brīdī",
+                                 "Интерфейс при запуске"),
+    "settings.start.workspace": ("Research workspace", "Pētījumu darba vide",
+                                 "Исследовательская среда"),
+    "settings.start.classic": ("Classic interface", "Klasiskā saskarne",
+                               "Классический интерфейс"),
+    "settings.start_note": (
+        "The research workspace is the normal start. The classic interface stays one click "
+        "away: “Classic interface” in the sidebar, in Help and here.",
+        "Pētījumu darba vide ir parastais sākums. Klasiskā saskarne ir viena klikšķa attālumā: "
+        "“Klasiskā saskarne” sānjoslā, palīdzībā un šeit.",
+        "Исследовательская среда — обычный запуск. Классический интерфейс доступен в один "
+        "щелчок: «Классический интерфейс» на боковой панели, в справке и здесь."),
+    "settings.settings_file": ("Settings file: {path}", "Iestatījumu fails: {path}",
+                               "Файл настроек: {path}"),
+    "settings.recent_projects": ("Recent projects", "Nesenie projekti", "Недавние проекты"),
+    "settings.recent_files": ("Recent data files", "Nesenie datu faili", "Недавние файлы данных"),
+    "settings.recent_none": ("Nothing yet.", "Vēl nekā nav.", "Пока ничего."),
+    "settings.recent_clear": ("Clear the list of recent data files",
+                              "Notīrīt neseno datu failu sarakstu",
+                              "Очистить список недавних файлов данных"),
+    "settings.recent_cleared": (
+        "The list of recent data files is empty. The files themselves are unchanged.",
+        "Neseno datu failu saraksts ir tukšs. Paši faili nav mainīti.",
+        "Список недавних файлов данных пуст. Сами файлы не изменены."),
+    "settings.backups_body": (
+        "Before the program updates itself or opens a project saved in an older format, it "
+        "copies the projects into the folder below. A portable backup of one project (.sra) is "
+        "made with “Back up” on Home or on the project's page; it can be restored on any "
+        "computer.",
+        "Pirms programma atjaunina sevi vai atver projektu, kas saglabāts vecākā formātā, tā "
+        "nokopē projektus zemāk norādītajā mapē. Pārnēsājamu viena projekta rezerves kopiju "
+        "(.sra) izveido ar pogu “Rezerves kopija” sākumlapā vai projekta lapā; to var atjaunot "
+        "jebkurā datorā.",
+        "Перед самообновлением или открытием проекта, сохранённого в старом формате, "
+        "программа копирует проекты в папку ниже. Переносимая резервная копия проекта (.sra) "
+        "создаётся кнопкой «Резервная копия» на главной или на странице проекта; её можно "
+        "восстановить на любом компьютере."),
+    "settings.backups_privacy": (
+        "Backups are not encrypted and contain the participants' answers: keep them where only "
+        "you can read them.",
+        "Rezerves kopijas nav šifrētas un satur dalībnieku atbildes: glabājiet tās tur, kur tās "
+        "varat lasīt tikai jūs.",
+        "Резервные копии не зашифрованы и содержат ответы участников: храните их там, где их "
+        "можете прочитать только вы."),
+    "settings.backups_open": ("Open the backup folder", "Atvērt rezerves kopiju mapi",
+                              "Открыть папку резервных копий"),
+    "settings.backup_open_project": ("Back up “{title}”…", "Rezerves kopija: “{title}”…",
+                                     "Резервная копия «{title}»…"),
+    "settings.updates_channel": (
+        "The release channel comes with the installed program; switching channels is not "
+        "offered.",
+        "Laidienu kanāls ir noteikts instalētajā programmā; kanāla maiņa netiek piedāvāta.",
+        "Канал выпусков задан установленной программой; смена канала не предусмотрена."),
+    "settings.ai_body": (
+        "The AI assistant stays off until you connect a provider with your own key, which is "
+        "kept in the Windows credential store. What it may see is chosen per project, every "
+        "source off by default, and nothing is sent before you have seen the exact text.",
+        "MI asistents paliek izslēgts, kamēr nepievienojat pakalpojumu sniedzēju ar savu "
+        "atslēgu, kas tiek glabāta Windows akreditācijas datu krātuvē. Ko tas drīkst redzēt, "
+        "izvēlas katram projektam, visi avoti pēc noklusējuma izslēgti, un nekas netiek "
+        "nosūtīts, pirms neesat redzējis precīzu tekstu.",
+        "ИИ-помощник выключен, пока вы не подключите провайдера со своим ключом, который "
+        "хранится в диспетчере учётных данных Windows. Что ему можно видеть, выбирается для "
+        "каждого проекта, все источники по умолчанию выключены, и ничего не отправляется, "
+        "пока вы не увидели точный текст."),
+    "settings.reset": ("Reset settings", "Atiestatīt iestatījumus", "Сбросить настройки"),
+    "settings.reset_title": ("Reset all settings?", "Atiestatīt visus iestatījumus?",
+                             "Сбросить все настройки?"),
+    "settings.reset_body": (
+        "Language, appearance, text size, density, the interface at start, the window, the "
+        "sidebar and the list of recent data files go back to their defaults. Projects, "
+        "questionnaires, responses, backups, your researcher profile and AI keys are not "
+        "changed.",
+        "Valoda, izskats, teksta lielums, blīvums, saskarne palaišanas brīdī, logs, sānjosla un "
+        "neseno datu failu saraksts atgriežas pie noklusējuma. Projekti, anketas, atbildes, "
+        "rezerves kopijas, jūsu pētnieka profils un MI atslēgas netiek mainīti.",
+        "Язык, внешний вид, размер текста, плотность, интерфейс при запуске, окно, боковая "
+        "панель и список недавних файлов данных возвращаются к значениям по умолчанию. "
+        "Проекты, анкеты, ответы, резервные копии, профиль исследователя и ключи ИИ не "
+        "меняются."),
+    "settings.reset_confirm": ("Reset settings", "Atiestatīt iestatījumus", "Сбросить настройки"),
+    "settings.reset_done": (
+        "Settings were reset to their defaults. No research data was changed.",
+        "Iestatījumi ir atiestatīti uz noklusējuma vērtībām. Pētījuma dati netika mainīti.",
+        "Настройки сброшены к значениям по умолчанию. Данные исследования не изменены."),
+    "settings.delete_data": ("Delete research data", "Dzēst pētījuma datus",
+                             "Удалить данные исследования"),
+    "settings.delete_data_body": (
+        "Resetting settings never deletes research data. A project is deleted with Delete on "
+        "Home and is kept in “Recently deleted” first. To remove all research data, make a "
+        "backup if you need one, close the program and delete the data folder shown under "
+        "“Projects and data folder”. Uninstalling the program keeps that folder.",
+        "Iestatījumu atiestatīšana nekad nedzēš pētījuma datus. Projektu dzēš ar pogu “Dzēst” "
+        "sākumlapā, un vispirms tas tiek saglabāts sadaļā “Nesen dzēstie”. Lai noņemtu visus "
+        "pētījuma datus, vajadzības gadījumā izveidojiet rezerves kopiju, aizveriet programmu "
+        "un izdzēsiet datu mapi, kas norādīta sadaļā “Projekti un datu mape”. Atinstalējot "
+        "programmu, šī mape tiek saglabāta.",
+        "Сброс настроек никогда не удаляет данные исследования. Проект удаляется кнопкой "
+        "«Удалить» на главной и сначала сохраняется в «Недавно удалённых». Чтобы удалить все "
+        "данные исследования, при необходимости сделайте резервную копию, закройте программу "
+        "и удалите папку данных, указанную в разделе «Проекты и папка данных». При удалении "
+        "программы эта папка сохраняется."),
+    "settings.delete_data_projects": ("Projects on Home", "Projekti sākumlapā",
+                                      "Проекты на главной"),
+    "settings.not_saved": (
+        "The setting applies now but could not be kept for the next start: {error}",
+        "Iestatījums darbojas tagad, bet to nevarēja saglabāt nākamajai palaišanai: {error}",
+        "Настройка действует сейчас, но её не удалось сохранить для следующего запуска: {error}"),
+    "reports.section_names": (
+        "Section titles are shown in the language of the report ({name}).",
+        "Sadaļu nosaukumi ir parādīti atskaites valodā ({name}).",
+        "Названия разделов показаны на языке отчёта ({name})."),
+}
+T.update(_STAGE37_SHELL)
+DRAFT_KEYS = frozenset(_STAGE37_SHELL)
+
+
 # Guided advisor explanations (workspace_methods.advise).
 T.update({
     "why.two_groups": (
@@ -2802,14 +3043,20 @@ T.update({
         "The two category variables are independent.",
         "Abi kategoriju mainīgie ir neatkarīgi.",
         "Обе категориальные переменные независимы."),
+    # Stage 37.0b (review S17): one predictor, the others held constant.
     "hyp.draft.h1.predict": (
-        "For example: ‹predictors› predict ‹outcome›.",
-        "Piemēram: ‹prediktori› prognozē ‹rādītāju›.",
-        "Например: ‹предикторы› предсказывают ‹показатель›."),
+        "For example: ‹predictor› predicts ‹outcome› when ‹the other predictors› are held "
+        "constant.",
+        "Piemēram: ‹prediktors› prognozē ‹rādītāju›, ja ‹pārējie prediktori› ir nemainīgi.",
+        "Например: ‹предиктор› предсказывает ‹показатель› при неизменных ‹остальных "
+        "предикторах›."),
     "hyp.draft.h0.predict": (
-        "The predictors explain none of the outcome (every coefficient is 0).",
-        "Prediktori neizskaidro rādītāju (katrs koeficients ir 0).",
-        "Предикторы не объясняют показатель (каждый коэффициент равен 0)."),
+        "The predictor named in H1 is not associated with the outcome when the other predictors "
+        "are held constant (its coefficient is 0).",
+        "H1 nosauktais prediktors nav saistīts ar rādītāju, ja pārējie prediktori ir nemainīgi "
+        "(tā koeficients ir 0).",
+        "Предиктор, названный в H1, не связан с показателем при неизменных остальных "
+        "предикторах (его коэффициент равен 0)."),
     "hyp.draft.h1.other": (
         "For example: what you expect, in your own words (‹expectation›).",
         "Piemēram: ko jūs sagaidāt, saviem vārdiem (‹sagaidāmais›).",
@@ -3222,6 +3469,9 @@ T.update({
     "hyp.what.exclusions": ("The exclusions", "Izslēgšanas noteikumi", "Исключения"),
     "hyp.what.data": ("The data", "Dati", "Данные"),
     "hyp.what.other": ("Something else", "Kas cits", "Другое"),
+    # Review A/B (0b fixes). LV/RU drafts — needs native review.
+    "hyp.what.wording": ("The wording", "Formulējums", "Формулировка"),
+    "hyp.what.question": ("The kind of question", "Jautājuma veids", "Тип вопроса"),
     "hyp.save_record": ("Save the record", "Saglabāt ierakstu", "Сохранить запись"),
     "hyp.reason_first": ("Write the reason first: it is kept with the record.",
                          "Vispirms uzrakstiet iemeslu: tas tiek saglabāts ar ierakstu.",
@@ -3299,6 +3549,1439 @@ T.update({
     "next.why.hide": ("Hide the reasons", "Paslēpt iemeslus", "Скрыть причины"),
 })
 
+
+# Stage 37.0b: the plan's Q1 and planned variables, the next-action bar in the
+# page footers, the review inside the task, the checks before Run, the result
+# card's decisions and the copy for an older version.
+# LV/RU drafts — needs native review (docs/STAGE37_0B_STATUS.md lists the keys).
+T.update({
+    "plan.q.from_project": (
+        "Q1 shows the project's research question. Choose its kind to use it in the plan; it "
+        "is saved with the next plan version.",
+        "Q1 rāda projekta pētījuma jautājumu. Izvēlieties tā veidu, lai to izmantotu plānā; tas "
+        "tiks saglabāts ar nākamo plāna versiju.",
+        "Q1 показывает исследовательский вопрос проекта. Выберите его тип, чтобы использовать "
+        "его в плане; он сохранится со следующей версией плана."),
+    "plan.h.roles": ("Planned variables", "Plānotie mainīgie", "Запланированные переменные"),
+    "plan.h.roles_body": (
+        "For each role of this kind of question, the variables the analysis is planned to use. "
+        "The checks compare them with the analysis that is run.",
+        "Katrai šī jautājuma veida lomai — mainīgie, ko plānots izmantot analīzē. Pārbaudes tos "
+        "salīdzina ar veikto analīzi.",
+        "Для каждой роли этого типа вопроса — переменные, которые планируется использовать в "
+        "анализе. Проверки сравнивают их с выполненным анализом."),
+    "plan.h.roles_hint": ("Names, separated by commas (chosen from the data once it is open)",
+                          "Nosaukumi, atdalīti ar komatiem (kad dati atvērti, tos izvēlas no "
+                          "datiem)",
+                          "Имена через запятую (когда данные открыты, их выбирают из данных)"),
+    "plan.h.role_none": ("Not planned", "Nav plānots", "Не запланировано"),
+    "plan.h.role_missing": ("{name} (not in the data)", "{name} (nav datos)",
+                            "{name} (нет в данных)"),
+    "plan.h.roles_missing": ("Planned, but not in the data now: {names}.",
+                             "Plānoti, bet pašlaik nav datos: {names}.",
+                             "Запланированы, но сейчас их нет в данных: {names}."),
+
+    # The next-action bar in the footer of Data, Analyze, Results and Reports.
+    "footer.next_step": ("Next step", "Nākamais solis", "Следующий шаг"),
+    "next.here": ("It is done on this page.", "To dara šajā lapā.", "Это делается на этой "
+                  "странице."),
+    "next.plan_link": ("Add the research question these analyses answer",
+                       "Pievienot pētījuma jautājumu, uz kuru atbild šīs analīzes",
+                       "Добавить исследовательский вопрос, на который отвечают эти анализы"),
+    "next.plan_link_note": (
+        "Results calculated before the plan count as exploratory.",
+        "Rezultāti, kas aprēķināti pirms plāna, tiek uzskatīti par izpētes rezultātiem.",
+        "Результаты, рассчитанные до плана, считаются поисковыми."),
+
+    # Analyze: the review inside the batch result card and the checks of step 4.
+    "task.review": ("Review this result", "Pārskatiet šo rezultātu", "Проверьте этот результат"),
+    "task.notes_skipped": ("Interpretation skipped.", "Interpretācija izlaista.",
+                           "Интерпретация пропущена."),
+    "task.checks": ("Checks against the plan of H{h}", "Pārbaudes pret hipotēzes H{h} plānu",
+                    "Проверки по плану H{h}"),
+    "task.checks_body": (
+        "They compare the analysis on screen with the plan. They never stop a run; decide on "
+        "them in the hypothesis on the Project page.",
+        "Tās salīdzina analīzi ekrānā ar plānu. Tās nekad neaptur aprēķinu; lēmumu par tām "
+        "pieņem hipotēzē projekta lapā.",
+        "Они сравнивают анализ на экране с планом. Они никогда не останавливают расчёт; "
+        "решение по ним принимается в гипотезе на странице проекта."),
+    "task.checks_none": ("Nothing in this analysis differs from the plan of H{h}.",
+                         "Nekas šajā analīzē neatšķiras no hipotēzes H{h} plāna.",
+                         "В этом анализе ничто не отличается от плана H{h}."),
+
+    # Results: the decisions and open checks on the Tests H… card.
+    "results.open_hypothesis": ("Open H{h}", "Atvērt H{h}", "Открыть H{h}"),
+    "results.open_checks": ("Waiting for a decision: {count}", "Gaida lēmumu: {count}",
+                            "Ждут решения: {count}"),
+    "results.decisions": ("Recorded for H{h}:", "Hipotēzei H{h} ierakstīts:",
+                          "Записано для H{h}:"),
+
+    # A hypothesis changed after results (review S8).
+    "check.plan_changed": (
+        "{count} result(s) were calculated for plan version {version}; the hypothesis has changed "
+        "in the plan since: {fields}.",
+        "Rezultāti ({count}) aprēķināti plāna {version}. versijai; kopš tā laika hipotēze plānā "
+        "mainīta: {fields}.",
+        "Результаты ({count}) рассчитаны для версии плана {version}; с тех пор гипотеза в "
+        "плане изменилась: {fields}."),
+    "check.field.priority": ("priority", "prioritāte", "приоритет"),
+    "check.field.direction": ("direction", "virziens", "направленность"),
+    "check.field.alpha": ("α", "α", "α"),
+    "check.field.wording": ("wording", "formulējums", "формулировка"),
+    "plan.change_reason_needed": (
+        "Write why H{h} changes: results were calculated before this change. Nothing was saved.",
+        "Uzrakstiet, kāpēc mainās H{h}: rezultāti tika aprēķināti pirms šīs izmaiņas. Nekas "
+        "netika saglabāts.",
+        "Напишите, почему меняется H{h}: результаты были рассчитаны до этого изменения. "
+        "Ничего не сохранено."),
+    "plan.h.change_reason": ("Why this hypothesis changes (needed: results exist)",
+                             "Kāpēc šī hipotēze mainās (obligāti: rezultāti jau ir)",
+                             "Почему меняется эта гипотеза (обязательно: результаты уже есть)"),
+    # Review A: a saved hypothesis removed after results. LV/RU drafts — needs native review.
+    "plan.remove_reason_needed": (
+        "Write why H{h} is removed from the plan: results were calculated before. It is recorded "
+        "as the withdrawal of H{h}, and H{h} stays in the records and the report. Nothing was "
+        "saved.",
+        "Uzrakstiet, kāpēc H{h} tiek izņemta no plāna: rezultāti jau tika aprēķināti. To ieraksta "
+        "kā H{h} atsaukšanu, un H{h} paliek ierakstos un atskaitē. Nekas netika saglabāts.",
+        "Напишите, почему H{h} исключается из плана: результаты уже были рассчитаны. Это "
+        "записывается как отзыв H{h}, и H{h} остаётся в записях и отчёте. Ничего не сохранено."),
+    "plan.h.remove_reason": ("Why this hypothesis is removed (needed: results exist)",
+                             "Kāpēc šī hipotēze tiek izņemta (obligāti: rezultāti jau ir)",
+                             "Почему эта гипотеза исключается (обязательно: результаты уже есть)"),
+    "plan.h.removing": (
+        "H{h} will be removed from the plan when the plan is saved. Results exist, so write the "
+        "reason: it is recorded as the withdrawal of H{h}, and H{h} stays in the records and the "
+        "Word report.",
+        "H{h} tiks izņemta no plāna, kad plāns tiks saglabāts. Rezultāti jau ir, tāpēc uzrakstiet "
+        "iemeslu: to ieraksta kā H{h} atsaukšanu, un H{h} paliek ierakstos un Word atskaitē.",
+        "H{h} будет исключена из плана при сохранении плана. Результаты уже есть, поэтому "
+        "напишите причину: это записывается как отзыв H{h}, и H{h} остаётся в записях и отчёте "
+        "Word."),
+    "plan.h.keep": ("Keep H{h}", "Paturēt H{h}", "Оставить H{h}"),
+    "hyp.removed": ("Withdrawn from the plan after results", "Pēc rezultātiem izņemtas no plāna",
+                    "Исключены из плана после результатов"),
+    "hyp.removed_line": (
+        "H{h} “{text}”: withdrawn in plan version {version}, recorded {when}. Reason: {reason}",
+        "H{h} “{text}”: izņemta plāna {version}. versijā, ierakstīts {when}. Iemesls: {reason}",
+        "H{h} «{text}»: исключена в версии плана {version}, записано {when}. Причина: {reason}"),
+
+    # A plan version saved before 37.0b (review C-S16/W2). LV/RU drafts — needs native review.
+    "hyp.standing_facts_unknown": (
+        "When it entered the plan (version {version}), the project held {total} result(s). That "
+        "version was saved by an earlier release, which did not record which of them were "
+        "inferential tests, so the standing is kept as it was saved and needs review: if H{h} "
+        "was planned before any inferential result, record a justification.",
+        "Kad tā tika iekļauta plānā ({version}. versija), projektā bija rezultāti: {total}. Šo "
+        "versiju saglabāja agrāka programmas versija, kas nepierakstīja, kuri no tiem bija "
+        "secinājumu testi, tāpēc statuss paliek, kā saglabāts, un ir jāpārskata: ja H{h} tika "
+        "plānota pirms jebkura secinājumu testa, ierakstiet pamatojumu.",
+        "Когда она вошла в план (версия {version}), в проекте было результатов: {total}. Эту "
+        "версию сохранила более ранняя версия программы, которая не записала, какие из них были "
+        "статистическими проверками, поэтому статус остаётся сохранённым и требует проверки: "
+        "если H{h} была запланирована до любой статистической проверки, запишите обоснование."),
+    # The facts beside a hypothesis's standing (review S16).
+    "hyp.standing_facts": (
+        "When it entered the plan (version {version}), the project held {total} result(s); "
+        "{counted} of them were inferential tests, which decide the standing. Descriptions, "
+        "reliability and item checks, factor analyses and correlation matrices do not count.",
+        "Kad tā tika iekļauta plānā ({version}. versija), projektā bija rezultāti: {total}; no "
+        "tiem secinājumu testi: {counted} — tikai tie nosaka statusu. Apraksti, ticamības un "
+        "jautājumu pārbaudes, faktoru analīzes un korelāciju matricas netiek skaitītas.",
+        "Когда она вошла в план (версия {version}), в проекте было результатов: {total}; из "
+        "них статистических проверок: {counted} — только они определяют статус. Описания, "
+        "проверки надёжности и пунктов, факторный анализ и корреляционные матрицы не "
+        "учитываются."),
+
+    # The copy of a project for an older version (format 5).
+    "project.copy_older": ("Copy for version 36.x…", "Kopija versijai 36.x…",
+                           "Копия для версии 36.x…"),
+    "project.copy_older_title": ("A copy for version 36.x", "Kopija versijai 36.x",
+                                 "Копия для версии 36.x"),
+    "project.copy_older_body": (
+        "Version 36.x reads projects up to format 5; this project has format 6. The copy is a "
+        "backup file (.sra) that version 36.x restores. The {count} protocol record(s) of this "
+        "project — the decisions and deviations about the plan — are not carried into the copy: "
+        "they stay only in this project, which is not changed. If the copy comes back to this "
+        "version, it comes back without them, and what version 36.x saves drops the new fields "
+        "(typed questions, planned methods and variables, the hypothesis version of a "
+        "recalculated result); this version then names what is missing and restores nothing by "
+        "itself.",
+        "Versija 36.x lasa projektus līdz 5. formātam; šim projektam ir 6. formāts. Kopija ir "
+        "rezerves kopijas fails (.sra), ko versija 36.x atjauno. Šī projekta protokola ieraksti "
+        "({count}) — lēmumi un novirzes no plāna — kopijā netiek pārnesti: tie paliek tikai šajā "
+        "projektā, kas netiek mainīts. Ja kopija atgriežas šajā versijā, tā atgriežas bez tiem, "
+        "un tas, ko saglabā versija 36.x, zaudē jaunos laukus (tipizētos jautājumus, plānotās "
+        "metodes un mainīgos, pārrēķināta rezultāta hipotēzes versiju); šī versija tad nosauc, "
+        "kā trūkst, un pati neko neatjauno.",
+        "Версия 36.x читает проекты до формата 5; у этого проекта формат 6. Копия — это файл "
+        "резервной копии (.sra), который версия 36.x восстанавливает. Записи протокола этого "
+        "проекта ({count}) — решения и отклонения от плана — в копию не переносятся: они "
+        "остаются только в этом проекте, который не изменяется. Если копия вернётся в эту "
+        "версию, она вернётся без них, а то, что сохраняет версия 36.x, теряет новые поля "
+        "(типизированные вопросы, запланированные методы и переменные, версию гипотезы "
+        "пересчитанного результата); эта версия тогда назовёт, чего не хватает, и сама ничего "
+        "не восстановит."),
+    "project.copy_older_confirm": ("Save the copy…", "Saglabāt kopiju…", "Сохранить копию…"),
+    "project.copy_older_dialog": ("Save a copy for version 36.x",
+                                  "Saglabāt kopiju versijai 36.x",
+                                  "Сохранить копию для версии 36.x"),
+    # Review E: a copy for an older version that came back. LV/RU drafts — needs native review.
+    "project.older_copy_back": (
+        "This project is a copy made on {when} for an older version (format {format}) that has "
+        "come back. The {count} protocol record(s) left out of that copy are not in it; the "
+        "original project keeps them.",
+        "Šis projekts ir kopija, kas {when} izveidota agrākai versijai ({format}. formāts) un "
+        "atgriezusies. Tajā nav no kopijas izlaisto protokola ierakstu ({count}); tie ir "
+        "oriģinālajā projektā.",
+        "Этот проект — копия, созданная {when} для более ранней версии (формат {format}) и "
+        "вернувшаяся. В ней нет записей протокола, не вошедших в копию ({count}); они остаются "
+        "в исходном проекте."),
+    "project.older_copy_fields": (
+        "The older version saved the plan without these typed fields, which the plan had "
+        "before the copy: {items}.",
+        "Agrākā versija saglabāja plānu bez šiem laukiem, kas plānā bija pirms kopijas: {items}.",
+        "Более ранняя версия сохранила план без этих полей, которые были в плане до копии: "
+        "{items}."),
+    "project.older_copy_questions": (
+        "It also saved the plan without its typed research questions.",
+        "Tā saglabāja plānu arī bez tipizētajiem pētījuma jautājumiem.",
+        "Она также сохранила план без типизированных исследовательских вопросов."),
+    "project.older_copy_snapshots": (
+        "{count} result(s) calculated there for a hypothesis's analysis do not say which "
+        "version of the hypothesis they were calculated for.",
+        "{count} rezultāti, kas tur aprēķināti hipotēzes analīzei, nenorāda, kurai hipotēzes "
+        "versijai tie aprēķināti.",
+        "Результаты ({count}), рассчитанные там для анализа гипотезы, не указывают, для какой "
+        "версии гипотезы они рассчитаны."),
+    "project.older_copy_nothing_restored": (
+        "Nothing is restored automatically: the earlier plan versions are in the plan history; "
+        "enter what is needed again and save a plan version.",
+        "Nekas netiek atjaunots automātiski: agrākās plāna versijas ir plāna vēsturē; ievadiet "
+        "vajadzīgo vēlreiz un saglabājiet plāna versiju.",
+        "Ничего не восстанавливается автоматически: прежние версии плана есть в истории плана; "
+        "введите нужное заново и сохраните версию плана."),
+    "project.older_copy_noted": ("I have read this", "Esmu to izlasījis", "Я прочитал(а)"),
+    "project.older_copy_field.question_id": ("question link", "saite ar jautājumu",
+                                             "связь с вопросом"),
+    "project.older_copy_field.method_key": ("planned method", "plānotā metode",
+                                            "запланированный метод"),
+    "project.older_copy_field.method_options": ("method options", "metodes iestatījumi",
+                                                "параметры метода"),
+    "project.older_copy_field.roles": ("planned variables", "plānotie mainīgie",
+                                       "запланированные переменные"),
+    "project.older_copy_field.expected": ("expected group", "sagaidāmā grupa",
+                                          "ожидаемая группа"),
+    "project.copy_older_saved": (
+        "Copy for version 36.x saved: {path}. The protocol records are not in it.",
+        "Kopija versijai 36.x saglabāta: {path}. Protokola ierakstu tajā nav.",
+        "Копия для версии 36.x сохранена: {path}. Записей протокола в ней нет."),
+})
+
+
+# Stage 37 (Issue #66): the linear model with categorical covariates and the
+# path models (mediation, moderation, conditional process).
+# LV/RU drafts — needs native review (docs/STAGE37_METHODS.md lists the keys).
+T.update({
+    "goal.process": ("Test a mediation or moderation model",
+                     "Pārbaudīt mediācijas vai moderācijas modeli",
+                     "Проверить модель медиации или модерации"),
+    "goal.process.body": (
+        "A path model you state: an indirect path through mediators (Model 4), a moderator "
+        "(Model 1), or both (Model 7 or 14). Nothing is chosen from the data.",
+        "Jūsu noteikts ceļu modelis: netiešais ceļš caur mediatoriem (4. modelis), moderators "
+        "(1. modelis) vai abi (7. vai 14. modelis). Nekas netiek izvēlēts pēc datiem.",
+        "Модель путей, которую задаёте вы: косвенный путь через медиаторы (модель 4), "
+        "модератор (модель 1) или оба (модель 7 или 14). Ничего не выбирается по данным."),
+    "role.process_x": ("X: predictor (quantitative or coded 0/1)",
+                       "X: prediktors (kvantitatīvs vai kodēts 0/1)",
+                       "X: предиктор (количественный или с кодами 0/1)"),
+    "role.process_y": ("Y: outcome (quantitative)", "Y: rezultāts (kvantitatīvs)",
+                       "Y: зависимая переменная (количественная)"),
+    "role.mediators": ("M: mediators you named before seeing results",
+                       "M: mediatori, ko noteicāt pirms rezultātu apskates",
+                       "M: медиаторы, заданные вами до просмотра результатов"),
+    "role.moderator": ("W: moderator (quantitative or coded 0/1)",
+                       "W: moderators (kvantitatīvs vai kodēts 0/1)",
+                       "W: модератор (количественный или с кодами 0/1)"),
+    "role.process_covariates": ("Covariates in every equation (optional)",
+                                "Kovariāti katrā vienādojumā (pēc izvēles)",
+                                "Ковариаты в каждом уравнении (необязательно)"),
+    "role.quantitative_predictors": ("Quantitative predictors", "Kvantitatīvi prediktori",
+                                     "Количественные предикторы"),
+    "role.factors": ("Categorical covariates (entered as dummy codes)",
+                     "Kategoriāli kovariāti (iekļauti kā fiktīvie kodi)",
+                     "Категориальные ковариаты (входят как фиктивные коды)"),
+    "role.product_a": ("Product term (optional): first predictor",
+                       "Reizinājuma loceklis (pēc izvēles): pirmais prediktors",
+                       "Член-произведение (необязательно): первый предиктор"),
+    "role.product_b": ("Product term: second predictor",
+                       "Reizinājuma loceklis: otrais prediktors",
+                       "Член-произведение: второй предиктор"),
+    "block.process_structure": (
+        "Name at least one mediator (M) or a moderator (W): the structure of the model is "
+        "yours to state; the program does not choose it.",
+        "Norādiet vismaz vienu mediatoru (M) vai moderatoru (W): modeļa struktūru nosakāt jūs; "
+        "programma to neizvēlas.",
+        "Укажите хотя бы один медиатор (M) или модератор (W): структуру модели задаёте вы; "
+        "программа её не выбирает."),
+    "block.process_nominal": (
+        "{name} is nominal with more than two categories; in a path model X, W and the "
+        "covariates are quantitative or coded 0/1. Create dummy codes (one 0/1 column per "
+        "category) first.",
+        "{name} ir nomināls ar vairāk nekā divām kategorijām; ceļu modelī X, W un kovariāti ir "
+        "kvantitatīvi vai kodēti 0/1. Vispirms izveidojiet fiktīvos kodus (pa vienai 0/1 "
+        "kolonnai katrai kategorijai).",
+        "{name} — номинальная переменная с более чем двумя категориями; в модели путей X, W и "
+        "ковариаты количественные или закодированы 0/1. Сначала создайте фиктивные коды (по "
+        "столбцу 0/1 на категорию)."),
+    "block.choose_option": ("Choose {option}: the program does not choose it for you.",
+                            "Izvēlieties: {option}. Programma to neizvēlas jūsu vietā.",
+                            "Выберите: {option}. Программа не выбирает это за вас."),
+    "option.moderated_path": (
+        "which path W moderates (Model 7: X → M, or Model 14: M → Y)",
+        "kuru ceļu moderē W (7. modelis: X → M vai 14. modelis: M → Y)",
+        "какой путь модерирует W (модель 7: X → M или модель 14: M → Y)"),
+    "block.linear_no_predictor": (
+        "Choose at least one quantitative predictor or categorical covariate.",
+        "Izvēlieties vismaz vienu kvantitatīvu prediktoru vai kategoriālu kovariātu.",
+        "Выберите хотя бы один количественный предиктор или категориальную ковариату."),
+    "block.product_pair": (
+        "A product term needs two different predictors.",
+        "Reizinājuma loceklim vajag divus dažādus prediktorus.",
+        "Для члена-произведения нужны два разных предиктора."),
+    "block.product_not_in_model": (
+        "{name} is in the product term but not in the model; add it as a predictor or a "
+        "categorical covariate.",
+        "{name} ir reizinājuma loceklī, bet nav modelī; pievienojiet to kā prediktoru vai "
+        "kategoriālu kovariātu.",
+        "{name} входит в произведение, но не в модель; добавьте его как предиктор или "
+        "категориальную ковариату."),
+    "why.mediation": (
+        "You named {m} as mediator(s) of {x} → {y} and no moderator: the model you stated has "
+        "the structure of PROCESS Model 4. Each indirect effect gets a percentile bootstrap "
+        "interval (5000 resamples, fixed seed).",
+        "Jūs norādījāt {m} kā mediatoru(s) ceļam {x} → {y} un nevienu moderatoru: jūsu "
+        "modelim ir PROCESS 4. modeļa struktūra. Katram netiešajam efektam aprēķina procentiļu "
+        "bootstrap intervālu (5000 atkārtotas izlases, fiksēta sākumvērtība).",
+        "Вы указали {m} как медиатор(ы) пути {x} → {y} и не указали модератор: ваша модель "
+        "имеет структуру модели 4 PROCESS. Для каждого косвенного эффекта вычисляется "
+        "процентильный бутстреп-интервал (5000 выборок, фиксированное зерно)."),
+    "why.moderation": (
+        "You named {w} as the moderator of {x} → {y} and no mediator: the model you stated has "
+        "the structure of PROCESS Model 1 (X × W), with simple slopes and Johnson–Neyman "
+        "values.",
+        "Jūs norādījāt {w} kā ceļa {x} → {y} moderatoru un nevienu mediatoru: jūsu modelim ir "
+        "PROCESS 1. modeļa struktūra (X × W) ar vienkāršajiem slīpumiem un Džonsona–Neimana "
+        "vērtībām.",
+        "Вы указали {w} как модератор пути {x} → {y} и не указали медиатор: ваша модель имеет "
+        "структуру модели 1 PROCESS (X × W) с простыми наклонами и значениями Джонсона–Неймана."),
+    "why.conditional_process": (
+        "You named {m} as mediator(s) and {w} as a moderator: this is a conditional process "
+        "model. Which path W moderates is your theoretical choice: Model 7 (X → M) or Model 14 "
+        "(M → Y). Choose it under Alternatives; the program never chooses it.",
+        "Jūs norādījāt {m} kā mediatoru(s) un {w} kā moderatoru: tas ir nosacīta procesa "
+        "modelis. Kuru ceļu moderē W, ir jūsu teorētiska izvēle: 7. modelis (X → M) vai 14. "
+        "modelis (M → Y). Izvēlieties to sadaļā “Alternatīvas”; programma to nekad neizvēlas.",
+        "Вы указали {m} как медиатор(ы) и {w} как модератор: это модель условного процесса. "
+        "Какой путь модерирует W — ваш теоретический выбор: модель 7 (X → M) или модель 14 "
+        "(M → Y). Выберите её в разделе «Альтернативы»; программа никогда не выбирает её."),
+    "why.process_stated": (
+        "Mediators are never chosen by p-values, and a significant total effect is not required "
+        "for an indirect effect (Hayes, 2022).",
+        "Mediatori nekad netiek izvēlēti pēc p vērtībām, un netiešajam efektam nav vajadzīgs "
+        "nozīmīgs kopējais efekts (Hayes, 2022).",
+        "Медиаторы никогда не выбираются по p-значениям, и для косвенного эффекта не требуется "
+        "значимый общий эффект (Hayes, 2022)."),
+    "why.linear_model": (
+        "{factors}: category variables enter the linear model only as dummy codes, against a "
+        "reference category that the result states.",
+        "{factors}: kategoriju mainīgie lineārajā modelī tiek iekļauti tikai kā fiktīvie kodi "
+        "attiecībā pret atsauces kategoriju, ko rezultāts norāda.",
+        "{factors}: категориальные переменные входят в линейную модель только как фиктивные "
+        "коды относительно опорной категории, которую указывает результат."),
+    "why.linear_model_many": (
+        "{count} quantitative predictors: the linear model takes up to 10 (linear regression "
+        "up to 5).",
+        "{count} kvantitatīvi prediktori: lineārais modelis pieņem līdz 10 (lineārā regresija "
+        "līdz 5).",
+        "Количественных предикторов: {count}; линейная модель принимает до 10 (линейная "
+        "регрессия — до 5)."),
+    "alt.model7": (
+        "Model 7: W moderates the a path (X → M); index of moderated mediation a3·b.",
+        "7. modelis: W moderē a ceļu (X → M); moderētās mediācijas indekss a3·b.",
+        "Модель 7: W модерирует путь a (X → M); индекс модерируемой медиации a3·b."),
+    "alt.model14": (
+        "Model 14: W moderates the b path (M → Y); index of moderated mediation a·b3.",
+        "14. modelis: W moderē b ceļu (M → Y); moderētās mediācijas indekss a·b3.",
+        "Модель 14: W модерирует путь b (M → Y); индекс модерируемой медиации a·b3."),
+    "hyp.draft.h1.process": (
+        "For example: ‹X› is associated with ‹Y› through ‹M› (an indirect path), or the "
+        "association of ‹X› with ‹Y› depends on ‹W›.",
+        "Piemēram: ‹X› ir saistīts ar ‹Y› caur ‹M› (netiešais ceļš), vai ‹X› saistība ar ‹Y› "
+        "ir atkarīga no ‹W›.",
+        "Например: ‹X› связан с ‹Y› через ‹M› (косвенный путь), или связь ‹X› с ‹Y› зависит "
+        "от ‹W›."),
+    "hyp.draft.h0.process": (
+        "The indirect path (or the interaction) is zero in the population.",
+        "Netiešais ceļš (vai mijiedarbība) populācijā ir nulle.",
+        "Косвенный путь (или взаимодействие) в популяции равен нулю."),
+})
+
+
+# Stage 37 (#67): the Export card of the Data, Results and Reports pages and
+# the SPSS import option. LV and RU are drafts for native review.
+T.update({
+    "export.title.data": ("Export data", "Eksportēt datus", "Экспорт данных"),
+    "export.title.results": ("Export results", "Eksportēt rezultātus", "Экспорт результатов"),
+    "export.title.reports": ("Export for reproduction", "Eksportēt atkārtošanai",
+                             "Экспорт для воспроизведения"),
+    "export.body.data": (
+        "A copy of the data with its codebook: values, labels, measurement levels and missing "
+        "codes. No report is needed.",
+        "Datu kopija ar kodu grāmatu: vērtības, etiķetes, mērījumu līmeņi un trūkstošo vērtību "
+        "kodi. Atskaite nav vajadzīga.",
+        "Копия данных с кодовой книгой: значения, метки, уровни измерения и коды пропусков. "
+        "Отчёт не нужен."),
+    "export.body.results": (
+        "An editable workbook: the estimates and tables as shown, the engine's unrounded values "
+        "and how each result was calculated.",
+        "Rediģējama darbgrāmata: novērtējumi un tabulas kā ekrānā, dzinēja nenoapaļotās "
+        "vērtības un tas, kā katrs rezultāts aprēķināts.",
+        "Редактируемая книга: оценки и таблицы как на экране, неокруглённые значения движка и "
+        "способ расчёта каждого результата."),
+    "export.body.reports": (
+        "One .zip with the data, the codebook, the results, the Word report, the figures and a "
+        "manifest of versions, methods, options and seeds.",
+        "Viens .zip ar datiem, kodu grāmatu, rezultātiem, Word atskaiti, attēliem un manifestu "
+        "ar versijām, metodēm, iestatījumiem un sēklām.",
+        "Один .zip с данными, кодовой книгой, результатами, отчётом Word, рисунками и манифестом "
+        "версий, методов, параметров и начальных значений генератора."),
+    "export.format": ("Format", "Formāts", "Формат"),
+    "export.format.xlsx": ("Excel workbook with codebook (.xlsx)",
+                           "Excel darbgrāmata ar kodu grāmatu (.xlsx)",
+                           "Книга Excel с кодовой книгой (.xlsx)"),
+    "export.format.sav": ("SPSS data (.sav)", "SPSS dati (.sav)", "Данные SPSS (.sav)"),
+    "export.format.csv": ("CSV text, UTF-8 (.csv)", "CSV teksts, UTF-8 (.csv)",
+                          "Текст CSV, UTF-8 (.csv)"),
+    "export.format.bundle": ("Reproducibility bundle (.zip)", "Atkārtojamības pakete (.zip)",
+                             "Пакет воспроизводимости (.zip)"),
+    "export.format.results": ("Results workbook (.xlsx)", "Rezultātu darbgrāmata (.xlsx)",
+                              "Книга результатов (.xlsx)"),
+    "export.save.xlsx": ("Export .xlsx…", "Eksportēt .xlsx…", "Экспортировать .xlsx…"),
+    "export.save.sav": ("Export .sav…", "Eksportēt .sav…", "Экспортировать .sav…"),
+    "export.save.csv": ("Export .csv…", "Eksportēt .csv…", "Экспортировать .csv…"),
+    "export.save.bundle": ("Export bundle (.zip)…", "Eksportēt paketi (.zip)…",
+                           "Экспортировать пакет (.zip)…"),
+    "export.save.results": ("Export results (.xlsx)…", "Eksportēt rezultātus (.xlsx)…",
+                            "Экспортировать результаты (.xlsx)…"),
+    "export.advanced": ("Advanced options", "Papildu iespējas", "Дополнительные параметры"),
+    "export.advanced_hint": ("Sheets, CSV separator, which results",
+                             "Lapas, CSV atdalītājs, kuri rezultāti",
+                             "Листы, разделитель CSV, какие результаты"),
+    "export.advanced_none": ("This format has no further options.",
+                             "Šim formātam citu iespēju nav.",
+                             "У этого формата нет других параметров."),
+    "export.sections": ("Sheets of the workbook", "Darbgrāmatas lapas", "Листы книги"),
+    "export.section.data": ("Data: every row and variable, values as stored",
+                            "Dati: visas rindas un mainīgie, vērtības kā saglabātas",
+                            "Данные: все строки и переменные, значения как сохранены"),
+    "export.section.codebook": (
+        "Codebook: labels, levels, codes, missing values, derived-variable history",
+        "Kodu grāmata: etiķetes, līmeņi, kodi, trūkstošās vērtības, atvasināto mainīgo vēsture",
+        "Кодовая книга: метки, уровни, коды, пропуски, история производных переменных"),
+    "export.section.scales": ("Scales: items, reverse-keyed items, scoring rules",
+                              "Skalas: jautājumi, apvērstie jautājumi, vērtēšanas noteikumi",
+                              "Шкалы: пункты, обратные пункты, правила подсчёта"),
+    "export.section.results": ("Results: one sheet per analysis",
+                               "Rezultāti: viena lapa katrai analīzei",
+                               "Результаты: по листу на каждый анализ"),
+    "export.section.provenance": ("Provenance: data version, methods, options, seeds",
+                                  "Izcelsme: datu versija, metodes, iestatījumi, sēklas",
+                                  "Происхождение: версия данных, методы, параметры, сиды"),
+    "export.csv.layout": ("Separator", "Atdalītājs", "Разделитель"),
+    "export.csv.layout.comma": (
+        "Comma (,) with a decimal point: R, Python, SPSS, Excel in English",
+        "Komats (,) ar decimālpunktu: R, Python, SPSS, Excel angļu valodā",
+        "Запятая (,) с десятичной точкой: R, Python, SPSS, Excel на английском"),
+    "export.csv.layout.semicolon": (
+        "Semicolon (;) with a decimal comma: Excel set to Latvian or Russian",
+        "Semikols (;) ar decimālkomatu: Excel latviešu vai krievu iestatījumos",
+        "Точка с запятой (;) с десятичной запятой: Excel с латышскими или русскими настройками"),
+    "export.csv.bom": ("Start with a UTF-8 byte-order mark (Excel then shows ā, č and ж)",
+                       "Sākt ar UTF-8 baitu secības zīmi (Excel tad pareizi rāda garumzīmes "
+                       "un kirilicu)",
+                       "Начать с метки порядка байтов UTF-8 (тогда Excel показывает ā, č и ж)"),
+    "export.csv.note": (
+        "A text cell that begins with = + - or @ gets a leading apostrophe, so no spreadsheet "
+        "runs it as a formula; numbers are never changed. This program removes the apostrophe "
+        "again when it opens the file with its codebook.",
+        "Teksta šūnai, kas sākas ar = + - vai @, priekšā tiek likts apostrofs, lai neviena "
+        "izklājlapa to neizpildītu kā formulu; skaitļi netiek mainīti. Šī programma apostrofu "
+        "noņem, kad atver failu kopā ar tā kodu grāmatu.",
+        "Перед текстовой ячейкой, которая начинается с = + - или @, ставится апостроф, чтобы "
+        "ни одна таблица не выполнила её как формулу; числа не изменяются. Эта программа "
+        "убирает апостроф, когда открывает файл вместе с его кодовой книгой."),
+    "export.scope": ("Which results", "Kuri rezultāti", "Какие результаты"),
+    "export.scope.all": ("All results", "Visi rezultāti", "Все результаты"),
+    "export.scope.selected": ("The result on screen", "Ekrānā redzamais rezultāts",
+                              "Результат на экране"),
+    "export.scope.report": ("The results in the report", "Atskaitē iekļautie rezultāti",
+                            "Результаты в отчёте"),
+    "export.bundle.report": ("Include the Word report as composed on the Reports page",
+                             "Iekļaut Word atskaiti, kā tā sastādīta lapā Atskaites",
+                             "Включить отчёт Word, как он составлен на странице «Отчёты»"),
+    "export.sav.limits": (
+        ".sav keeps the values, variable and value labels, measurement levels and user-missing "
+        "codes. It cannot hold the project's audit trail, the derived-variable history or how "
+        "the results were calculated: export the codebook (.xlsx) or the bundle for those.",
+        ".sav saglabā vērtības, mainīgo un vērtību etiķetes, mērījumu līmeņus un lietotāja "
+        "trūkstošo vērtību kodus. Tajā nevar ietvert projekta auditu, atvasināto mainīgo vēsturi "
+        "un to, kā aprēķināti rezultāti: tiem eksportējiet kodu grāmatu (.xlsx) vai paketi.",
+        ".sav хранит значения, метки переменных и значений, уровни измерения и коды "
+        "пользовательских пропусков. В нём нельзя сохранить журнал аудита проекта, историю "
+        "производных переменных и способ расчёта результатов: для этого экспортируйте кодовую "
+        "книгу (.xlsx) или пакет."),
+    "export.sav.changes_title": ("{count} changes for SPSS (the codebook keeps the originals)",
+                                 "{count} izmaiņas SPSS vajadzībām (kodu grāmatā paliek oriģināli)",
+                                 "Изменений для SPSS: {count} (кодовая книга хранит оригиналы)"),
+    "export.sav.renamed": ("{name} → {spss} (SPSS name)", "{name} → {spss} (SPSS nosaukums)",
+                           "{name} → {spss} (имя в SPSS)"),
+    "export.sav.names_hint": (
+        "SPSS names have at most 64 bytes, start with a letter, are no reserved words and differ "
+        "in more than letter case. The original names stay in the file's notes and in the "
+        "codebook; this program restores them when it opens the file.",
+        "SPSS nosaukumos ir ne vairāk kā 64 baiti, tie sākas ar burtu, nav rezervēti vārdi un "
+        "atšķiras ne tikai ar burtu reģistru. Sākotnējie nosaukumi paliek faila piezīmēs un kodu "
+        "grāmatā; šī programma tos atjauno, kad atver failu.",
+        "Имена SPSS не длиннее 64 байт, начинаются с буквы, не являются зарезервированными "
+        "словами и различаются не только регистром. Исходные имена остаются в примечаниях файла "
+        "и в кодовой книге; эта программа восстанавливает их при открытии файла."),
+    "export.change.label_cut": ("{name}: the label is cut to {limit} bytes",
+                                "{name}: etiķete saīsināta līdz {limit} baitiem",
+                                "{name}: метка сокращена до {limit} байт"),
+    "export.change.value_label_cut": ("{name}: the label of code {code} is cut to {limit} bytes",
+                                      "{name}: koda {code} etiķete saīsināta līdz {limit} baitiem",
+                                      "{name}: метка кода {code} сокращена до {limit} байт"),
+    "export.change.file_label_cut": ("{name}: the file label is cut to {limit} bytes",
+                                     "{name}: faila etiķete saīsināta līdz {limit} baitiem",
+                                     "{name}: метка файла сокращена до {limit} байт"),
+    "export.change.category_codes": (
+        "{name}: {count} categories are written as codes 1–{count} with value labels",
+        "{name}: {count} kategorijas ierakstītas kā kodi 1–{count} ar vērtību etiķetēm",
+        "{name}: категории ({count}) записаны как коды 1–{count} с метками значений"),
+    "export.change.id_text": ("{name}: an identifier, written as a text (string) variable",
+                              "{name}: identifikators, ierakstīts kā teksta mainīgais",
+                              "{name}: идентификатор, записан как текстовая переменная"),
+    "export.change.missing_limit": (
+        "{name}: SPSS keeps three missing codes, or one range and one code; not declared: {codes}",
+        "{name}: SPSS glabā trīs trūkstošo vērtību kodus vai vienu diapazonu un vienu kodu; "
+        "nav deklarēti: {codes}",
+        "{name}: SPSS хранит три кода пропусков или один диапазон и один код; не объявлены: "
+        "{codes}"),
+    "export.change.missing_not_numeric": (
+        "{name}: codes that are not numbers cannot be missing codes of a numeric variable: {codes}",
+        "{name}: kodi, kas nav skaitļi, nevar būt skaitliska mainīgā trūkstošo vērtību kodi: "
+        "{codes}",
+        "{name}: нечисловые коды не могут быть кодами пропусков числовой переменной: {codes}"),
+    "export.change.missing_kind": (
+        "{name}: missing codes cannot be declared for this kind of variable: {codes}",
+        "{name}: šāda veida mainīgajam trūkstošo vērtību kodus nevar deklarēt: {codes}",
+        "{name}: для переменной такого типа нельзя объявить коды пропусков: {codes}"),
+    "export.change.mixed_text": ("{name}: numbers and texts in one column, written as text",
+                                 "{name}: skaitļi un teksti vienā kolonnā, ierakstīti kā teksts",
+                                 "{name}: числа и тексты в одном столбце, записаны как текст"),
+    "export.change.text_missing": (
+        "{name}: {missing} missing and {empty} empty texts both become an empty text declared "
+        "missing",
+        "{name}: {missing} trūkstošās un {empty} tukšās teksta vērtības kļūst par tukšu tekstu, "
+        "kas deklarēts kā trūkstošs",
+        "{name}: пропуски ({missing}) и пустые тексты ({empty}) становятся пустым текстом, "
+        "объявленным пропуском"),
+    "export.change.text_scale": ("{name}: a text variable cannot be scale; written as nominal",
+                                 "{name}: teksta mainīgais nevar būt skalas; ierakstīts kā "
+                                 "nominālais",
+                                 "{name}: текстовая переменная не может быть количественной; "
+                                 "записана как номинальная"),
+    "export.change.timezone": ("{name}: times are converted to UTC (SPSS has no time zones)",
+                               "{name}: laiki pārvērsti UTC (SPSS nav laika joslu)",
+                               "{name}: время переведено в UTC (в SPSS нет часовых поясов)"),
+    "export.change.big_integer": ("{name}: integers above 2^53 lose their last digits in SPSS",
+                                  "{name}: veseli skaitļi virs 2^53 SPSS zaudē pēdējos ciparus",
+                                  "{name}: целые числа больше 2^53 теряют последние цифры в SPSS"),
+    "export.change.missing_width": (
+        "{name}: missing code(s) longer than the variable's {width} byte(s) cannot be declared "
+        "in SPSS: {codes}",
+        "{name}: trūkstošo vērtību kodus, kas garāki par mainīgā {width} baitiem, SPSS nevar "
+        "deklarēt: {codes}",
+        "{name}: коды пропусков длиннее переменной ({width} байт) нельзя объявить в SPSS: "
+        "{codes}"),
+    "export.change.value_label_width": (
+        "{name}: labels of codes longer than the variable's {width} byte(s) are left out: "
+        "{codes}",
+        "{name}: etiķetes kodiem, kas garāki par mainīgā {width} baitiem, izlaistas: {codes}",
+        "{name}: метки кодов длиннее переменной ({width} байт) пропущены: {codes}"),
+    "export.change.value_label_code": (
+        "{name}: the label of code {code} is left out (not a number)",
+        "{name}: koda {code} etiķete izlaista (nav skaitlis)",
+        "{name}: метка кода {code} пропущена (не число)"),
+    "export.xlsx.changes_title": (
+        "{count} value(s) the .xlsx format cannot hold exactly: not an exact copy",
+        "Vērtības, ko .xlsx formāts nevar saglabāt precīzi: {count} — tā nav precīza kopija",
+        "Значений, которые формат .xlsx не может сохранить точно: {count} — это не точная копия"),
+    "export.xlsx.changes_hint": (
+        "To keep every value exactly, export CSV (.csv): it holds them as they are, and its "
+        "codebook keeps the types.",
+        "Lai saglabātu katru vērtību precīzi, eksportējiet CSV (.csv): tas tās glabā, kādas tās "
+        "ir, un tā kodu grāmata saglabā tipus.",
+        "Чтобы сохранить каждое значение точно, экспортируйте CSV (.csv): он хранит их как есть, "
+        "а его кодовая книга сохраняет типы."),
+    "export.xlsx.changes_bundle": (
+        "The bundle's CSV keeps these values exactly; its .xlsx copy changes them as listed.",
+        "Paketes CSV šīs vērtības saglabā precīzi; tās .xlsx kopijā tās mainās, kā norādīts.",
+        "CSV в пакете сохраняет эти значения точно; его копия .xlsx меняет их, как указано."),
+    "export.xlsx.change.cleaned": (
+        "{name}: {count} text(s) hold characters XML cannot carry; each becomes \ufffd",
+        "{name}: {count} teksti satur rakstzīmes, ko XML nevar ietvert; katra kļūst par \ufffd",
+        "{name}: текстов с символами, недопустимыми в XML: {count}; каждый становится \ufffd"),
+    "export.xlsx.change.cut": (
+        "{name}: {count} text(s) longer than 32,767 characters are cut (the spreadsheet limit)",
+        "{name}: {count} teksti, garāki par 32 767 rakstzīmēm, tiek apgriezti (izklājlapas "
+        "robeža)",
+        "{name}: текстов длиннее 32 767 символов: {count}; они обрезаются (предел таблицы)"),
+    "export.xlsx.change.big_integer": (
+        "{name}: {count} integer(s) above 2^53 are written as text (a spreadsheet number would "
+        "round them)",
+        "{name}: {count} veseli skaitļi virs 2^53 ierakstīti kā teksts (izklājlapas skaitlis "
+        "tos noapaļotu)",
+        "{name}: целых чисел больше 2^53: {count}; записаны как текст (число в таблице их "
+        "округлило бы)"),
+    "export.xlsx.change.infinity": (
+        "{name}: {count} infinite value(s) are written as the text inf or -inf",
+        "{name}: {count} bezgalīgas vērtības ierakstītas kā teksts inf vai -inf",
+        "{name}: бесконечных значений: {count}; записаны как текст inf или -inf"),
+    "export.xlsx.change.old_date": (
+        "{name}: {count} date(s) before 1 March 1900 are written as ISO text (spreadsheet "
+        "programs read those dates differently)",
+        "{name}: {count} datumi pirms 1900. gada 1. marta ierakstīti kā ISO teksts "
+        "(izklājlapu programmas tos lasa dažādi)",
+        "{name}: дат ранее 1 марта 1900 г.: {count}; записаны как текст ISO (программы "
+        "электронных таблиц читают их по-разному)"),
+    "export.xlsx.change.timezone": (
+        "{name}: {count} time(s) with a time zone are written as ISO text",
+        "{name}: {count} laiki ar laika joslu ierakstīti kā ISO teksts",
+        "{name}: значений времени с часовым поясом: {count}; записаны как текст ISO"),
+    "export.xlsx.change.duration": (
+        "{name}: {count} duration(s) are written as text",
+        "{name}: {count} ilgumi ierakstīti kā teksts",
+        "{name}: длительностей: {count}; записаны как текст"),
+    "export.xlsx.change.time_precision": (
+        "{name}: {count} time(s) lose a fraction of a millisecond (a spreadsheet date holds "
+        "less)",
+        "{name}: {count} laiki zaudē milisekundes daļu (izklājlapas datums glabā mazāk)",
+        "{name}: значений времени, теряющих долю миллисекунды: {count} (дата в таблице "
+        "хранит меньше)"),
+    "export.xlsx.change.name_cleaned": (
+        "{name}: the variable name holds characters XML cannot carry; they become \ufffd",
+        "{name}: mainīgā nosaukumā ir rakstzīmes, ko XML nevar ietvert; tās kļūst par \ufffd",
+        "{name}: в имени переменной есть символы, недопустимые в XML; они становятся \ufffd"),
+    "export.xlsx.change.name_cut": (
+        "{name}: the variable name is cut to 32,767 characters",
+        "{name}: mainīgā nosaukums apgriezts līdz 32 767 rakstzīmēm",
+        "{name}: имя переменной обрезано до 32 767 символов"),
+    "export.saved_changed": (
+        "Not an exact copy: {count} value(s) were changed for the .xlsx format, as listed "
+        "before saving ({columns}). Export .csv to keep them exactly.",
+        "Nav precīza kopija: {count} vērtības mainītas .xlsx formāta dēļ, kā norādīts pirms "
+        "saglabāšanas ({columns}). Eksportējiet .csv, lai tās saglabātu precīzi.",
+        "Не точная копия: значений, изменённых для формата .xlsx: {count}, как указано до "
+        "сохранения ({columns}). Экспортируйте .csv, чтобы сохранить их точно."),
+    "export.sensitive_title": ("{count} column(s) may identify participants",
+                               "Kolonnas, kas var identificēt dalībniekus: {count}",
+                               "Столбцы, по которым можно узнать участников: {count}"),
+    "export.sensitive_body": ("Check before you share the file: {columns}.",
+                              "Pārbaudiet pirms faila kopīgošanas: {columns}.",
+                              "Проверьте перед тем, как делиться файлом: {columns}."),
+    "export.sensitive.direct": ("name, contact, address, birth date or personal code",
+                                "vārds, kontakti, adrese, dzimšanas datums vai personas kods",
+                                "имя, контакты, адрес, дата рождения или личный код"),
+    "export.sensitive.identifier": ("participant code", "dalībnieka kods", "код участника"),
+    "export.sensitive.free_text": ("free-text answers", "brīva teksta atbildes",
+                                   "ответы свободным текстом"),
+    "export.not_uploaded": ("Nothing is uploaded: the file is written only where you choose.",
+                            "Nekas netiek augšupielādēts: fails tiek ierakstīts tikai jūsu "
+                            "izvēlētajā vietā.",
+                            "Ничего не загружается в сеть: файл записывается только туда, куда "
+                            "вы укажете."),
+    "export.saved": (
+        "Saved and checked: {path}. Re-opened with an independent reader: {rows} rows, "
+        "{columns} variables ({signature}).",
+        "Saglabāts un pārbaudīts: {path}. Atvērts no jauna ar neatkarīgu lasītāju: {rows} "
+        "rindas, {columns} mainīgie ({signature}).",
+        "Сохранено и проверено: {path}. Открыто заново независимым средством чтения: строк — "
+        "{rows}, переменных — {columns} ({signature})."),
+    "export.saved_csv": (
+        "Saved and checked: {path}, with the codebook {codebook}. Re-opened: {rows} rows, "
+        "{columns} variables ({signature}).",
+        "Saglabāts un pārbaudīts: {path} kopā ar kodu grāmatu {codebook}. Atvērts no jauna: "
+        "{rows} rindas, {columns} mainīgie ({signature}).",
+        "Сохранено и проверено: {path} вместе с кодовой книгой {codebook}. Открыто заново: "
+        "строк — {rows}, переменных — {columns} ({signature})."),
+    "export.saved_results": ("Saved and checked: {path}. Re-opened: {sheets} sheets.",
+                             "Saglabāts un pārbaudīts: {path}. Atvērts no jauna: {sheets} lapas.",
+                             "Сохранено и проверено: {path}. Открыто заново: листов — {sheets}."),
+    "export.saved_bundle": (
+        "Saved and checked: {path}. {files} files with matching checksums; the data re-read: "
+        "{rows} rows; R syntax for {syntax} result(s).",
+        "Saglabāts un pārbaudīts: {path}. {files} faili ar sakrītošām kontrolsummām; dati "
+        "nolasīti no jauna: {rows} rindas; R sintakse {syntax} rezultātiem.",
+        "Сохранено и проверено: {path}. Файлов с совпадающими контрольными суммами — {files}; "
+        "данные прочитаны заново: строк — {rows}; синтаксис R для результатов: {syntax}."),
+    "export.progress": ("Writing row {done} of {total}…", "Raksta {done}. rindu no {total}…",
+                        "Запись строки {done} из {total}…"),
+    "export.no_data": ("Open a dataset to export it.", "Atveriet datu kopu, lai to eksportētu.",
+                       "Откройте набор данных, чтобы экспортировать его."),
+    "export.no_results": ("There are no results to export yet: run an analysis first.",
+                          "Vēl nav rezultātu, ko eksportēt: vispirms veiciet analīzi.",
+                          "Пока нет результатов для экспорта: сначала выполните анализ."),
+    "export.nothing_selected": ("Choose at least one sheet of the workbook.",
+                                "Izvēlieties vismaz vienu darbgrāmatas lapu.",
+                                "Выберите хотя бы один лист книги."),
+    "data.opt.user_missing": ("SPSS user-missing values", "SPSS lietotāja trūkstošās vērtības",
+                              "Пользовательские пропуски SPSS"),
+    "data.opt.user_missing.missing": ("Missing, as SPSS treats them",
+                                      "Trūkstošas, kā tās uztver SPSS",
+                                      "Пропуски, как их понимает SPSS"),
+    "data.opt.user_missing.codes": ("Keep the codes as values",
+                                    "Saglabāt kodus kā vērtības",
+                                    "Оставить коды как значения"),
+})
+
+
+# Stage 37 (independent review §7, gap 1): what the data rows leave out.
+# LV/RU drafts — needs native review.
+T.update({
+    "ai.excluded.identifier": ("identifier", "identifikators", "идентификатор"),
+    "ai.excluded.free_text": ("free text", "brīvs teksts", "свободный текст"),
+    "assistant.preview.excluded": (
+        "Left out of the data rows: {columns}.",
+        "Datu rindās netiek iekļauts: {columns}.",
+        "Не включается в строки данных: {columns}."),
+    "ai.excluded": (
+        "Never sent with the data rows: {columns}. Identifier and free-text columns are always "
+        "left out.",
+        "Ar datu rindām nekad netiek sūtīts: {columns}. Identifikatoru un brīva teksta kolonnas "
+        "vienmēr tiek izlaistas.",
+        "Никогда не отправляется вместе со строками данных: {columns}. Столбцы-идентификаторы и "
+        "столбцы со свободным текстом всегда исключаются."),
+    # Quoted spans of a reply, checked against what was sent (review §7).
+    "assistant.unverified_quotes_title": ("Unverified quotes", "Nepārbaudīti citāti",
+                                          "Непроверенные цитаты"),
+    "assistant.unverified_quotes": (
+        "Not found word for word in what was sent: {quotes}. A quote may be invented or "
+        "changed; compare it with the source before any use.",
+        "Nav atrasts vārds vārdā nosūtītajā tekstā: {quotes}. Citāts var būt izdomāts vai "
+        "mainīts; salīdziniet to ar avotu pirms jebkādas lietošanas.",
+        "Не найдено дословно в отправленном тексте: {quotes}. Цитата может быть выдумана или "
+        "изменена; сверьте её с источником перед любым использованием."),
+    "assistant.note_unverified_quotes": (
+        "[Quotes not found in what was sent: {quotes}]",
+        "[Citāti, kas nav atrasti nosūtītajā tekstā: {quotes}]",
+        "[Цитаты, не найденные в отправленном тексте: {quotes}]"),
+})
+
+
+# Stage 37.3 (Issue #69): the research library of a project
+# (workspace_library.py). LV/RU drafts — needs native review.
+T.update({
+    "library.title": ("Research library", "Pētījuma bibliotēka", "Исследовательская библиотека"),
+    "library.subtitle": (
+        "Papers, plans, manuals and notes of “{project}”, searched on this computer with page "
+        "and section citations.",
+        "Projekta “{project}” raksti, plāni, rokasgrāmatas un piezīmes, meklējami šajā datorā ar "
+        "lappušu un sadaļu atsaucēm.",
+        "Статьи, планы, руководства и заметки проекта «{project}»: поиск на этом компьютере со "
+        "ссылками на страницы и разделы."),
+    "library.no_project": (
+        "Open or create a project first: every project has its own library.",
+        "Vispirms atveriet vai izveidojiet projektu: katram projektam ir sava bibliotēka.",
+        "Сначала откройте или создайте проект: у каждого проекта своя библиотека."),
+    "library.local": ("Local only · search never goes online",
+                      "Tikai lokāli · meklēšana nekad nenotiek tiešsaistē",
+                      "Только локально · поиск никогда не идёт в сеть"),
+    "library.local_tip": (
+        "Documents, passages and the search index stay in this project's folder on this "
+        "computer. Searching sends nothing anywhere; only “Ask with sources”, if you use it, "
+        "sends the passages you approve.",
+        "Dokumenti, fragmenti un meklēšanas indekss paliek šī projekta mapē šajā datorā. "
+        "Meklēšana neko nekur nesūta; tikai “Jautāt ar avotiem”, ja to izmantojat, nosūta jūsu "
+        "apstiprinātos fragmentus.",
+        "Документы, фрагменты и поисковый индекс остаются в папке этого проекта на этом "
+        "компьютере. Поиск ничего никуда не отправляет; только «Спросить по источникам», если "
+        "вы им пользуетесь, отправляет одобренные вами фрагменты."),
+    "library.back": ("Back to the project", "Atpakaļ uz projektu", "Назад к проекту"),
+    "library.documents": ("Documents", "Dokumenti", "Документы"),
+    "library.documents_body": (
+        "Each document is copied into the project, read on this computer and cut into passages "
+        "that keep their page or section.",
+        "Katrs dokuments tiek iekopēts projektā, nolasīts šajā datorā un sadalīts fragmentos, "
+        "kas saglabā savu lappusi vai sadaļu.",
+        "Каждый документ копируется в проект, читается на этом компьютере и делится на "
+        "фрагменты, которые сохраняют свою страницу или раздел."),
+    "library.add": ("Add document…", "Pievienot dokumentu…", "Добавить документ…"),
+    "library.version": ("Version label (optional)", "Versijas apzīmējums (nav obligāts)",
+                        "Метка версии (необязательно)"),
+    "library.version_hint": ("e.g. v2 or 2026 draft", "piem., v2 vai 2026. gada melnraksts",
+                             "напр. v2 или черновик 2026"),
+    "library.ocr": ("Read image-only PDF pages with local OCR",
+                    "Nolasīt PDF lappuses, kurās ir tikai attēls, ar lokālo OCR",
+                    "Распознавать страницы PDF, на которых только изображение, локальным OCR"),
+    "library.ocr_language": ("OCR language", "OCR valoda", "Язык OCR"),
+    "library.ocr_lang.eng": ("English", "Angļu", "Английский"),
+    "library.ocr_lang.lav": ("Latvian", "Latviešu", "Латышский"),
+    "library.ocr_lang.rus": ("Russian", "Krievu", "Русский"),
+    "library.ocr_unavailable": (
+        "Local OCR is not available on this computer: a page that is only an image is named "
+        "after adding and cannot be searched.",
+        "Lokālais OCR šajā datorā nav pieejams: lappuse, kurā ir tikai attēls, pēc pievienošanas "
+        "tiek nosaukta, un tajā nevar meklēt.",
+        "Локальный OCR на этом компьютере недоступен: страница, на которой только изображение, "
+        "будет названа после добавления, и искать по ней нельзя."),
+    "library.permitted": (
+        "PDF, Word (DOCX), text (TXT) or Markdown (MD). Add only papers, plans, manuals and "
+        "notes you are permitted to use, never participant data.",
+        "PDF, Word (DOCX), teksts (TXT) vai Markdown (MD). Pievienojiet tikai rakstus, plānus, "
+        "rokasgrāmatas un piezīmes, kurus drīkstat izmantot, nekad dalībnieku datus.",
+        "PDF, Word (DOCX), текст (TXT) или Markdown (MD). Добавляйте только статьи, планы, "
+        "руководства и заметки, которые вам разрешено использовать, и никогда данные участников."),
+    "library.empty": ("No documents yet.", "Vēl nav neviena dokumenta.", "Документов пока нет."),
+    "library.counts": ("{documents} · {passages}", "{documents} · {passages}",
+                       "{documents} · {passages}"),
+    "library.reindex": ("Read every document again", "Nolasīt visus dokumentus vēlreiz",
+                        "Перечитать все документы"),
+    "library.outdated": (
+        "{documents} were read by an earlier version of the program. “Read every document "
+        "again” renews their passages; their citations stay the same.",
+        "{documents} nolasīti ar agrāku programmas versiju. “Nolasīt visus dokumentus vēlreiz” "
+        "atjauno to fragmentus; atsauces paliek tās pašas.",
+        "{documents} прочитаны более ранней версией программы. «Перечитать все документы» "
+        "обновит их фрагменты; ссылки останутся прежними."),
+    "library.backup": ("Include the library in backups and project copies",
+                       "Iekļaut bibliotēku rezerves kopijās un projekta kopijās",
+                       "Включать библиотеку в резервные копии и копии проекта"),
+    "library.backup_off": (
+        "Not included: backups (.sra) and copies of this project leave the library out. Notes "
+        "and transcripts may hold personal data, and papers may not be yours to pass on.",
+        "Nav iekļauta: šī projekta rezerves kopijās (.sra) un kopijās bibliotēkas nav. Piezīmēs "
+        "un transkriptos var būt personas dati, un rakstus jūs, iespējams, nedrīkstat nodot "
+        "tālāk.",
+        "Не включается: резервные копии (.sra) и копии этого проекта не содержат библиотеку. В "
+        "заметках и расшифровках могут быть персональные данные, а статьи вам, возможно, нельзя "
+        "передавать дальше."),
+    "library.backup_on": (
+        "Included: backups (.sra) and copies of this project carry the library and its "
+        "documents. Pass them on only where you may, and keep backups safe.",
+        "Iekļauta: šī projekta rezerves kopijās (.sra) un kopijās ir bibliotēka un tās dokumenti. "
+        "Nododiet tās tālāk tikai tur, kur drīkstat, un glabājiet rezerves kopijas droši.",
+        "Включается: резервные копии (.sra) и копии этого проекта содержат библиотеку и её "
+        "документы. Передавайте их только туда, куда можно, и храните копии надёжно."),
+    "library.card_backup_off": (
+        "Not included in backups and project copies (change on the library page).",
+        "Nav iekļauta rezerves kopijās un projekta kopijās (maināms bibliotēkas lapā).",
+        "Не включается в резервные копии и копии проекта (меняется на странице библиотеки)."),
+    "library.card_backup_on": (
+        "Included in backups and project copies (change on the library page).",
+        "Iekļauta rezerves kopijās un projekta kopijās (maināms bibliotēkas lapā).",
+        "Включается в резервные копии и копии проекта (меняется на странице библиотеки)."),
+    "library.progress.read": ("Reading {name}: page {done} of {total}…",
+                              "Nolasa {name}: {done}. lappuse no {total}…",
+                              "Чтение {name}: страница {done} из {total}…"),
+    "library.progress.ocr": ("Reading {name} with local OCR: page {done} of {total}…",
+                             "Nolasa {name} ar lokālo OCR: {done}. lappuse no {total}…",
+                             "Распознавание {name} локальным OCR: страница {done} из {total}…"),
+    "library.progress.index": ("Indexing {name}: {total} passages…",
+                               "Indeksē {name}: fragmenti — {total}…",
+                               "Индексирование {name}: фрагментов — {total}…"),
+    "library.progress.document": ("Reading the documents again: {done} of {total}…",
+                                  "Dokumenti tiek nolasīti vēlreiz: {done} no {total}…",
+                                  "Документы перечитываются: {done} из {total}…"),
+    "library.cancel": ("Cancel", "Atcelt", "Отменить"),
+    "library.lang.en": ("English", "Angļu", "Английский"),
+    "library.lang.lv": ("Latvian", "Latviešu", "Латышский"),
+    "library.lang.ru": ("Russian", "Krievu", "Русский"),
+    "library.lang.other": ("Other language", "Cita valoda", "Другой язык"),
+    "library.version_chip": ("version {version}", "versija {version}", "версия {version}"),
+    "library.added": ("added {date}", "pievienots {date}", "добавлен {date}"),
+    "library.ocr_pages": ("Read with local OCR: page {pages}",
+                          "Nolasīts ar lokālo OCR: lappuse {pages}",
+                          "Распознано локальным OCR: страница {pages}"),
+    "library.open": ("Open", "Atvērt", "Открыть"),
+    "library.remove": ("Remove", "Noņemt", "Удалить"),
+    "library.remove_tip": (
+        "Removes the document, its passages and its search index at once. The file you added "
+        "it from stays where it is.",
+        "Uzreiz noņem dokumentu, tā fragmentus un tā meklēšanas indeksu. Fails, no kura to "
+        "pievienojāt, paliek savā vietā.",
+        "Сразу удаляет документ, его фрагменты и его поисковый индекс. Файл, из которого вы его "
+        "добавили, остаётся на месте."),
+    "library.search_title": ("Search", "Meklēšana", "Поиск"),
+    "library.search_body": (
+        "Searches this project's passages only, on this computer. Other forms of a word are "
+        "found too: students and student, vientulības and vientulība, одиночества and "
+        "одиночество.",
+        "Meklē tikai šī projekta fragmentos, šajā datorā. Tiek atrastas arī citas vārda formas: "
+        "students un student, vientulības un vientulība, одиночества un одиночество.",
+        "Ищет только во фрагментах этого проекта, на этом компьютере. Находятся и другие формы "
+        "слова: students и student, vientulības и vientulība, одиночества и одиночество."),
+    "library.query": ("Search the library", "Meklēt bibliotēkā", "Поиск по библиотеке"),
+    "library.query_hint": ("Words to find, e.g. withdrawing consent",
+                           "Meklējamie vārdi, piem., piekrišanas atsaukšana",
+                           "Слова для поиска, напр. отзыв согласия"),
+    "library.search": ("Search", "Meklēt", "Найти"),
+    "library.filter.type": ("Type", "Veids", "Тип"),
+    "library.filter.any_type": ("Any type", "Jebkurš veids", "Любой тип"),
+    "library.filter.language": ("Language", "Valoda", "Язык"),
+    "library.filter.any_language": ("Any language", "Jebkura valoda", "Любой язык"),
+    "library.filter.date": ("Added", "Pievienots", "Добавлено"),
+    "library.filter.date.any": ("Any time", "Jebkurā laikā", "За всё время"),
+    "library.filter.date.week": ("In the last 7 days", "Pēdējās 7 dienās",
+                                 "За последние 7 дней"),
+    "library.filter.date.month": ("In the last 30 days", "Pēdējās 30 dienās",
+                                  "За последние 30 дней"),
+    "library.filter.date.year": ("In the last year", "Pēdējā gadā", "За последний год"),
+    "library.no_terms": (
+        "Type a word to search for: words such as “the” or “and” alone find nothing.",
+        "Ierakstiet meklējamo vārdu: tādi vārdi kā “un” vai “ir” vieni paši neko neatrod.",
+        "Введите слово для поиска: такие слова, как «и» или «в», сами по себе ничего не находят."),
+    "library.no_results": ("No passage of this library matches “{query}”.",
+                           "Neviens šīs bibliotēkas fragments neatbilst vaicājumam “{query}”.",
+                           "Ни один фрагмент этой библиотеки не соответствует запросу «{query}»."),
+    "library.count": (
+        "{shown} of {total} matching passages · searched on this computer, nothing was sent",
+        "{shown} no {total} atbilstošajiem fragmentiem · meklēts šajā datorā, nekas netika "
+        "nosūtīts",
+        "{shown} из {total} подходящих фрагментов · поиск на этом компьютере, ничего не "
+        "отправлено"),
+    "library.page": ("page {page}", "{page}. lappuse", "стр. {page}"),
+    "library.open_page": ("Open page {page}", "Atvērt {page}. lappusi", "Открыть страницу {page}"),
+    "library.open_document": ("Open the document", "Atvērt dokumentu", "Открыть документ"),
+    "library.why": ("Why this source?", "Kāpēc šis avots?", "Почему этот источник?"),
+    "library.why_hide": ("Hide the reasons", "Paslēpt iemeslus", "Скрыть причины"),
+    "library.why.rank": (
+        "Rank {rank} of {total} matching passages (BM25 score {score}).",
+        "{rank}. vieta no {total} atbilstošajiem fragmentiem (BM25 vērtējums {score}).",
+        "Место {rank} из {total} подходящих фрагментов (оценка BM25 {score})."),
+    "library.why.matched": ("Words of your search in this passage: {words}.",
+                            "Jūsu meklējuma vārdi šajā fragmentā: {words}.",
+                            "Слова вашего запроса в этом фрагменте: {words}."),
+    "library.why.missing": ("Not in this passage: {words}.", "Šajā fragmentā nav: {words}.",
+                            "В этом фрагменте нет: {words}."),
+    "library.why.method": (
+        "Ranked by BM25 on this computer: rarer words and shorter passages count more; a word "
+        "ending in “…” also matches its other forms.",
+        "Sakārtots pēc BM25 šajā datorā: retāki vārdi un īsāki fragmenti nozīmē vairāk; vārds, "
+        "kas beidzas ar “…”, atbilst arī citām tā formām.",
+        "Ранжировано по BM25 на этом компьютере: более редкие слова и более короткие фрагменты "
+        "весят больше; слово, оканчивающееся на «…», совпадает и с другими его формами."),
+    "library.why.filters": ("Filters: {filters}.", "Filtri: {filters}.", "Фильтры: {filters}."),
+    "library.searched": ("Searched on this computer: {passages}.",
+                         "Meklēts šajā datorā: {passages}.",
+                         "Поиск на этом компьютере: {passages}."),
+    "library.open_failed": ("{name} could not be opened: {error}",
+                            "{name} neizdevās atvērt: {error}",
+                            "Не удалось открыть {name}: {error}"),
+    "library.opened_system": ("{name} opened in the system's viewer.",
+                              "{name} atvērts sistēmas skatītājā.",
+                              "{name} открыт в системной программе просмотра."),
+    "library.viewer_status": ("Showing page {page} of “{title}”.",
+                              "Rādīta “{title}” {page}. lappuse.",
+                              "Показана страница {page} документа «{title}»."),
+    "library.viewer_title": ("{title} — page {page} of {pages}",
+                             "{title} — {page}. lappuse no {pages}",
+                             "{title} — страница {page} из {pages}"),
+    "library.viewer_passage": ("Cited passage {cite}: {text}", "Citētais fragments {cite}: {text}",
+                               "Цитируемый фрагмент {cite}: {text}"),
+    "library.viewer_previous": ("Previous page", "Iepriekšējā lappuse", "Предыдущая страница"),
+    "library.viewer_next": ("Next page", "Nākamā lappuse", "Следующая страница"),
+    "library.viewer_system": ("Open in the system viewer", "Atvērt sistēmas skatītājā",
+                              "Открыть в системной программе"),
+    "library.cancelled": ("Adding {name} was cancelled; nothing of it was stored.",
+                          "{name} pievienošana atcelta; nekas no tā netika saglabāts.",
+                          "Добавление {name} отменено; ничего из него не сохранено."),
+    "library.add_failed": ("{name} was not added: {reason}", "{name} netika pievienots: {reason}",
+                           "{name} не добавлен: {reason}"),
+    "library.duplicate": (
+        "“{title}” is already in the library (the same file), so nothing was added twice.",
+        "“{title}” jau ir bibliotēkā (tas pats fails), tāpēc nekas netika pievienots divreiz.",
+        "«{title}» уже есть в библиотеке (тот же файл), поэтому ничего не добавлено дважды."),
+    "library.added_message": ("Added “{title}”: {passages}.", "Pievienots “{title}”: {passages}.",
+                              "Добавлен «{title}»: {passages}."),
+    "library.note.versioned": (
+        "A file with this name is already in the library, so this one is labelled {label}.",
+        "Fails ar šādu nosaukumu jau ir bibliotēkā, tāpēc šim ir apzīmējums {label}.",
+        "Файл с таким именем уже есть в библиотеке, поэтому этот помечен как {label}."),
+    "library.note.ocr_off": (
+        "Page {pages} is only an image and was not read: remove the document and add it again "
+        "with “Read image-only PDF pages with local OCR” ticked.",
+        "Lappusē {pages} ir tikai attēls, un tā netika nolasīta: noņemiet dokumentu un "
+        "pievienojiet to vēlreiz ar atzīmētu “Nolasīt PDF lappuses, kurās ir tikai attēls, ar "
+        "lokālo OCR”.",
+        "На странице {pages} только изображение, и она не прочитана: удалите документ и "
+        "добавьте его снова, отметив «Распознавать страницы PDF, на которых только изображение, "
+        "локальным OCR»."),
+    "library.note.ocr_unavailable": (
+        "Page {pages} is only an image and local OCR is not available here, so it cannot be "
+        "searched.",
+        "Lappusē {pages} ir tikai attēls, un lokālais OCR šeit nav pieejams, tāpēc tajā nevar "
+        "meklēt.",
+        "На странице {pages} только изображение, а локальный OCR здесь недоступен, поэтому "
+        "искать по ней нельзя."),
+    "library.note.ocr_failed": ("Local OCR could not read page {pages}.",
+                                "Lokālais OCR nespēja nolasīt lappusi {pages}.",
+                                "Локальный OCR не смог прочитать страницу {pages}."),
+    "library.note.ocr_limit": (
+        "Pages {pages} are beyond the OCR limit of {limit} pages and were not read.",
+        "Lappuses {pages} pārsniedz OCR ierobežojumu ({limit} lappuses) un netika nolasītas.",
+        "Страницы {pages} превышают предел OCR ({limit} страниц) и не прочитаны."),
+    "library.note.too_complex": (
+        "Pages {pages} draw more than the library reads safely from one page and were left out.",
+        "Lappuses {pages} satur vairāk zīmējuma datu, nekā bibliotēka droši nolasa no vienas "
+        "lappuses, un tika izlaistas.",
+        "Страницы {pages} содержат больше графических данных, чем библиотека безопасно читает с "
+        "одной страницы, и пропущены."),
+    "library.error.page_too_large": (
+        "page {page} draws more than the viewer can safely show.",
+        "{page}. lappusē ir vairāk zīmējuma datu, nekā skatītājs var droši parādīt.",
+        "на странице {page} больше графических данных, чем просмотрщик может безопасно показать."),
+    "library.error.unpacks_too_large": (
+        "it unpacks to more than the library reads from one document; it may be damaged or "
+        "deliberately inflated.",
+        "tas atarhivējas lielāks, nekā bibliotēka nolasa no viena dokumenta; tas var būt bojāts "
+        "vai apzināti uzpūsts.",
+        "в распакованном виде он больше, чем библиотека читает из одного документа; возможно, он "
+        "повреждён или намеренно раздут."),
+    "library.note.ocr_read": (
+        "Page {pages} was read with local OCR: compare its passages with the page.",
+        "Lappuse {pages} nolasīta ar lokālo OCR: salīdziniet tās fragmentus ar lappusi.",
+        "Страница {pages} распознана локальным OCR: сверьте её фрагменты со страницей."),
+    "library.remove_failed": ("The document could not be removed: {reason}",
+                              "Dokumentu neizdevās noņemt: {reason}",
+                              "Не удалось удалить документ: {reason}"),
+    "library.removed": (
+        "Removed “{title}” with {passages}; search no longer finds them.",
+        "Noņemts “{title}” kopā ar fragmentiem ({passages}); meklēšana tos vairs neatrod.",
+        "Удалён «{title}» вместе с фрагментами ({passages}); поиск их больше не находит."),
+    "library.reindex_failed": ("The documents could not be read again: {reason}",
+                               "Dokumentus neizdevās nolasīt vēlreiz: {reason}",
+                               "Не удалось перечитать документы: {reason}"),
+    "library.reindexed": ("Read again: {documents}. The citations are unchanged.",
+                          "Nolasīti vēlreiz: {documents}. Atsauces nav mainījušās.",
+                          "Перечитано: {documents}. Ссылки не изменились."),
+    "library.cite_gone": ("Passage {cite} is no longer in the library.",
+                          "Fragmenta {cite} bibliotēkā vairs nav.",
+                          "Фрагмента {cite} больше нет в библиотеке."),
+    "library.open_library": ("Open the research library", "Atvērt pētījuma bibliotēku",
+                             "Открыть исследовательскую библиотеку"),
+    "library.card_empty": (
+        "No documents yet: add papers, plans, manuals or notes to search them offline.",
+        "Vēl nav dokumentu: pievienojiet rakstus, plānus, rokasgrāmatas vai piezīmes, lai tajos "
+        "meklētu bezsaistē.",
+        "Документов пока нет: добавьте статьи, планы, руководства или заметки, чтобы искать по "
+        "ним без сети."),
+    "library.card_body": (
+        "Search this project's documents on this computer, with page and section citations.",
+        "Meklējiet šī projekta dokumentos šajā datorā, ar lappušu un sadaļu atsaucēm.",
+        "Ищите по документам этого проекта на этом компьютере, со ссылками на страницы и "
+        "разделы."),
+    # Why a document cannot be added or shown (research_library.LibraryError).
+    "library.error.unsupported": ("{name} is not a PDF, DOCX, TXT or MD file.",
+                                  "{name} nav PDF, DOCX, TXT vai MD fails.",
+                                  "{name} — не файл PDF, DOCX, TXT или MD."),
+    "library.error.empty": ("{name} is empty.", "{name} ir tukšs.", "{name} пуст."),
+    "library.error.too_large": ("the file is {size}; the library takes files up to {limit}.",
+                                "faila izmērs ir {size}; bibliotēka pieņem failus līdz {limit}.",
+                                "размер файла {size}; библиотека принимает файлы до {limit}."),
+    "library.error.encrypted": ("the PDF is password-protected.", "PDF ir aizsargāts ar paroli.",
+                                "PDF защищён паролем."),
+    "library.error.unreadable": ("the file could not be read; it may be damaged.",
+                                 "failu neizdevās nolasīt; tas var būt bojāts.",
+                                 "файл не удалось прочитать; возможно, он повреждён."),
+    "library.error.no_text": (
+        "no text could be read from {name}. For a scanned PDF, tick “Read image-only PDF pages "
+        "with local OCR” and add it again.",
+        "no {name} neizdevās nolasīt tekstu. Skenētam PDF atzīmējiet “Nolasīt PDF lappuses, "
+        "kurās ir tikai attēls, ar lokālo OCR” un pievienojiet to vēlreiz.",
+        "из {name} не удалось прочитать текст. Для отсканированного PDF отметьте «Распознавать "
+        "страницы PDF, на которых только изображение, локальным OCR» и добавьте его снова."),
+    "library.error.too_many_pages": ("it has {pages} pages; the library takes up to {limit}.",
+                                     "tajā ir {pages} lappuses; bibliotēka pieņem līdz {limit}.",
+                                     "в нём {pages} страниц; библиотека принимает до {limit}."),
+    "library.error.too_much_text": (
+        "it holds more text than the library takes from one document.",
+        "tajā ir vairāk teksta, nekā bibliotēka pieņem no viena dokumenta.",
+        "в нём больше текста, чем библиотека принимает из одного документа."),
+    "library.error.missing": ("the stored copy of {name} is missing.",
+                              "{name} saglabātās kopijas nav.",
+                              "сохранённой копии {name} нет."),
+    "library.error.changed": ("the stored copy of {name} has changed since it was added.",
+                              "{name} saglabātā kopija ir mainījusies kopš pievienošanas.",
+                              "сохранённая копия {name} изменилась после добавления."),
+    "library.error.newer_format": (
+        "This library was written by a newer version of the program (format {found}); this "
+        "version reads up to format {supported}. Nothing was changed.",
+        "Šo bibliotēku ierakstīja jaunāka programmas versija (formāts {found}); šī versija lasa "
+        "līdz formātam {supported}. Nekas netika mainīts.",
+        "Эта библиотека записана более новой версией программы (формат {found}); эта версия "
+        "читает формат до {supported}. Ничего не изменено."),
+    "library.error.cancelled": ("cancelled.", "atcelts.", "отменено."),
+    "library.error.no_page": ("the document has no page {page}.", "dokumentā nav {page}. lappuses.",
+                              "в документе нет страницы {page}."),
+    "library.error.ocr_language": ("this OCR language is not installed.",
+                                   "šī OCR valoda nav instalēta.",
+                                   "этот язык OCR не установлен."),
+    "library.error.language": ("the language is not one the library knows.",
+                               "bibliotēka šo valodu nepazīst.",
+                               "библиотека не знает этот язык."),
+    "library.error.no_document": ("the document is no longer in the library.",
+                                  "dokumenta bibliotēkā vairs nav.",
+                                  "документа больше нет в библиотеке."),
+    "library.error.fts5_unavailable": (
+        "full-text search is not available in this program's database engine.",
+        "pilnteksta meklēšana šīs programmas datubāzes dzinējā nav pieejama.",
+        "полнотекстовый поиск недоступен в движке базы данных этой программы."),
+    "library.error.tokenizer_unavailable": ("this search setting is not available here.",
+                                            "šis meklēšanas iestatījums šeit nav pieejams.",
+                                            "эта настройка поиска здесь недоступна."),
+    # Ask with sources (library_ask.py).
+    # Hardening (independent review verify-stage37-rag).
+    "library.error.unsafe_source": (
+        "the library refers to a file it did not store itself (for example in a restored "
+        "backup), so it is never opened.",
+        "bibliotēka norāda uz failu, ko tā pati nav saglabājusi (piemēram, atjaunotā rezerves "
+        "kopijā), tāpēc tas netiek atvērts.",
+        "библиотека ссылается на файл, который она сама не сохраняла (например, в "
+        "восстановленной резервной копии), поэтому он не открывается."),
+    "library.error.damaged": (
+        "The library file of this project could not be read; it may be damaged ({detail}). "
+        "Nothing was changed, and the stored documents are kept in the project's library "
+        "folder. Backups and copies of the project leave the library out until it can be read.",
+        "Šī projekta bibliotēkas failu neizdevās nolasīt; tas var būt bojāts ({detail}). Nekas "
+        "netika mainīts, un saglabātie dokumenti paliek projekta bibliotēkas mapē. Projekta "
+        "rezerves kopijās un kopijās bibliotēka netiek iekļauta, līdz to atkal var nolasīt.",
+        "Файл библиотеки этого проекта не удалось прочитать; возможно, он повреждён ({detail}). "
+        "Ничего не изменено, сохранённые документы остаются в папке библиотеки проекта. "
+        "Резервные копии и копии проекта не включают библиотеку, пока её нельзя прочитать."),
+    "library.error.locked": (
+        "The library is being written by another window of the program. Try again in a moment.",
+        "Bibliotēkā pašlaik raksta cits programmas logs. Mēģiniet vēlreiz pēc brīža.",
+        "В библиотеку сейчас пишет другое окно программы. Повторите попытку через минуту."),
+    "library.error.unwritable": (
+        "The library could not be opened: this program may not read or write its folder "
+        "({detail}).",
+        "Bibliotēku neizdevās atvērt: programma nedrīkst lasīt vai rakstīt tās mapē ({detail}).",
+        "Библиотеку не удалось открыть: программе нельзя читать или писать в её папку "
+        "({detail})."),
+    "library.failed_title": ("The research library of “{project}” could not be opened",
+                             "Projekta “{project}” pētījuma bibliotēku neizdevās atvērt",
+                             "Исследовательскую библиотеку проекта «{project}» не удалось открыть"),
+    "library.retry": ("Try again", "Mēģināt vēlreiz", "Повторить"),
+    "library.failed_backup": (
+        "While the library cannot be read, backups and copies of this project are made without "
+        "it, and say so.",
+        "Kamēr bibliotēku nevar nolasīt, šī projekta rezerves kopijas un kopijas tiek veidotas "
+        "bez tās, un tas tiek pateikts.",
+        "Пока библиотеку нельзя прочитать, резервные копии и копии проекта создаются без неё, и "
+        "об этом сообщается."),
+    "library.not_opened": ("{name} was not opened: {reason}", "{name} netika atvērts: {reason}",
+                           "{name} не открыт: {reason}"),
+    "library.card_unreadable": (
+        "The library of this project cannot be read by this version; open it for details.",
+        "Šī versija nevar nolasīt šī projekta bibliotēku; atveriet to, lai uzzinātu vairāk.",
+        "Эта версия не может прочитать библиотеку проекта; откройте её, чтобы узнать подробности."),
+    "library.ask.title": ("Ask with sources", "Jautāt ar avotiem", "Спросить по источникам"),
+    "library.ask.intro": (
+        "Optional. Your question goes to the AI provider chosen in Settings together with only "
+        "the passages you tick here, after you have seen exactly what is sent. Search works "
+        "without it.",
+        "Nav obligāti. Jūsu jautājums tiek nosūtīts iestatījumos izvēlētajam MI pakalpojumu "
+        "sniedzējam kopā tikai ar šeit atzīmētajiem fragmentiem, pēc tam kad esat redzējis "
+        "tieši to, kas tiks nosūtīts. Meklēšana darbojas arī bez tā.",
+        "Необязательно. Ваш вопрос отправляется провайдеру ИИ, выбранному в настройках, вместе "
+        "только с отмеченными здесь фрагментами, после того как вы увидите, что именно будет "
+        "отправлено. Поиск работает и без этого."),
+    "library.ask.question": ("Your question", "Jūsu jautājums", "Ваш вопрос"),
+    "library.ask.question_hint": ("e.g. Which statements are reverse-scored?",
+                                  "piem., Kuri apgalvojumi tiek vērtēti apgriezti?",
+                                  "напр. Какие утверждения оцениваются в обратном порядке?"),
+    "library.ask.find": ("Find passages", "Atrast fragmentus", "Найти фрагменты"),
+    "library.ask.none": (
+        "No passage of this library matches the question, so there is nothing to send. Nothing "
+        "was sent.",
+        "Neviens šīs bibliotēkas fragments neatbilst jautājumam, tāpēc nav ko sūtīt. Nekas "
+        "netika nosūtīts.",
+        "Ни один фрагмент этой библиотеки не соответствует вопросу, поэтому отправлять нечего. "
+        "Ничего не отправлено."),
+    "library.ask.passages": ("Passages that may be sent: tick the ones to send",
+                             "Fragmenti, kurus var nosūtīt: atzīmējiet sūtāmos",
+                             "Фрагменты, которые можно отправить: отметьте нужные"),
+    "library.ask.choose": ("Tick at least one passage to prepare the request.",
+                           "Atzīmējiet vismaz vienu fragmentu, lai sagatavotu pieprasījumu.",
+                           "Отметьте хотя бы один фрагмент, чтобы подготовить запрос."),
+    "library.ask.sent_passages": ("Passages: {passages} ({cites})", "Fragmenti: {passages} ({cites})",
+                                  "Фрагменты: {passages} ({cites})"),
+    "library.ask.nothing_else": (
+        "Nothing else is sent: no data rows, no other passage and no document file.",
+        "Nekas cits netiek nosūtīts: ne datu rindas, ne citi fragmenti, ne dokumentu faili.",
+        "Больше ничего не отправляется: ни строки данных, ни другие фрагменты, ни файлы "
+        "документов."),
+    "library.ask.consent": (
+        "Send sends exactly this request, once. The project's activity log and the library's "
+        "log record the provider, the model, the tokens and the cite IDs, never the text.",
+        "“Sūtīt” nosūta tieši šo pieprasījumu vienu reizi. Projekta darbību žurnālā un "
+        "bibliotēkas žurnālā tiek ierakstīts pakalpojumu sniedzējs, modelis, marķieri un "
+        "atsauču ID, nekad teksts.",
+        "«Отправить» отправляет ровно этот запрос, один раз. Журнал проекта и журнал библиотеки "
+        "записывают провайдера, модель, токены и идентификаторы ссылок, но никогда не текст."),
+    "library.ask.error.no_sources": ("Not sent: no passage is ticked.",
+                                     "Nav nosūtīts: neviens fragments nav atzīmēts.",
+                                     "Не отправлено: не отмечен ни один фрагмент."),
+    "library.ask.error.too_long": (
+        "Not sent: the request is too long. Untick a passage and try again.",
+        "Nav nosūtīts: pieprasījums ir pārāk garš. Noņemiet atzīmi kādam fragmentam un "
+        "mēģiniet vēlreiz.",
+        "Не отправлено: запрос слишком длинный. Снимите отметку с одного из фрагментов и "
+        "повторите."),
+    "library.ask.meta": ("Answer · {provider}, model {model} · {time} · tokens: {tokens}",
+                         "Atbilde · {provider}, modelis {model} · {time} · marķieri: {tokens}",
+                         "Ответ · {provider}, модель {model} · {time} · токены: {tokens}"),
+    "library.ask.not_in_sources": (
+        "The answer: the passages sent do not answer this question. Nothing from outside them "
+        "was added.",
+        "Atbilde: nosūtītie fragmenti uz šo jautājumu neatbild. Nekas ārpus tiem netika "
+        "pievienots.",
+        "Ответ: отправленные фрагменты не отвечают на этот вопрос. Ничего извне не добавлено."),
+    "library.ask.cited": ("Citations checked: {labels}. Each names a passage that was sent.",
+                          "Atsauces pārbaudītas: {labels}. Katra norāda uz nosūtītu fragmentu.",
+                          "Ссылки проверены: {labels}. Каждая указывает на отправленный "
+                          "фрагмент."),
+    "library.ask.unknown_title": ("Citations of passages that were not sent",
+                                  "Atsauces uz fragmentiem, kas netika nosūtīti",
+                                  "Ссылки на фрагменты, которые не отправлялись"),
+    "library.ask.unknown": (
+        "{labels}: no passage with this label was sent. Treat what cites it as unsupported.",
+        "{labels}: fragments ar šādu apzīmējumu netika nosūtīts. Uzskatiet to, kas uz to "
+        "atsaucas, par nepamatotu.",
+        "{labels}: фрагмент с такой меткой не отправлялся. Считайте то, что на него ссылается, "
+        "неподтверждённым."),
+    "library.ask.foreign": (
+        "References to sources that were not sent: {references}. Check them before any use.",
+        "Atsauces uz avotiem, kas netika nosūtīti: {references}. Pārbaudiet tās pirms "
+        "lietošanas.",
+        "Ссылки на источники, которые не отправлялись: {references}. Проверьте их перед "
+        "использованием."),
+    "library.ask.uncited": ("{statements} cite no passage: check them against the sources.",
+                            "Bez atsauces uz fragmentu: {statements}. Pārbaudiet tos avotos.",
+                            "Без ссылки на фрагмент: {statements}. Проверьте их по источникам."),
+    "library.ask.numbers": (
+        "Not found in the passages sent: {numbers}. These numbers may be invented or changed; "
+        "only the sources and the engine's own results count.",
+        "Nav atrasti nosūtītajos fragmentos: {numbers}. Šie skaitļi var būt izdomāti vai "
+        "mainīti; nozīme ir tikai avotiem un dzinēja rezultātiem.",
+        "Не найдены в отправленных фрагментах: {numbers}. Эти числа могут быть выдуманы или "
+        "изменены; значение имеют только источники и результаты движка."),
+})
+
+
+# Stage 37 (Issue #68, review UX-3): the variable panel of the role pickers
+# and reuse (duplicate a task, repeat a result with changes, recent methods,
+# the items of a scale score). LV/RU drafts — needs native review
+# (docs/STAGE37_UX_VARIABLES.md lists the keys).
+T.update({
+    "vars.search": ("Find variables", "Meklēt mainīgos", "Найти переменные"),
+    "vars.search_hint": (
+        "A name, a pattern such as {pattern} or a range such as {range}. Enter selects what is shown.",
+        "Nosaukums, šablons, piemēram, {pattern}, vai diapazons, piemēram, {range}. Enter atlasa redzamos.",
+        "Имя, шаблон, например {pattern}, или диапазон, например {range}. Enter выбирает показанные."),
+    "vars.group": ("All {pattern} ({count})", "Visi {pattern} ({count})", "Все {pattern} ({count})"),
+    "vars.group_tip": (
+        "Select the {count} variables whose names are {stem} followed by a number",
+        "Atlasīt {count} mainīgos, kuru nosaukums ir {stem} un numurs",
+        "Выбрать {count} переменных с именем {stem} и номером"),
+    "vars.ungroup": ("Unselect {pattern} ({count})", "Noņemt {pattern} ({count})",
+                     "Снять {pattern} ({count})"),
+    "vars.ungroup_tip": ("All {count} are selected: unselect them",
+                         "Visi {count} ir atlasīti: noņemt atlasi",
+                         "Выбраны все {count}: снять выбор"),
+    "vars.more_groups": (
+        "{count} more name groups: type a pattern to find them.",
+        "Vēl {count} nosaukumu grupas: ierakstiet šablonu, lai tās atrastu.",
+        "Ещё групп имён: {count}. Введите шаблон, чтобы найти их."),
+    "vars.select_shown": ("Select all shown ({count})", "Atlasīt visus redzamos ({count})",
+                          "Выбрать все показанные ({count})"),
+    "vars.unselect_shown": ("Unselect shown ({count})", "Noņemt redzamos ({count})",
+                            "Снять показанные ({count})"),
+    "vars.count": ("Selected: {selected} of {total}", "Atlasīti: {selected} no {total}",
+                   "Выбрано: {selected} из {total}"),
+    "vars.count_shown": ("Selected: {selected} of {total} · shown: {shown}",
+                         "Atlasīti: {selected} no {total} · redzami: {shown}",
+                         "Выбрано: {selected} из {total} · показано: {shown}"),
+    "vars.none_match": ("No offered variable matches “{query}”.",
+                        "Neviens piedāvātais mainīgais neatbilst “{query}”.",
+                        "Ни одна предложенная переменная не подходит под «{query}»."),
+    "vars.show_all": ("Show all {count}", "Rādīt visus {count}", "Показать все ({count})"),
+    "vars.show_chosen": ("Show only the selected", "Rādīt tikai atlasītos",
+                         "Показать только выбранные"),
+    "vars.collapsed": (
+        "{count} more variables are listed after a search, a name group or Show all.",
+        "Vēl {count} mainīgie tiek parādīti pēc meklēšanas, nosaukumu grupas vai “Rādīt visus”.",
+        "Ещё переменных: {count}. Они показываются после поиска, выбора группы имён или «Показать все»."),
+    "vars.none_offered": ("No variable of this dataset can take this role.",
+                          "Neviens šīs datu kopas mainīgais nevar būt šajā lomā.",
+                          "Ни одна переменная этого набора не подходит для этой роли."),
+    "vars.not_offered": ("Not offered here:", "Šeit netiek piedāvāti:", "Здесь не предлагаются:"),
+    "vars.more": ("{names} and {count} more", "{names} un vēl {count}", "{names} и ещё {count}"),
+    "vars.why.identifier": ("{names} — identifier", "{names} — identifikators",
+                            "{names} — идентификатор"),
+    "vars.why.role": ("{names} — already {role}", "{names} — jau izvēlēts: {role}",
+                      "{names} — уже выбрано: {role}"),
+    "vars.why.level": ("{names} — {level}; this role takes {allowed}",
+                       "{names} — {level}; šai lomai der: {allowed}",
+                       "{names} — {level}; для этой роли подходят: {allowed}"),
+    "vars.why.binary": ("{names} — not coded 0/1", "{names} — nav kodēts 0/1",
+                        "{names} — не закодировано как 0/1"),
+    "vars.why.not_numeric": ("{names} — not numeric", "{names} — nav skaitlisks",
+                             "{names} — не числовая"),
+    # The role a variable already has, in "already …".
+    "vars.role.outcome": ("the outcome", "rezultāts", "зависимая переменная"),
+    "vars.role.outcomes": ("an outcome", "rezultāts", "зависимая переменная"),
+    "vars.role.group": ("the grouping variable", "grupu mainīgais", "группирующая переменная"),
+    "vars.role.covariates": ("a covariate", "kovariāts", "ковариата"),
+    "vars.role.measures": ("a measurement", "mērījums", "измерение"),
+    "vars.role.before": ("the first measurement", "pirmais mērījums", "первое измерение"),
+    "vars.role.after": ("the second measurement", "otrais mērījums", "второе измерение"),
+    "vars.role.x": ("the first variable", "pirmais mainīgais", "первая переменная"),
+    "vars.role.y": ("a related variable", "saistāmais mainīgais", "связываемая переменная"),
+    "vars.role.ys": ("a related variable", "saistāmais mainīgais", "связываемая переменная"),
+    "vars.role.a": ("the first categorical variable", "pirmais kategoriālais mainīgais",
+                    "первая категориальная переменная"),
+    "vars.role.b": ("the second categorical variable", "otrais kategoriālais mainīgais",
+                    "вторая категориальная переменная"),
+    "vars.role.predictors": ("a predictor", "prognozētājs", "предиктор"),
+    "vars.role.items": ("an item", "jautājums", "пункт"),
+    "vars.role.variable": ("the variable", "mainīgais", "переменная"),
+    # The items of a scale score (Data → Prepare), for its reliability.
+    "pick.score_items": ("Items of {score} ({count})", "{score} jautājumi ({count})",
+                         "Пункты {score} ({count})"),
+    "pick.score_items_tip": (
+        "The items {score} was scored from in Data → Prepare",
+        "Jautājumi, no kuriem {score} aprēķināts sadaļā “Dati” → “Sagatavot”",
+        "Пункты, из которых {score} рассчитан в разделе «Данные» → «Подготовка»"),
+    # Reuse: a task duplicated, a result repeated with changes.
+    "task.duplicate_tip": (
+        "Duplicate “{title}”: a new task with the same question, variables and method",
+        "Dublēt “{title}”: jauns uzdevums ar to pašu jautājumu, mainīgajiem un metodi",
+        "Дублировать «{title}»: новая задача с тем же вопросом, переменными и методом"),
+    "task.copy_notice": (
+        "A copy of “{title}”: the same question, variables and method. It becomes a new task when it runs; the original stays as it is. Every confirmation is asked again, and the link to a hypothesis is chosen again in step 1.",
+        "“{title}” kopija: tas pats jautājums, mainīgie un metode. Pēc aprēķina tā kļūst par jaunu uzdevumu; oriģināls paliek nemainīgs. Katrs apstiprinājums tiek prasīts vēlreiz, un saiti ar hipotēzi izvēlas vēlreiz 1. solī.",
+        "Копия «{title}»: тот же вопрос, переменные и метод. После расчёта она становится новой задачей; оригинал не меняется. Каждое подтверждение запрашивается снова, а связь с гипотезой выбирается заново на шаге 1."),
+    "results.repeat": ("Repeat with changes", "Atkārtot ar izmaiņām", "Повторить с изменениями"),
+    "results.repeat_tip": (
+        "Open this analysis as a new task with the same variables; the confirmations are asked again",
+        "Atvērt šo analīzi kā jaunu uzdevumu ar tiem pašiem mainīgajiem; apstiprinājumi tiek prasīti vēlreiz",
+        "Открыть этот анализ как новую задачу с теми же переменными; подтверждения запрашиваются снова"),
+    "results.repeat_named": ("Repeat “{title}” with changes", "Atkārtot “{title}” ar izmaiņām",
+                             "Повторить «{title}» с изменениями"),
+    "results.others": ("Other results", "Citi rezultāti", "Другие результаты"),
+    "results.other_open_tip": ("Show this result from its beginning",
+                               "Rādīt šo rezultātu no sākuma",
+                               "Показать этот результат с начала"),
+    # Recent methods (All methods).
+    "catalog.recent": ("Recently used", "Nesen izmantotās", "Недавно использованные"),
+    "catalog.recent_last": ("Last: {title} · {time}", "Pēdējā: {title} · {time}",
+                            "Последний: {title} · {time}"),
+    "catalog.recent_tip": (
+        "Opens with the variables and options of its last run; every confirmation is asked again",
+        "Atveras ar pēdējā aprēķina mainīgajiem un iestatījumiem; katrs apstiprinājums tiek prasīts vēlreiz",
+        "Открывается с переменными и параметрами последнего расчёта; каждое подтверждение запрашивается снова"),
+    "analyze.recent_notice": (
+        "Filled in from your last {method} ({time}): the same variables and options. Every confirmation is asked again.",
+        "Aizpildīts no jūsu pēdējās metodes {method} ({time}): tie paši mainīgie un iestatījumi. Katrs apstiprinājums tiek prasīts vēlreiz.",
+        "Заполнено по вашему последнему расчёту «{method}» ({time}): те же переменные и параметры. Каждое подтверждение запрашивается снова."),
+})
+
+
+# Stage 37 integration (docs/STAGE37_INTEGRATION.md): the Settings sections
+# *Export defaults* and *Research library and privacy*, which show and change
+# the export branch's and the library branch's real settings.
+# LV/RU drafts — needs native review.
+T.update({
+    "settings.section.export": ("Export defaults", "Eksporta noklusējumi",
+                                "Параметры экспорта по умолчанию"),
+    "settings.export_body": (
+        "The choices each Export card starts with. Choosing a format, the separator or the "
+        "byte-order mark on an Export card changes them here too.",
+        "Izvēles, ar kurām sākas katra eksporta kartīte. Ja eksporta kartītē izvēlaties formātu, "
+        "atdalītāju vai baitu secības zīmi, tās mainās arī šeit.",
+        "Варианты, с которых начинается каждая карточка экспорта. Если выбрать формат, "
+        "разделитель или метку порядка байтов на карточке экспорта, они изменятся и здесь."),
+    "settings.export_format.data": ("Data page", "Datu lapa", "Страница данных"),
+    "settings.export_format.results": ("Results page", "Rezultātu lapa", "Страница результатов"),
+    "settings.export_format.reports": ("Reports page", "Pārskatu lapa", "Страница отчётов"),
+    "settings.export_layout_default": (
+        "Not chosen yet: in Latvian and Russian the separator is a semicolon, in English a comma.",
+        "Vēl nav izvēlēts: latviešu un krievu valodā atdalītājs ir semikols, angļu valodā komats.",
+        "Ещё не выбрано: на латышском и русском разделитель — точка с запятой, на английском — "
+        "запятая."),
+    "settings.export_privacy": (
+        "Exports are written only where you save them; nothing is uploaded. A research library is "
+        "never part of an export.",
+        "Eksportētie faili tiek ierakstīti tikai tur, kur tos saglabājat; nekas netiek augšupielādēts. "
+        "Pētījuma bibliotēka nekad nav eksporta daļa.",
+        "Файлы экспорта записываются только туда, куда вы их сохраняете; ничего не загружается в "
+        "сеть. Исследовательская библиотека никогда не входит в экспорт."),
+    "settings.section.library": ("Research library and privacy", "Pētījuma bibliotēka un privātums",
+                                 "Исследовательская библиотека и конфиденциальность"),
+    "settings.library_backend_fts5": (
+        "Search index: SQLite {sqlite} full-text search (FTS5) on this computer.",
+        "Meklēšanas indekss: SQLite {sqlite} pilnteksta meklēšana (FTS5) šajā datorā.",
+        "Поисковый индекс: полнотекстовый поиск SQLite {sqlite} (FTS5) на этом компьютере."),
+    "settings.library_backend_plain": (
+        "Search index: this computer's SQLite {sqlite} has no full-text search; the library "
+        "searches with its own slower method, still on this computer.",
+        "Meklēšanas indekss: šī datora SQLite {sqlite} nav pilnteksta meklēšanas; bibliotēka meklē "
+        "ar savu lēnāko metodi, joprojām šajā datorā.",
+        "Поисковый индекс: в SQLite {sqlite} на этом компьютере нет полнотекстового поиска; "
+        "библиотека ищет собственным, более медленным способом, тоже на этом компьютере."),
+    "settings.library_ask": (
+        "Ask with sources sends only the passages you tick, to the AI provider above, after you "
+        "have seen the exact request; each request is approved on its own.",
+        "Jautāt ar avotiem nosūta tikai jūsu atzīmētos fragmentus augstāk norādītajam MI "
+        "pakalpojumu sniedzējam pēc tam, kad esat redzējis precīzu pieprasījumu; katru pieprasījumu "
+        "apstiprina atsevišķi.",
+        "«Спросить с источниками» отправляет только отмеченные вами фрагменты указанному выше "
+        "провайдеру ИИ, после того как вы увидели точный запрос; каждый запрос подтверждается "
+        "отдельно."),
+    "settings.library_ask_ready": ("Set up: {provider} · {model}.",
+                                   "Iestatīts: {provider} · {model}.",
+                                   "Настроено: {provider} · {model}."),
+    "settings.library_ask_off": (
+        "No AI provider is set up, so Ask with sources is off; search works without it.",
+        "Nav iestatīts neviens MI pakalpojumu sniedzējs, tāpēc Jautāt ar avotiem ir izslēgts; "
+        "meklēšana darbojas bez tā.",
+        "Провайдер ИИ не настроен, поэтому «Спросить с источниками» выключено; поиск работает и "
+        "без него."),
+    "settings.library_no_project": (
+        "Open a project to choose whether its library is included in backups and copies (off by "
+        "default).",
+        "Atveriet projektu, lai izvēlētos, vai tā bibliotēka tiek iekļauta rezerves kopijās un "
+        "kopijās (pēc noklusējuma nē).",
+        "Откройте проект, чтобы выбрать, включается ли его библиотека в резервные копии и копии "
+        "(по умолчанию нет)."),
+    "settings.library_open": ("Open the research library", "Atvērt pētījuma bibliotēku",
+                              "Открыть исследовательскую библиотеку"),
+})
 
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
@@ -3416,6 +5099,81 @@ LABELS: dict[str, tuple[str, str]] = {
     "I reviewed the outcome distributions, outliers and group sizes": (
         "Es pārskatīju rezultātu sadalījumus, izlēcējus un grupu lielumus",
         "Я проверил(а) распределения, выбросы и размеры групп"),
+    # Stage 37 (Issue #66). LV/RU drafts — needs native review.
+    "Linear model with categorical covariates": (
+        "Lineārais modelis ar kategoriāliem kovariātiem",
+        "Линейная модель с категориальными ковариатами"),
+    "Mediation (PROCESS-equivalent Model 4)": (
+        "Mediācija (PROCESS 4. modelim līdzvērtīga struktūra)",
+        "Медиация (структура, эквивалентная модели 4 PROCESS)"),
+    "Moderation (PROCESS-equivalent Model 1)": (
+        "Moderācija (PROCESS 1. modelim līdzvērtīga struktūra)",
+        "Модерация (структура, эквивалентная модели 1 PROCESS)"),
+    "Conditional process (PROCESS-equivalent Model 7 or 14)": (
+        "Nosacīts process (PROCESS 7. vai 14. modelim līdzvērtīga struktūra)",
+        "Условный процесс (структура, эквивалентная модели 7 или 14 PROCESS)"),
+    "Reference category of categorical covariates": (
+        "Kategoriālo kovariātu atsauces kategorija",
+        "Опорная категория категориальных ковариат"),
+    "First category (lowest code)": ("Pirmā kategorija (zemākais kods)",
+                                     "Первая категория (наименьший код)"),
+    "Last category (highest code)": ("Pēdējā kategorija (augstākais kods)",
+                                     "Последняя категория (наибольший код)"),
+    "Most frequent category": ("Biežākā kategorija", "Самая частая категория"),
+    "Mean-centre the quantitative predictors of the product term": (
+        "Centrēt reizinājuma locekļa kvantitatīvos prediktorus ap vidējo",
+        "Центрировать количественные предикторы произведения по среднему"),
+    "I reviewed linearity, independence, outliers, every predictor’s measurement level and the reference categories": (
+        "Es pārskatīju linearitāti, neatkarību, izlēcējus, katra prediktora mērījuma līmeni un "
+        "atsauces kategorijas",
+        "Я проверил(а) линейность, независимость, выбросы, уровень измерения каждого предиктора "
+        "и опорные категории"),
+    "I named the mediators from theory or the research plan before seeing results, not by their p-values": (
+        "Es noteicu mediatorus pēc teorijas vai pētījuma plāna pirms rezultātu apskates, nevis "
+        "pēc to p vērtībām",
+        "Я задал(а) медиаторы по теории или плану исследования до просмотра результатов, а не "
+        "по их p-значениям"),
+    "I understand that cross-sectional data cannot establish causal mediation: an indirect path is a pattern of conditional associations": (
+        "Es saprotu, ka šķērsgriezuma dati nevar pierādīt cēlonisku mediāciju: netiešais ceļš "
+        "ir nosacītu saistību kopums",
+        "Я понимаю, что одномоментные данные не устанавливают причинную медиацию: косвенный "
+        "путь — это набор условных связей"),
+    "I named the moderator W from theory or the research plan before seeing results": (
+        "Es noteicu moderatoru W pēc teorijas vai pētījuma plāna pirms rezultātu apskates",
+        "Я задал(а) модератор W по теории или плану исследования до просмотра результатов"),
+    "I chose Model 7 (W moderates X → M) from theory, before seeing results": (
+        "Es izvēlējos 7. modeli (W moderē X → M) pēc teorijas pirms rezultātu apskates",
+        "Я выбрал(а) модель 7 (W модерирует X → M) по теории до просмотра результатов"),
+    "I chose Model 14 (W moderates M → Y) from theory, before seeing results": (
+        "Es izvēlējos 14. modeli (W moderē M → Y) pēc teorijas pirms rezultātu apskates",
+        "Я выбрал(а) модель 14 (W модерирует M → Y) по теории до просмотра результатов"),
+    "I reviewed linearity, residuals, influential cases, measurement scales and missing data": (
+        "Es pārskatīju linearitāti, atlikumus, ietekmīgos gadījumus, mērījumu skalas un "
+        "trūkstošos datus",
+        "Я проверил(а) линейность, остатки, влиятельные случаи, шкалы измерения и пропуски"),
+    "Bootstrap resamples (percentile interval)": (
+        "Bootstrap atkārtotās izlases (procentiļu intervāls)",
+        "Бутстреп-выборки (процентильный интервал)"),
+    "5000 (default)": ("5000 (noklusējums)", "5000 (по умолчанию)"),
+    "1000 (quick check only)": ("1000 (tikai ātrai pārbaudei)", "1000 (только для быстрой проверки)"),
+    "Mean-centre the variables that form products": (
+        "Centrēt ap vidējo mainīgos, kas veido reizinājumus",
+        "Центрировать по среднему переменные, образующие произведения"),
+    "Yes, mean-centre": ("Jā, centrēt", "Да, центрировать"),
+    "Monte Carlo sensitivity simulation at this N": (
+        "Monte Karlo jutīguma simulācija pie šī N",
+        "Симуляция чувствительности Монте-Карло при этом N"),
+    "Off": ("Izslēgts", "Выключено"),
+    "500 replications (assumed effect sizes)": (
+        "500 atkārtojumi (pieņemti efektu lielumi)",
+        "500 повторений (принятые размеры эффекта)"),
+    "PROCESS-equivalent model: which path W moderates": (
+        "PROCESS līdzvērtīgs modelis: kuru ceļu moderē W",
+        "Модель, эквивалентная PROCESS: какой путь модерирует W"),
+    "Model 7 · W moderates X → M (a path)": ("7. modelis · W moderē X → M (a ceļš)",
+                                             "Модель 7 · W модерирует X → M (путь a)"),
+    "Model 14 · W moderates M → Y (b path)": ("14. modelis · W moderē M → Y (b ceļš)",
+                                              "Модель 14 · W модерирует M → Y (путь b)"),
 }
 
 
@@ -3450,6 +5208,19 @@ PLURALS: dict[str, dict[str, tuple[str, ...]]] = {
               "ru": ("пункт", "пункта", "пунктов")},
     "forms": {"en": ("form", "forms"), "lv": ("forma", "formas", "formu"),
               "ru": ("форма", "формы", "форм")},
+    # Stage 37.3: the research library.
+    "documents": {"en": ("document", "documents"), "lv": ("dokuments", "dokumenti", "dokumentu"),
+                  "ru": ("документ", "документа", "документов")},
+    "passages": {"en": ("passage", "passages"), "lv": ("fragments", "fragmenti", "fragmentu"),
+                 "ru": ("фрагмент", "фрагмента", "фрагментов")},
+    "pages": {"en": ("page", "pages"), "lv": ("lappuse", "lappuses", "lappušu"),
+              "ru": ("страница", "страницы", "страниц")},
+    "statements": {"en": ("statement", "statements"),
+                   "lv": ("apgalvojums", "apgalvojumi", "apgalvojumu"),
+                   "ru": ("утверждение", "утверждения", "утверждений")},
+    # Stage 37 (D11): a report section's parts ("1 part", not "1 parts").
+    "parts": {"en": ("part", "parts"), "lv": ("daļa", "daļas", "daļu"),
+              "ru": ("часть", "части", "частей")},
 }
 
 
@@ -3485,3 +5256,195 @@ def t(language: str, key: str, **values) -> str:
         index = LANGS.index(language) if language in LANGS else 0
         text = row[index] or row[0]
     return text.format(**values) if values else text
+
+
+# Stage 37 (Fable review §4 item 2): the scales register of the Data page.
+# LV and RU are drafts for native review.
+T.update({
+    "scales.title": ("Scales", "Skalas", "Шкалы"),
+    "scales.body": (
+        "Define every scale of the study here: its items, the reverse-keyed items you checked, "
+        "the scoring rule and how many items must be answered. Then score them all and check "
+        "the reliability of all in one action each. Every score is a new column; the items "
+        "are never changed.",
+        "Definējiet šeit katru pētījuma skalu: tās apgalvojumus, pārbaudītos apgrieztos "
+        "apgalvojumus, aprēķina noteikumu un to, cik apgalvojumiem jābūt atbildētiem. Pēc tam "
+        "aprēķiniet visas skalas un pārbaudiet visu ticamību, katru ar vienu darbību. Katrs "
+        "rādītājs ir jauna kolonna; apgalvojumi netiek mainīti.",
+        "Определите здесь каждую шкалу исследования: её пункты, проверенные обратные пункты, "
+        "правило подсчёта и сколько пунктов должно быть отвечено. Затем подсчитайте все шкалы и "
+        "проверьте надёжность всех, каждое одним действием. Каждый балл — новый столбец; пункты "
+        "не изменяются."),
+    "scales.add": ("Add a scale", "Pievienot skalu", "Добавить шкалу"),
+    "scales.score_all": ("Score all ({count})", "Aprēķināt visas ({count})",
+                         "Подсчитать все ({count})"),
+    "scales.score_none": (
+        "No scale is ready to be scored: each needs a new name, 2–30 items, a scoring rule and "
+        "the minimum number of answered items.",
+        "Neviena skala nav gatava aprēķinam: katrai vajag jaunu nosaukumu, 2–30 apgalvojumus, "
+        "aprēķina noteikumu un minimālo atbildēto apgalvojumu skaitu.",
+        "Ни одна шкала не готова к подсчёту: каждой нужны новое имя, 2–30 пунктов, правило "
+        "подсчёта и минимальное число отвеченных пунктов."),
+    "scales.check_all": ("Check reliability of all ({count})",
+                         "Pārbaudīt visu ticamību ({count})",
+                         "Проверить надёжность всех ({count})"),
+    "scales.check_none": (
+        "No scale is ready for its reliability: score it first and confirm that its items are "
+        "meant to measure one construct.",
+        "Neviena skala nav gatava ticamības pārbaudei: vispirms aprēķiniet to un apstipriniet, "
+        "ka tās apgalvojumi ir paredzēti vienas konstrukcijas mērīšanai.",
+        "Ни одна шкала не готова к проверке надёжности: сначала подсчитайте её и подтвердите, "
+        "что её пункты предназначены для измерения одного конструкта."),
+    "scales.confirm_levels": ("Confirm as quantitative (scale): {names}",
+                              "Apstiprināt kā kvantitatīvus (intervālu): {names}",
+                              "Подтвердить как количественные (интервальные): {names}"),
+    "scales.confirm_levels_tip": (
+        "Your confirmation of the measurement level of these new scores. You can also set each "
+        "one in the variable list.",
+        "Jūsu apstiprinājums šo jauno rādītāju mērījumu līmenim. Katru var iestatīt arī "
+        "mainīgo sarakstā.",
+        "Ваше подтверждение уровня измерения этих новых баллов. Каждый можно задать и в "
+        "списке переменных."),
+    "scales.report_all": ("Add the reliability results to the report",
+                          "Pievienot ticamības rezultātus pārskatam",
+                          "Добавить результаты надёжности в отчёт"),
+    "scales.nothing_ready": (
+        "Open a scale with Edit to see what it still needs.",
+        "Atveriet skalu ar “Rediģēt”, lai redzētu, kas tai vēl vajadzīgs.",
+        "Откройте шкалу кнопкой «Изменить», чтобы увидеть, чего ей ещё не хватает."),
+    "scales.save_failed": ("The scales could not be saved in the project: {error}",
+                           "Skalas neizdevās saglabāt projektā: {error}",
+                           "Не удалось сохранить шкалы в проекте: {error}"),
+    "scales.score_failed": ("Nothing was scored: {error}", "Nekas netika aprēķināts: {error}",
+                            "Ничего не подсчитано: {error}"),
+    "scales.scored": ("Scored ({count}): {names}. Confirm their measurement level.",
+                      "Aprēķinātas ({count}): {names}. Apstipriniet to mērījumu līmeni.",
+                      "Подсчитано ({count}): {names}. Подтвердите их уровень измерения."),
+    "scales.checked": ("Reliability checked ({count}); each result is in Results.",
+                       "Ticamība pārbaudīta ({count}); katrs rezultāts ir sadaļā “Rezultāti”.",
+                       "Надёжность проверена ({count}); каждый результат — в «Результатах»."),
+    "scales.check_failed": ("{name}: the reliability could not be calculated: {error}",
+                            "{name}: ticamību neizdevās aprēķināt: {error}",
+                            "{name}: надёжность не удалось вычислить: {error}"),
+    "scales.state.checked": ("Cronbach’s α = {alpha}; McDonald’s ω = {omega}; n = {n}",
+                             "Kronbaha α = {alpha}; Makdonalda ω = {omega}; n = {n}",
+                             "α Кронбаха = {alpha}; ω Макдональда = {omega}; n = {n}"),
+    "scales.state.scored": ("Scored; its reliability is not checked yet.",
+                            "Aprēķināta; ticamība vēl nav pārbaudīta.",
+                            "Подсчитана; надёжность ещё не проверена."),
+    "scales.state.ready": ("Ready to be scored.", "Gatava aprēķinam.", "Готова к подсчёту."),
+    "scales.unnamed": ("(no name yet)", "(vēl bez nosaukuma)", "(ещё без имени)"),
+    "scales.facts": ("{items} items · {reverse} reversed · {rule} · at least {minimum} answered",
+                     "{items} apgalvojumi · {reverse} apgriezti · {rule} · vismaz {minimum} "
+                     "atbildēti",
+                     "пунктов: {items} · обратных: {reverse} · {rule} · отвечено не менее "
+                     "{minimum}"),
+    "scales.method.mean": ("Mean of the answered items", "Atbildēto apgalvojumu vidējais",
+                           "Среднее отвеченных пунктов"),
+    "scales.method.sum": ("Sum (every item answered)", "Summa (atbildēti visi apgalvojumi)",
+                          "Сумма (отвечены все пункты)"),
+    "scales.method.none": ("rule not chosen", "noteikums nav izvēlēts", "правило не выбрано"),
+    "scales.edit": ("Edit", "Rediģēt", "Изменить"),
+    "scales.close": ("Close", "Aizvērt", "Закрыть"),
+    "scales.remove": ("Remove", "Noņemt", "Удалить"),
+    "scales.open_result": ("Open the result", "Atvērt rezultātu", "Открыть результат"),
+    "scales.name": ("Name of the new score", "Jaunā rādītāja nosaukums",
+                    "Имя нового балла"),
+    "scales.name_hint": ("e.g. LON_SUM", "piem., LON_SUM", "напр. LON_SUM"),
+    "scales.items": ("Items of this scale", "Šīs skalas apgalvojumi", "Пункты этой шкалы"),
+    "scales.reverse": ("Reverse-keyed items", "Apgrieztie apgalvojumi", "Обратные пункты"),
+    "scales.reverse_body": (
+        "Tick an item only after you checked the scoring key: each tick is your confirmation "
+        "for that item. The program never marks an item as reversed.",
+        "Atzīmējiet apgalvojumu tikai pēc tam, kad pārbaudījāt aprēķina atslēgu: katra atzīme "
+        "ir jūsu apstiprinājums šim apgalvojumam. Programma nekad neatzīmē apgalvojumu kā "
+        "apgrieztu.",
+        "Отмечайте пункт только после проверки ключа: каждая отметка — ваше подтверждение для "
+        "этого пункта. Программа никогда не отмечает пункт как обратный сама."),
+    "scales.reverse_item": ("{name} is reverse-keyed", "{name} ir apgriezts",
+                            "{name} — обратный"),
+    "scales.low": ("Lowest answer code", "Zemākais atbildes kods", "Наименьший код ответа"),
+    "scales.high": ("Highest answer code", "Augstākais atbildes kods",
+                    "Наибольший код ответа"),
+    "scales.range_body": (
+        "A reversed item is written as a new column: lowest + highest − answer.",
+        "Apgriezts apgalvojums tiek ierakstīts jaunā kolonnā: zemākais + augstākais − atbilde.",
+        "Обратный пункт записывается в новый столбец: наименьший + наибольший − ответ."),
+    "scales.rule": ("Scoring rule", "Aprēķina noteikums", "Правило подсчёта"),
+    "scales.min": ("Minimum answered items", "Minimālais atbildēto apgalvojumu skaits",
+                   "Минимум отвеченных пунктов"),
+    "scales.min_hint": ("1 to {count}", "no 1 līdz {count}", "от 1 до {count}"),
+    "scales.rule_body": (
+        "There is no default. A case with fewer answered items gets no score. A sum needs every "
+        "item answered.",
+        "Noklusējuma nav. Gadījums ar mazāk atbildētiem apgalvojumiem rādītāju nesaņem. Summai "
+        "jābūt atbildētiem visiem apgalvojumiem.",
+        "Значения по умолчанию нет. Случай с меньшим числом отвеченных пунктов не получает "
+        "балла. Для суммы должны быть отвечены все пункты."),
+    "scales.confirm": ("Before the reliability", "Pirms ticamības", "Перед надёжностью"),
+    "scales.one_construct": (
+        "I checked that the items of this scale are meant to measure one construct",
+        "Es pārbaudīju, ka šīs skalas apgalvojumi ir paredzēti vienas konstrukcijas mērīšanai",
+        "Я проверил(а), что пункты этой шкалы предназначены для измерения одного конструкта"),
+    "scales.not_totals": (
+        "I checked that these columns hold answers to single items, not total or mean scores: "
+        "{names}",
+        "Es pārbaudīju, ka šajās kolonnās ir atbildes uz atsevišķiem apgalvojumiem, nevis "
+        "kopsummas vai vidējie: {names}",
+        "Я проверил(а), что в этих столбцах ответы на отдельные пункты, а не суммы или "
+        "средние: {names}"),
+    "scales.need.name": (
+        "Give the score a name: a letter first, then letters, digits or _.",
+        "Dodiet rādītājam nosaukumu: vispirms burts, tad burti, cipari vai _.",
+        "Дайте баллу имя: сначала буква, затем буквы, цифры или _."),
+    "scales.need.new_name": ("{name} is already a column: choose a new name.",
+                             "{name} jau ir kolonna: izvēlieties jaunu nosaukumu.",
+                             "{name} уже является столбцом: выберите новое имя."),
+    "scales.need.items": ("Choose 2–30 items ({count} chosen).",
+                          "Izvēlieties 2–30 apgalvojumus (izvēlēti: {count}).",
+                          "Выберите 2–30 пунктов (выбрано: {count})."),
+    "scales.need.columns": ("Not in the data on screen: {names}.",
+                            "Nav datos uz ekrāna: {names}.", "Нет в данных на экране: {names}."),
+    "scales.need.range": ("Type the lowest and the highest answer code for the reversed items.",
+                          "Ierakstiet zemāko un augstāko atbildes kodu apgrieztajiem "
+                          "apgalvojumiem.",
+                          "Введите наименьший и наибольший код ответа для обратных пунктов."),
+    "scales.need.method": ("Choose the scoring rule: mean or sum.",
+                           "Izvēlieties aprēķina noteikumu: vidējais vai summa.",
+                           "Выберите правило подсчёта: среднее или сумма."),
+    "scales.need.min": ("Type the minimum number of answered items.",
+                        "Ierakstiet minimālo atbildēto apgalvojumu skaitu.",
+                        "Введите минимальное число отвеченных пунктов."),
+    "scales.need.min_range": ("The minimum must be between 1 and {count}.",
+                              "Minimumam jābūt no 1 līdz {count}.",
+                              "Минимум должен быть от 1 до {count}."),
+    "scales.need.sum_all": ("A sum needs all {count} items answered: type {count}.",
+                            "Summai jābūt atbildētiem visiem {count} apgalvojumiem: ierakstiet "
+                            "{count}.",
+                            "Для суммы должны быть отвечены все {count} пунктов: введите "
+                            "{count}."),
+    "scales.need.items_reliability": (
+        "The reliability needs 3–40 items ({count} chosen).",
+        "Ticamībai vajag 3–40 apgalvojumus (izvēlēti: {count}).",
+        "Для надёжности нужно 3–40 пунктов (выбрано: {count})."),
+    "scales.need.score_first": ("Score the scale first (missing: {names}).",
+                                "Vispirms aprēķiniet skalu (trūkst: {names}).",
+                                "Сначала подсчитайте шкалу (нет: {names})."),
+    "scales.need.one_construct": (
+        "Confirm that the items are meant to measure one construct.",
+        "Apstipriniet, ka apgalvojumi ir paredzēti vienas konstrukcijas mērīšanai.",
+        "Подтвердите, что пункты предназначены для измерения одного конструкта."),
+    "scales.need.not_totals": (
+        "Some columns look like totals: confirm that they are single items.",
+        "Dažas kolonnas izskatās pēc kopsummām: apstipriniet, ka tie ir atsevišķi apgalvojumi.",
+        "Некоторые столбцы похожи на суммы: подтвердите, что это отдельные пункты."),
+    "scales.need.level": ("{name}: confirm it as ordinal or quantitative.",
+                          "{name}: apstipriniet to kā kārtas vai kvantitatīvu.",
+                          "{name}: подтвердите его как порядковый или количественный."),
+})
+
+
+# Stage 37 (Fable review §4 item 5): the variables of a table (LV/RU drafts).
+T.update({
+    "role.variables": ("Variables", "Mainīgie", "Переменные"),
+})

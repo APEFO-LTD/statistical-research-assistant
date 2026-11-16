@@ -213,24 +213,102 @@ def report_lines(report: ld.Report, source: ld.Source, language: str) -> tuple[s
     return title, lines
 
 
-def _path_text(value: str) -> ft.Text:
+# Issue #80 (P1): the dialog chose no colour. Its surface came from the
+# Material theme Flutter resolved (``surfaceContainerHigh``) and its text from
+# the inherited default text style, so the two could come from different
+# themes (the classic window's seed theme, the workspace's light or dark
+# theme, Windows' app mode for "system") and, on the installed first run,
+# light text stood on a near-white surface. Now the surface and every
+# foreground come from one palette of the application's tokens
+# (``workspace_tokens``), so they always belong together; every text role
+# used meets WCAG AA (4.5:1) on that surface in both themes.
+def dialog_palette(page, palette=None):
+    """The token palette the dialogs of this module are painted with: the
+    workspace's when given, else the one of the page's theme mode (Windows'
+    app mode for "system") and accent."""
+    import workspace_tokens as tk
+
+    if palette is not None:
+        return palette
+    mode = getattr(page, "theme_mode", None)
+    mode = getattr(mode, "value", mode)
+    if mode == "system":
+        brightness = getattr(page, "platform_brightness", None)
+        mode = "dark" if getattr(brightness, "value", brightness) == "dark" else "light"
+    mode = "dark" if mode == "dark" else "light"
+    primary = None
+    theme = getattr(page, "dark_theme" if mode == "dark" else "theme", None)
+    scheme = getattr(theme, "color_scheme", None)
+    if scheme is not None:
+        primary = str(getattr(scheme, "primary", "") or "").upper()
+    accent = next((name for name, roles in tk.ACCENTS.items()
+                   if roles[mode][0].upper() == primary), tk.DEFAULT_ACCENT)
+    return tk.palette(mode, accent)
+
+
+def _text(value: str, p, *, role: str = "text", size: int = 13, data=None, **extra) -> ft.Text:
+    return ft.Text(value, size=size, color=getattr(p, role), data=data, **extra)
+
+
+def _path_text(value: str, p=None) -> ft.Text:
     # Selectable text needs an explicit accessible name (see workspace_components.text).
-    return ft.Text(value, selectable=True, semantics_label=value, size=13, weight=ft.FontWeight.W_600)
+    # A long path wraps at any character instead of running out of the dialog.
+    return ft.Text(value, selectable=True, semantics_label=value, size=13,
+                   weight=ft.FontWeight.W_600, color=None if p is None else p.text,
+                   data="migration-path")
+
+
+def _buttons(p):
+    """Button styles from the palette: AA in every state the researcher sees
+    (a disabled button keeps a readable, quieter label)."""
+    disabled = ft.ControlState.DISABLED
+    default = ft.ControlState.DEFAULT
+    filled = ft.ButtonStyle(color={disabled: p.text_muted, default: p.on_accent},
+                            bgcolor={disabled: p.surface_hover, default: p.accent})
+    quiet = ft.ButtonStyle(color={disabled: p.text_muted, default: p.accent})
+    return filled, quiet
+
+
+def _content_width(page) -> int:
+    """At most 620 logical pixels, less in a narrow window (175 % display
+    scaling on a small screen) so that nothing is clipped."""
+    try:
+        width = int(getattr(page, "width", None) or 0)
+    except (TypeError, ValueError):
+        width = 0
+    return 620 if width <= 0 else max(260, min(620, width - 160))
 
 
 def migration_dialog(page, source: ld.Source, data_root: Path, language: str, *,
-                     on_finished=None, remember_later: bool = True) -> ft.AlertDialog:
+                     on_finished=None, remember_later: bool = True,
+                     palette=None) -> ft.AlertDialog:
     """The dialog that lists ``source`` and copies it on request."""
-    status = ft.Text("", size=13, data="migration-status")
-    body = ft.Column(tight=True, spacing=8, scroll=ft.ScrollMode.AUTO, width=620, controls=[
-        ft.Text(t(language, "found"), size=13), _path_text(str(source.folder)),
-        ft.Text(t(language, "into"), size=13), _path_text(str(data_root)),
-        *[ft.Text("• " + line, size=13) for line in summary_lines(source, language)],
-        ft.Text(t(language, "originals"), size=12, italic=True),
-        status,
+    p = dialog_palette(page, palette)
+    filled, quiet = _buttons(p)
+    status = _text("", p, data="migration-status")
+    # Bounded and scrollable: AlertDialog gives its content the height left
+    # on screen; long names and several sources scroll inside it, the
+    # actions stay visible below.
+    body = ft.Column(tight=True, spacing=8, scroll=ft.ScrollMode.AUTO,
+                     width=_content_width(page), data="migration-body", controls=[
+        _text(t(language, "found"), p), _path_text(str(source.folder), p),
+        _text(t(language, "into"), p), _path_text(str(data_root), p),
+        *[_text("• " + line, p, data="migration-line")
+          for line in summary_lines(source, language)],
+        _text(t(language, "originals"), p, role="text_secondary", size=12, italic=True,
+              data="migration-note"),
+        ft.Semantics(content=status, live_region=True),
     ])
-    dialog = ft.AlertDialog(modal=True, title=ft.Text(t(language, "title")), content=body,
-                            data="migration-dialog")
+    dialog = ft.AlertDialog(
+        modal=True, title=_text(t(language, "title"), p, size=20, data="migration-title",
+                                weight=ft.FontWeight.W_600),
+        content=body, data="migration-dialog", bgcolor=p.surface,
+        shadow_color="#000000", semantics_label=t(language, "title"),
+        title_text_style=ft.TextStyle(color=p.text),
+        content_text_style=ft.TextStyle(color=p.text),
+        shape=ft.RoundedRectangleBorder(radius=12),
+        inset_padding=ft.Padding.symmetric(horizontal=24, vertical=24),
+        actions_overflow_button_spacing=8)
 
     def close(e=None):
         page.pop_dialog()
@@ -259,14 +337,17 @@ def migration_dialog(page, source: ld.Source, data_root: Path, language: str, *,
 
         report = await asyncio.to_thread(ld.copy_items, source, data_root, progress=progress)
         title, lines = report_lines(report, source, language)
-        dialog.title = ft.Text(title)
-        body.controls = [ft.Text(line, size=13, data="migration-result") for line in lines]
-        dialog.actions = [ft.TextButton(t(language, "close"), on_click=close,
-                                        data="migration-close")]
+        dialog.title = _text(title, p, size=20, data="migration-title",
+                             weight=ft.FontWeight.W_600)
+        body.controls = [_text(line, p, data="migration-result") for line in lines]
+        dialog.actions = [ft.TextButton(t(language, "close"), on_click=close, style=quiet,
+                                        data="migration-close", autofocus=True)]
         page.update()
 
-    copy_button = ft.FilledButton(t(language, "copy"), on_click=copy, data="migration-copy")
-    later_button = ft.TextButton(t(language, "later"), on_click=later, data="migration-later")
+    copy_button = ft.FilledButton(t(language, "copy"), on_click=copy, style=filled,
+                                  data="migration-copy")
+    later_button = ft.TextButton(t(language, "later"), on_click=later, style=quiet,
+                                 data="migration-later")
     dialog.actions = [later_button, copy_button]
     return dialog
 
@@ -312,7 +393,7 @@ def open_folder(path: Path) -> None:
 
 
 async def find_in_chosen_folder(page, chosen: str | None, data_root: Path,
-                                language: str) -> str:
+                                language: str, *, palette=None) -> str:
     """Look in a folder the researcher chose; show the dialog or say why not."""
     if not chosen:
         return ""
@@ -320,7 +401,7 @@ async def find_in_chosen_folder(page, chosen: str | None, data_root: Path,
     pending = [s for s in sources if s.pending]
     if pending:
         page.show_dialog(migration_dialog(page, pending[0], data_root, language,
-                                          remember_later=False))
+                                          remember_later=False, palette=palette))
         return ""
     if sources:
         return t(language, "nothing_new", folder=chosen)
@@ -340,12 +421,15 @@ def folder_picker(page) -> ft.FilePicker:
     return picker
 
 
-def show_data_folder(page, source_root: Path, language: str) -> ft.AlertDialog:
+def show_data_folder(page, source_root: Path, language: str, *,
+                     palette=None) -> ft.AlertDialog:
     """Classic window: Settings → Your data…"""
     from app_paths import data_root
 
+    p = dialog_palette(page, palette)
+    _, quiet = _buttons(p)
     root = data_root(source_root)
-    message = ft.Text("", size=13, data="data-folder-message")
+    message = _text("", p, data="data-folder-message")
     picker = folder_picker(page)
 
     async def find(e=None):
@@ -356,25 +440,34 @@ def show_data_folder(page, source_root: Path, language: str) -> ft.AlertDialog:
         except Exception:
             chosen = None
         page.pop_dialog()
-        note = await find_in_chosen_folder(page, chosen, root, language)
+        note = await find_in_chosen_folder(page, chosen, root, language, palette=p)
         if note:
-            page.show_dialog(_note_dialog(page, note, language))
+            page.show_dialog(_note_dialog(page, note, language, palette=p))
 
     dialog = ft.AlertDialog(
-        modal=False, title=ft.Text(t(language, "folder_title")), data="data-folder-dialog",
-        content=ft.Column(tight=True, spacing=8, width=600, controls=[
-            ft.Text(t(language, "folder_body"), size=13), _path_text(str(root)),
-            ft.Text(t(language, "folder_note"), size=12, italic=True), message]),
-        actions=[ft.TextButton(t(language, "find"), on_click=find, data="data-folder-find"),
+        modal=False, title=_text(t(language, "folder_title"), p, size=20,
+                                 weight=ft.FontWeight.W_600),
+        data="data-folder-dialog", bgcolor=p.surface,
+        content=ft.Column(tight=True, spacing=8, width=_content_width(page),
+                          scroll=ft.ScrollMode.AUTO, controls=[
+            _text(t(language, "folder_body"), p), _path_text(str(root), p),
+            _text(t(language, "folder_note"), p, role="text_secondary", size=12,
+                  italic=True), message]),
+        actions=[ft.TextButton(t(language, "find"), on_click=find, style=quiet,
+                               data="data-folder-find"),
                  ft.TextButton(t(language, "open_folder"), on_click=lambda e: open_folder(root),
-                               data="data-folder-open"),
-                 ft.TextButton(t(language, "close"), on_click=lambda e: page.pop_dialog())])
+                               style=quiet, data="data-folder-open"),
+                 ft.TextButton(t(language, "close"), on_click=lambda e: page.pop_dialog(),
+                               style=quiet)])
     page.show_dialog(dialog)
     return dialog
 
 
-def _note_dialog(page, note: str, language: str) -> ft.AlertDialog:
-    return ft.AlertDialog(title=ft.Text(t(language, "folder_title")),
-                          content=ft.Text(note, size=13, data="data-folder-note"),
-                          actions=[ft.TextButton(t(language, "close"),
+def _note_dialog(page, note: str, language: str, *, palette=None) -> ft.AlertDialog:
+    p = dialog_palette(page, palette)
+    _, quiet = _buttons(p)
+    return ft.AlertDialog(title=_text(t(language, "folder_title"), p, size=20,
+                                      weight=ft.FontWeight.W_600), bgcolor=p.surface,
+                          content=_text(note, p, data="data-folder-note"),
+                          actions=[ft.TextButton(t(language, "close"), style=quiet,
                                                  on_click=lambda e: page.pop_dialog())])

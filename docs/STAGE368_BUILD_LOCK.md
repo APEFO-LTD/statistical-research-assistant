@@ -24,6 +24,8 @@ Issue #62, P0 "reproducible runtime and secure release". This document lists exa
   - It is a universal `uv pip compile` resolution with `--generate-hashes`, made as of `--exclude-newer 2026-11-09T19:00:00Z`.
   - It pins 49 packages, each with the SHA-256 of every published file.
   - These are **the same 49 versions** that the green CI runs of 2026-11-09 installed (compared line by line), so no version was changed to make the lock.
+  - **Stage 37 (#67):** `pyreadstat>=1.3,<2` was added to `requirements.in` and the lock regenerated with the same command and `--exclude-newer` time. It now pins **50** packages: pyreadstat 1.3.7 (its dependencies narwhals 2.28.0 and numpy 2.5.4 were already pinned). No other pin or hash changed; `requirements-dev.txt` regenerates byte-identical. The lock holds the hash of `pyreadstat-1.3.7-cp312-cp312-win_amd64.whl` (`7b65bd28…4609`). Details: `docs/STAGE37_EXPORT.md`.
+  - **Stage 37 integration (`claude/stage37-integration`, `docs/STAGE37_INTEGRATION.md`):** the methods branch moves pingouin to the development lock (§5.3) and the export branch adds pyreadstat. `requirements.in` is the union of both, and both locks were regenerated once with the header's command and `--exclude-newer 2026-11-09T19:00:00Z`. The runtime lock pins **42** packages: the methods lock (41) plus pyreadstat 1.3.7 with the same hashes as on the export branch. No other pin, marker or hash changed. `requirements-dev.txt` (82 packages) is byte-identical to the methods branch's.
 - `flet build windows` installs this file in pip's hash-checking mode. flet-cli 1.1.2 supports it: "A file with hashes is only checked".
 
 | Package | Version | | Package | Version |
@@ -33,16 +35,15 @@ Issue #62, P0 "reproducible runtime and secure release". This document lists exa
 | statsmodels | 0.15.0 | | matplotlib | 3.11.2 |
 | python-docx | 1.2.0 | | openpyxl | 3.1.5 |
 | pypdf | 6.21.4 | | pypdfium2 (PDFium) | 5.15.2 |
-| Pillow | 12.3.0 | | pingouin | 0.7.0 |
-| scikit-learn | 1.9.1 | | seaborn | 0.13.2 |
-| xarray | 2026.9.0 | | cryptography | 50.0.2 |
-| lxml | 6.1.3 | | threadpoolctl | 3.8.0 |
+| Pillow | 12.3.0 | | pyreadstat | 1.3.7 |
+| cryptography | 50.0.2 | | lxml | 6.1.3 |
+| threadpoolctl | 3.8.0 | | | |
 
-The remaining 31 are transitive dependencies; all of them are in `requirements.txt`.
+The remaining 27 of the 42 are transitive dependencies; all of them are in `requirements.txt`. (Stage 36.8 RC: 49 packages, with pingouin 0.7.0, scikit-learn 1.9.1, seaborn 0.13.2 and xarray 2026.9.0, which are now in the development lock only; see §5.3.)
 
 ### 2.2 Build and test tools (never bundled)
 
-`requirements-dev.in` → `requirements-dev.txt`: 58 packages with hashes, resolved against the runtime lock, so shared packages have one version (tested). It contains:
+`requirements-dev.in` → `requirements-dev.txt`: 82 packages with hashes (58 in the Stage 36.8 RC; Stage 37 adds pingouin, the test-only oracle, and its dependencies), resolved against the runtime lock, so shared packages have one version (tested). It contains:
 - flet-cli 1.1.2, preinstalled so that `flet build` no longer downloads its own;
 - flet-web 1.1.2, so the browser checks run the client the program embeds;
 - zstandard 0.25.0;
@@ -191,13 +192,13 @@ The 10 PE files, the app's `.pyc` names and `build_info.json` remain. Making the
 
 ## 5. Licences
 
-The SBOM (`diagnostics/sbom.cdx.json` of every build) has 228 components: 49 Python packages, the embedded CPython, Flutter, the template, 138 Dart packages and 38 MSYS2 packages. Licence metadata of the Python packages is read from the installed distributions (`License-Expression` first). For five packages whose metadata has only a classifier or the full text, it is read from the licence file each wheel ships (`tools/build_sbom.py`). Dart packages carry their licences in the program's `data/flutter_assets/NOTICES.Z`, which Flutter generates.
+The SBOM (`diagnostics/sbom.cdx.json` of every build) has 228 components: 49 Python packages (Stage 37 integration: 42 Python packages, plus ReadStat listed inside pyreadstat), the embedded CPython, Flutter, the template, 138 Dart packages and 38 MSYS2 packages. Licence metadata of the Python packages is read from the installed distributions (`License-Expression` first). For five packages whose metadata has only a classifier or the full text, it is read from the licence file each wheel ships (`tools/build_sbom.py`). Dart packages carry their licences in the program's `data/flutter_assets/NOTICES.Z`, which Flutter generates.
 
 ### 5.1 Copyleft terms found (13 components)
 
 | Component | Licence | Where it runs | What it requires before a public release |
 |---|---|---|---|
-| **pingouin 0.7.0** | **GPL-3.0** | imported **in the program's own process** (`reliability.py`, Cronbach's α and its Feldt interval) | **Owner decision (P0 blocker for a public release).** The repository has **no LICENSE file**, so no licence to the program itself is granted. Distributing it with a GPL-3.0 library imported into the same process makes the combined work subject to GPL-3.0. Two ways out: (a) the owner licenses Statistical Research Assistant under GPL-3.0-or-later (all other components are compatible) and ships the source; or (b) α and the Feldt interval are computed in-house, verified against pingouin in the tests (pingouin moves to the build/test lock), and pingouin leaves the bundle. Option (b) is a change to a validated numerical path; it needs an oracle comparison to 1e-12 and the owner's go-ahead. Not done in this RC. |
+| **pingouin 0.7.0** | **GPL-3.0** | imported **in the program's own process** (`reliability.py`, Cronbach's α and its Feldt interval) | **Owner decision (P0 blocker for a public release).** The repository has **no LICENSE file**, so no licence to the program itself is granted. Distributing it with a GPL-3.0 library imported into the same process makes the combined work subject to GPL-3.0. Two ways out: (a) the owner licenses Statistical Research Assistant under GPL-3.0-or-later (all other components are compatible) and ships the source; or (b) α and the Feldt interval are computed in-house, verified against pingouin in the tests (pingouin moves to the build/test lock), and pingouin leaves the bundle. Option (b) is a change to a validated numerical path; it needs an oracle comparison to 1e-12 and the owner's go-ahead. Not done in this RC. **Stage 37 (`claude/stage37-methods`, one separate commit the owner can drop):** option (b) is implemented. See §5.3. |
 | jbigkit 2.1 | GPL-2.0-or-later | `libjbig` DLL loaded by libtiff inside `tesseract.exe`, a separate process the program starts | Ship the licence text (done: `bundled_ocr/…/licenses/`, `THIRD_PARTY_NOTICES.txt`). Offer the corresponding source: attach the pinned MSYS2 source packages (or a written offer) to each public release. Not yet attached; release checklist item |
 | libiconv, gettext-runtime (libintl), libunistring, libidn2 | LGPL-2.1+/LGPL-3.0+ (or dual with GPL) | DLLs of the OCR engine | Licence texts shipped (done). Source available (same as above). DLLs are replaceable separate files (done) |
 | libgcc, libstdc++, libgomp | GPL-3.0+ WITH GCC Runtime Library Exception 3.1 | DLLs of the OCR engine | The exception permits distribution with the compiled program; licence texts shipped |
@@ -206,9 +207,40 @@ The SBOM (`diagnostics/sbom.cdx.json` of every build) has 228 components: 49 Pyt
 
 Everything else is permissive (MIT, BSD, Apache-2.0, PSF, MIT-CMU, Zlib, CC0). Packages the OCR lock lists but does not ship (ICU, GnuTLS, nettle, …) are not in the program. The full table is in each build's `diagnostics/licenses.md`.
 
+**Stage 37 (#67), `.sav` export and import.** pyreadstat 1.3.7 is Apache-2.0 (its `License` metadata). The ReadStat C library compiled into its extension modules is MIT (copyright Evan Miller); both texts are in the wheel's `pyreadstat-1.3.7.dist-info/licenses/LICENSE`, which the bundle keeps (the build's cleanup removes only the `.c`, `.pyx` and `.pxd` sources). `tools/build_sbom.py` lists pyreadstat with `Apache-2.0` and ReadStat as a component inside it with `MIT` (`BUNDLED_IN_WHEEL`), and both appear in `licenses.md`. Neither is copyleft; the copyleft list above is unchanged.
+
 ### 5.2 The project's own licence
 
 There is no `LICENSE` file. Before any public distribution the owner must choose one. That choice also settles the pingouin question above. This RC does not add a licence: it is the owner's decision.
+
+### 5.3 Stage 37: the in-house α (option b, one separate commit)
+
+**What changed.**
+
+- `cronbach.py` computes Cronbach's α, Feldt's interval and α if an item is deleted from the published formulas (Cronbach 1951; Feldt 1965; Feldt, Woodruff & Salih 1987). No pingouin code was used.
+- `reliability.py` calls it. The Feldt bounds are rounded to three decimals, as every earlier version reported them.
+- `item_diagnostics.py` names the method "computed by this program from the published formula", and its provenance no longer lists pingouin. `project_store.LIBRARIES` drops pingouin and scikit-learn.
+
+**Validation** (`tests/test_cronbach.py`).
+
+- Hand calculation with exact fractions.
+- The written-out Feldt formula with `f.isf`.
+- pingouin as a **test-only oracle**:
+  - α and α if deleted agree to 1e-12. Observed: at most 2.7e-15 over 310 data sets. They are not always bit-identical, because the program sums item variances and the total-score variance directly while pingouin sums the covariance matrix.
+  - The 3-decimal Feldt bounds are identical in all 310 data sets. They are also identical to what the program reported before, on every data set and on the bundled example.
+- **Difference of the oracle, not of the program.** Given rows with missing answers, pingouin's own `nan_policy="listwise"` keeps the rows before deletion in Feldt's n. The program always passed the complete cases and still uses their n.
+- A subprocess test: an α and the item diagnostics never import pingouin or scikit-learn.
+
+**Locks.**
+
+- pingouin moves from `requirements.in` to `requirements-dev.in`.
+- Both hashed locks were regenerated with the header's flags and `--exclude-newer 2026-11-09T19:00:00Z`.
+- The runtime lock loses exactly cloudpickle, joblib, pandas-flavor, pingouin, scikit-learn, seaborn, tabulate and xarray (49 → 41 packages). Every other pin (version, marker and hashes) is unchanged.
+- The development lock gains pingouin and those packages at the same versions and hashes.
+- seaborn and scikit-learn are not imported by the program, so they are not kept as explicit requirements.
+- The main unit-test job installs both locks, so the oracle runs. The pruned-runtime job keeps the runtime lock alone, and the pingouin tests skip there.
+
+**The owner's decision remains.** Choosing the program's licence is still the owner's decision; this commit does not choose one, and it adds no LICENSE file. With the commit, the bundle no longer contains a GPL-3.0 Python library in the program's process. The OCR runtime's GPL/LGPL DLLs (§5.1) still need their notices and the corresponding source. Consult licensing expertise before any public or commercial distribution. Dropping the commit restores option (a)'s situation unchanged.
 
 ## 6. Supported operating systems and architectures
 

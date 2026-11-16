@@ -18,6 +18,10 @@ on:
       - "data_ui.py"
       - "legacy_data.py"
       - "research_app.py"
+      - "app_preferences.py"
+      - "user_settings.py"
+      - "window_state.py"
+      - "interface_layout.py"
       - "workspace_*.py"
       - "project_*.py"
       - "import_session.py"
@@ -35,6 +39,43 @@ on:
       - "tests/synthetic_documents.py"
       - "tests/stage36_fixtures.py"
       - "tests/fixtures/stage36/generate_fixtures.py"
+      # Stage 37 (#67): the export journey's modules and its fixture.
+      - "data_export.py"
+      - "export_bundle.py"
+      - "csv_safety.py"
+      - "data_loader.py"
+      - "import_workflow.py"
+      - "tests/fixtures/stage37/generate_master_fixture.py"
+      # Stage 37 integration (docs/STAGE37_INTEGRATION.md): the modules the Stage 37
+      # journeys run (stage37-hypothesis, the methods' engines, research-library).
+      # workspace_export.py and workspace_library.py are covered by workspace_*.py.
+      - "research_workflow.py"
+      - "research_report.py"
+      - "interpretation_docx.py"
+      - "report_docx.py"
+      - "analysis_runs.py"
+      - "correlation.py"
+      - "batch_correlation.py"
+      - "reliability.py"
+      - "cronbach.py"
+      - "scale_register.py"
+      - "variable_tables.py"
+      - "item_diagnostics.py"
+      - "linear_model.py"
+      - "process_models.py"
+      - "process_charts.py"
+      - "process_reporting.py"
+      - "process_text.py"
+      - "result_store.py"
+      - "interpretation_i18n.py"
+      - "interpretation_wizard.py"
+      - "data_preparation.py"
+      - "research_library.py"
+      - "library_ask.py"
+      - "ai_assist.py"
+      - "ai_context.py"
+      - "ai_providers.py"
+      - "tests/library_fixtures.py"
       - ".github/workflows/windows-gui-e2e.yml"
 
 permissions:
@@ -85,7 +126,7 @@ jobs:
           "EXE_PATH=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Researcher journeys on the packaged application
         shell: pwsh
-        timeout-minutes: 45
+        timeout-minutes: 75
         run: |
           python tools/windows_gui_e2e.py "$env:EXE_PATH" gui-e2e --probe
           if ($LASTEXITCODE -ne 0) { throw "Packaged GUI journeys failed (see gui-e2e/gui-e2e-result.json)" }

@@ -505,7 +505,7 @@ class PreparationHistoryTests(unittest.TestCase):
 
     def choose(self, ws, label, value):
         dropdown = self.control(ws, ft.Dropdown, label)
-        dropdown.value = value
+        ws.client_sets(dropdown, value=value)
         if dropdown.on_select is not None:
             ws.dispatch(dropdown.on_select, SimpleNamespace(control=dropdown, data=value))
 
@@ -514,12 +514,12 @@ class PreparationHistoryTests(unittest.TestCase):
         ws.click("data-prepare")
         self.choose(ws, "Transformation", "reverse")
         self.choose(ws, "Source variable", "ZEP04")
-        self.control(ws, ft.TextField, "New variable name").value = "ZEP04_r"
+        ws.client_sets(self.control(ws, ft.TextField, "New variable name"), value="ZEP04_r")
         self.press(ws, "Apply transformation")
         self.choose(ws, "Transformation", "scale")
         for item in ("ZEP01", "ZEP02", "ZEP03", "ZEP04_r"):
-            self.control(ws, ft.Checkbox, item).value = True
-        self.control(ws, ft.TextField, "New variable name").value = "ZEP_mean4"
+            ws.client_sets(self.control(ws, ft.Checkbox, item), value=True)
+        ws.client_sets(self.control(ws, ft.TextField, "New variable name"), value="ZEP_mean4")
         self.press(ws, "Apply transformation")
         self.press(ws, "Use working copy in analysis")
 

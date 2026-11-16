@@ -114,7 +114,7 @@ class PsqLikeWizardTests(Base):
         ws.click("imp-step-items")
         ws.click("imp-item-3")
         field = ws.find("imp-wording", ft.TextField)   # read when "Apply" is clicked
-        field.value = s.instrument.questions[3].question["prompt"] + " (checked)"
+        ws.client_sets(field, value=s.instrument.questions[3].question["prompt"] + " (checked)")
         ws.click("imp-wording-apply")
         self.assertTrue(all(s.checks.values()), "a wording correction keeps them too")
         self.assertFalse(ws.find("imp-create-draft").disabled)

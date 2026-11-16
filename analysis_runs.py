@@ -354,6 +354,44 @@ def run_matrix(df: pd.DataFrame, items: list[str], method: str, confirmed: bool)
     )
 
 
+def _table_report(result, lines=()) -> str:
+    table = result.tables[0]
+    rows = ["\t".join(table.columns)] + ["\t".join(row) for row in table.rows]
+    return "\n".join([result.title, *lines, "", *rows, "", *result.warnings])
+
+
+def run_descriptives_many(df: pd.DataFrame, variables: list[str]) -> AnalysisRun:
+    """Stage 37 (Fable review §4 item 5): one table of descriptives for many
+    variables (variable_tables.describe_many)."""
+    from variable_tables import describe_many
+
+    result = describe_many(df, list(variables))
+    table = result.tables[0]
+    return AnalysisRun(
+        "descriptive", result.title, _table_report(result), None, result,
+        summary=result.title, warnings=tuple(result.warnings),
+        tables=(ResultTable(table.title, table.columns, table.rows),),
+        inputs={"variables": list(variables)})
+
+
+def run_correlation_table(df: pd.DataFrame, items: list[str], method: str, adjust: str,
+                          pearson_confirmed: bool) -> AnalysisRun:
+    """Stage 37 (Fable review §4 item 5): every pair of the variables, with N,
+    95% CI and p adjusted as one family (variable_tables.correlation_table)."""
+    from variable_tables import correlation_table
+
+    result = correlation_table(df, list(items), method=method, adjust=adjust,
+                               pearson_confirmed=pearson_confirmed)
+    table = result.tables[0]
+    return AnalysisRun(
+        "batch_correlation", result.title, _table_report(result), None, result,
+        summary=result.title, guide="\n".join(result.warnings),
+        warnings=tuple(result.warnings),
+        tables=(ResultTable(table.title, table.columns, table.rows),),
+        inputs={"items": list(items), "method": method, "adjust": adjust,
+                "seed": result.inputs["seed"], "resamples": result.inputs["resamples"]})
+
+
 def run_chi_square(df: pd.DataFrame, a: str, b: str, confirmed: bool) -> AnalysisRun:
     analysis = analyze_chi_square(df, a, b, bool(confirmed))
     png = make_chi_square_chart(analysis)
@@ -648,3 +686,97 @@ def run_batch_groups(df: pd.DataFrame, group: str, outcomes: list[str], *, scale
         tables=tuple(ResultTable(t.title, t.columns, t.rows) for t in (table, *extra)),
         inputs={"group": group, "outcomes": list(outcomes), "adjust": adjust,
                 "two_group_method": two_group_method if count == 2 else None})
+
+
+# ------------------------------------------------- Stage 37 (Issue #66): models
+PROCESS_SECTIONS = {"4": "mediation", "1": "moderation", "7": "conditional_process",
+                    "14": "conditional_process"}
+PROCESS_TITLES = {"4": "Mediation (PROCESS-equivalent Model 4)",
+                  "1": "Moderation (PROCESS-equivalent Model 1)",
+                  "7": "Conditional process (PROCESS-equivalent Model 7)",
+                  "14": "Conditional process (PROCESS-equivalent Model 14)"}
+
+
+def run_process(df: pd.DataFrame, *, model: str, x: str, y: str, mediators=(), w=None,
+                covariates=(), center: bool = False, hc3: bool = False,
+                resamples: int = 5000, seed: int | None = None, sensitivity: int = 0,
+                language: str = "en") -> AnalysisRun:
+    """A path model the researcher specified (Models 1, 4, 7 and 14).
+
+    The model number, the mediators and the moderated path come from the
+    caller; nothing is chosen here. Tables, the report, the summary, the
+    interpretation and the methods text are in ``language`` (EN/LV/RU)."""
+    from process_charts import make_process_chart
+    from process_models import DEFAULT_SEED, ProcessSpec, fit_process, sensitivity_simulation
+    from process_reporting import (format_process_report, methods_text, notes,
+                                   process_interpretation, process_summary, process_tables)
+
+    spec = ProcessSpec(str(model), x, y, tuple(mediators or ()), w or None,
+                       tuple(covariates or ()), center=bool(center), hc3=bool(hc3),
+                       resamples=int(resamples),
+                       seed=DEFAULT_SEED if seed is None else int(seed))
+    result = fit_process(df, spec)
+    sensitivity_result = (sensitivity_simulation(result, replications=int(sensitivity))
+                          if int(sensitivity) else None)
+    png = make_process_chart(result)
+    report = format_process_report(result, sensitivity_result, language)
+    tables = tuple(ResultTable(t.title, t.columns, t.rows)
+                   for t in process_tables(result, language, sensitivity_result))
+    interpretation = process_interpretation(result, language)
+    inputs = {"model": spec.model, "x": x, "y": y, "mediators": list(spec.mediators),
+              "w": spec.w, "covariates": list(spec.covariates), "center": spec.center,
+              "hc3": spec.hc3, "missing": "listwise"}
+    if result.bootstrap is not None:
+        inputs.update(resamples=result.bootstrap.resamples, seed=result.bootstrap.seed,
+                      valid_resamples=result.bootstrap.valid,
+                      bootstrap_indices_sha256=result.bootstrap.indices_sha256)
+    if sensitivity_result is not None:
+        inputs.update(sensitivity_replications=sensitivity_result.replications,
+                      sensitivity_seed=sensitivity_result.seed)
+    return AnalysisRun(
+        PROCESS_SECTIONS[spec.model], PROCESS_TITLES[spec.model], report, png, result,
+        summary=process_summary(result, language), interpretation="\n".join(interpretation),
+        guide=methods_text(result, language), warnings=tuple(notes(result, language)),
+        tables=tables, inputs=inputs)
+
+
+LINEAR_MODEL_MESSAGE = ("Review linearity, independence, outliers, the measurement level of "
+                        "every predictor and the reference categories first.")
+
+
+def run_linear_model(df: pd.DataFrame, outcome: str, predictors=(), factors=(), *,
+                     product=None, reference: str = "first", center: bool = False,
+                     hc3: bool = False, confirmed: bool = False) -> AnalysisRun:
+    """OLS with quantitative predictors, dummy-coded categorical covariates
+    (stated reference category) and an optional product term."""
+    from linear_model import LinearSpec, fit_linear_model, format_linear_report, linear_tables
+    from process_charts import make_linear_model_chart
+
+    if not confirmed:
+        raise ValueError(LINEAR_MODEL_MESSAGE)
+    products = (tuple(product),) if product else ()
+    result = fit_linear_model(df, LinearSpec(outcome, tuple(predictors or ()),
+                                             tuple(factors or ()), reference=reference,
+                                             products=products, center=bool(center),
+                                             hc3=bool(hc3)))
+    summary = (f"N = {result.n} | R² = {result.r_squared:.3f} | "
+               f"Adjusted R² = {result.adj_r_squared:.3f}\n"
+               f"F({result.df_model}, {result.df_resid}) = {result.f_value:.2f}, "
+               f"{apa_p_value(result.f_p)}")
+    references = "; ".join(f"{factor}: reference {category}"
+                           for factor, category in result.references.items())
+    interpretation = (
+        f"The model is associated with {100 * result.r_squared:.1f}% of the variation of "
+        f"{outcome} in this sample. Each coefficient is the difference in {outcome} for one "
+        "unit of its predictor (or for a category against its reference category) with the "
+        "other terms held constant; it is an association, not a causal effect."
+        + (f" Dummy coding: {references}." if references else ""))
+    return AnalysisRun(
+        "linear_model", "Linear model with categorical covariates", format_linear_report(result),
+        make_linear_model_chart(result), result, summary=summary, interpretation=interpretation,
+        warnings=tuple(result.warnings),
+        tables=tuple(ResultTable(t.title, t.columns, t.rows) for t in linear_tables(result)),
+        inputs={"outcome": outcome, "predictors": list(predictors or ()),
+                "factors": list(factors or ()), "product": list(product or ()),
+                "reference": reference, "references": dict(result.references),
+                "center": bool(center), "hc3": bool(hc3), "missing": "listwise"})

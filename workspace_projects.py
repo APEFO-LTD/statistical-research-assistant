@@ -267,6 +267,10 @@ class ProjectHub:
         for name in ("analyze", "results", "reports"):
             self.app.pages[name].reset()
         self.app.pages["project"].hypotheses.reset()
+        data = self.app.pages.get("data")
+        if data is not None and getattr(data, "export", None) is not None:
+            # The previous project's export outcome (review integration F3).
+            data.export.feedback = None
 
     async def create(self, e=None):
         title = self.new_title.strip()
@@ -282,17 +286,23 @@ class ProjectHub:
         # A new project starts a new analysis: nothing chosen for another
         # project's data (or its research task) carries over.
         self._reset_pages()
-        # The new project opens on its own page, with the first step offered.
+        # The new project opens on its own page, with the first step offered
+        # and the keyboard focus on it (U11).
+        self.app.request_focus("next-open-data")
         self._done(self.app.t("project.created", title=info.title), route="project")
 
-    async def open(self, project_id: str):
+    async def open(self, project_id: str, route: str = "project"):
+        """Open the project on its own page (or on ``route``: Home's
+        "Continue where you left off", Stage 37)."""
         try:
             info = self.binding.open(project_id)
         except (ProjectError, OSError) as error:
             self._failed(error)
             return
         self._reset_pages()
-        self._done(self.app.t("project.opened", title=info.title), route="project")
+        if route == "project":
+            self.app.request_focus("project-next-action", first_inside=True)
+        self._done(self.app.t("project.opened", title=info.title), route=route)
         await self.verify()
 
     async def verify(self):
@@ -308,10 +318,15 @@ class ProjectHub:
         self._done(self.app.t("project.closed"))
 
     async def duplicate(self, project_id: str):
+        warnings: list[str] = []
         try:
-            info = await asyncio.to_thread(self.binding.duplicate, project_id)
+            info = await asyncio.to_thread(self.binding.duplicate, project_id, warnings)
         except (ProjectError, OSError) as error:
             self._failed(error)
+            return
+        if warnings:          # a research library that cannot be read was left out
+            self._done(self.app.t("project.duplicated", title=info.title) + " "
+                       + self.app.t("project.library_left_out_copy"), "warning")
             return
         self._done(self.app.t("project.duplicated", title=info.title))
 
@@ -336,8 +351,9 @@ class ProjectHub:
             title=wc.heading(ui, ui.t("project.delete_title", title=title), tk.TYPE_TITLE_S),
             content=ft.Container(wc.text(ui, ui.t("project.delete_body"), tk.TYPE_BODY), width=460),
             actions=[
+                # The safe answer has the keyboard focus when the dialog opens (U11).
                 wc.button(ui, ui.t("common.cancel"), lambda e: self.app.page.pop_dialog(),
-                          kind="quiet", data="project-delete-cancel"),
+                          kind="quiet", data="project-delete-cancel", autofocus=True),
                 wc.button(ui, ui.t("project.delete_confirm"), delete, kind="primary",
                           icon=ft.Icons.DELETE_OUTLINE, data="project-delete-confirm"),
             ],
@@ -362,10 +378,50 @@ class ProjectHub:
 
     async def backup(self, project_id: str, title: str):
         app = self.app
+        warnings: list[str] = []
         outcome = await app.save_file(
             app.t("project.backup_title"), _file_name(title), "sra",
-            lambda path: self.binding.export(project_id, path, app.survey_root),
+            lambda path: self.binding.export(project_id, path, app.survey_root, warnings),
             announce=lambda path: app.t("project.backup_saved", path=path))
+        message, tone = outcome.message, outcome.tone
+        if warnings and outcome.saved:   # a research library that cannot be read was left out
+            message, tone = message + " " + app.t("project.library_left_out_backup"), "warning"
+            app.status(message, tone)
+        self._done(message, tone)
+
+    def confirm_copy_older(self, project_id: str, title: str):
+        """Stage 37.0b (design §8.6, AC-11): a copy that version 36.x opens.
+        The warning comes first: the protocol records are not carried into
+        the copy; this project is not changed."""
+        ui, binding = self.app.ui, self.binding
+        count = (len(binding.project.protocol_records())
+                 if binding.active and binding.project.id == project_id else 0)
+
+        async def save(e=None):
+            self.app.page.pop_dialog()
+            await self.copy_older(project_id, title)
+
+        dialog = ft.AlertDialog(
+            modal=True,
+            title=wc.heading(ui, ui.t("project.copy_older_title"), tk.TYPE_TITLE_S),
+            content=ft.Container(wc.text(ui, ui.t("project.copy_older_body", count=count),
+                                         tk.TYPE_BODY, data="project-copy-older-body"),
+                                 width=520),
+            actions=[
+                wc.button(ui, ui.t("common.cancel"), lambda e: self.app.page.pop_dialog(),
+                          kind="quiet", data="project-copy-older-cancel"),
+                wc.button(ui, ui.t("project.copy_older_confirm"), save, kind="primary",
+                          icon=ft.Icons.SAVE_ALT, data="project-copy-older-confirm"),
+            ],
+        )
+        self.app.page.show_dialog(dialog)
+
+    async def copy_older(self, project_id: str, title: str):
+        app = self.app
+        outcome = await app.save_file(
+            app.t("project.copy_older_dialog"), _file_name(title)[:-4] + "_36x.sra", "sra",
+            lambda path: self.binding.export_for_format(project_id, path, app.survey_root)[0],
+            announce=lambda path: app.t("project.copy_older_saved", path=path))
         self._done(outcome.message, outcome.tone)
 
     async def _on_backup_picked(self, e):
@@ -451,6 +507,9 @@ class ProjectPage:
             wc.button(ui, ui.t("project.backup"),
                       wc.handler(hub.backup, info.id, info.title),
                       icon=ft.Icons.SAVE_ALT, data="project-backup-current"),
+            wc.button(ui, ui.t("project.copy_older"),
+                      lambda e, i=info.id, t=info.title: hub.confirm_copy_older(i, t),
+                      kind="quiet", icon=ft.Icons.HISTORY, data="project-copy-older"),
             wc.button(ui, ui.t("project.all_projects"), lambda e: app.navigate("home"),
                       kind="quiet", icon=ft.Icons.FOLDER_COPY_OUTLINED, data="project-all"),
             wc.button(ui, ui.t("project.close"), hub.close, kind="quiet", icon=ft.Icons.CLOSE,
@@ -470,16 +529,45 @@ class ProjectPage:
         if binding.message:
             key, tone = binding.message
             body.append(wc.notice(ui, ui.t(key), tone, data="project-message"))
+        body += self._older_copy(binding.project)
         if hub.feedback:
             body.append(wc.notice(ui, hub.feedback[0], hub.feedback[1], data="project-feedback"))
         views = self.hypotheses.views()
         body += [self._next(datasets), self._question(), self.plan.build(),
                  self.hypotheses.list_card(views), self._sources(datasets), self._questionnaires(),
-                 self._results(), self._report()]
+                 self._results(), self._report(), self._library()]
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="project-dashboard",
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 
     # ------------------------------------------------------ question
+    def _older_copy(self, project) -> list[ft.Control]:
+        """Review E: a copy made for an older version that came back says what
+        it does not carry, until the researcher has read it."""
+        ui = self.app.ui
+        notice = project.older_copy_notice()
+        if notice is None:
+            return []
+        parts = [ui.t("project.older_copy_back", when=f"{_local_time(notice['at']):%Y-%m-%d %H:%M}",
+                      count=notice["left_out"], format=notice["format"])]
+        if notice["dropped"]:
+            items = "; ".join(f"H{number}: " + ", ".join(
+                ui.t(f"project.older_copy_field.{f}") for f in fields)
+                for number, fields in notice["dropped"])
+            parts.append(ui.t("project.older_copy_fields", items=items))
+        if notice["questions_dropped"]:
+            parts.append(ui.t("project.older_copy_questions"))
+        if notice["missing_snapshot"]:
+            parts.append(ui.t("project.older_copy_snapshots", count=notice["missing_snapshot"]))
+        parts.append(ui.t("project.older_copy_nothing_restored"))
+        return [ft.Column([
+            wc.notice(ui, " ".join(parts), "warning", data="project-older-copy-back"),
+            wc.button(ui, ui.t("project.older_copy_noted"), self._note_older_copy,
+                      kind="quiet", data="project-older-copy-noted")], spacing=tk.SPACE_1)]
+
+    def _note_older_copy(self, e=None):
+        self.app.projects.project.note_older_copy()
+        self.app.render()
+
     def _question(self) -> ft.Control:
         """The research question or hypothesis: the first step of the journey."""
         app, ui = self.app, self.app.ui
@@ -487,9 +575,12 @@ class ProjectPage:
                               multiline=True, hint=ui.t("project.question_hint"),
                               on_change=lambda e: setattr(self, "_question_text",
                                                           e.control.value or ""),
-                              data="project-question")
+                              data="project-question", expand=True)
         field.on_blur = self.save_question
-        return wc.card(ui, [field, wc.caption(ui, ui.t("project.question_body"))],
+        # Stage 37 (U10): the question takes the card's width; alone in the
+        # card's column the field kept its own default width (about 300 px).
+        return wc.card(ui, [ft.Row([field], data="project-question-row"),
+                            wc.caption(ui, ui.t("project.question_body"))],
                        title=ui.t("journey.question"), data="project-question-card")
 
     def save_question(self, e=None):
@@ -644,6 +735,12 @@ class ProjectPage:
     def _show(self, entry_id: int):
         self.app.session.selected_result = entry_id
         self.app.navigate("results")
+
+    def _library(self) -> ft.Control:
+        """Stage 37.3: the project's research library (its own page)."""
+        from workspace_library import project_card
+
+        return project_card(self.app)
 
     def _report(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session

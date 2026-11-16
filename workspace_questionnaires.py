@@ -106,7 +106,8 @@ def respondent_question(ui: wc.Ui, question: dict, value, on_change, *, number: 
             value=None if value is None else str(value),
             on_change=lambda e: on_change(key, e.control.value),
             content=ft.Column([ft.Radio(value=v, label=label,
-                                        label_style=ft.TextStyle(size=14, color=ui.p.text))
+                                        label_style=ft.TextStyle(size=ui.size(14),
+                                                                 color=ui.p.text))
                                for v, label in options], spacing=0),
             data=f"answer-{key}")
 
@@ -362,7 +363,7 @@ class QuestionnairesPage:
                 current_count=len(self.draft), incoming=incoming, count=count), tk.TYPE_BODY),
                 width=500),
             actions=[wc.button(ui, ui.t("common.cancel"), lambda e: app.page.pop_dialog(),
-                               kind="quiet", data="q-replace-cancel"),
+                               kind="quiet", data="q-replace-cancel", autofocus=True),
                      wc.button(ui, ui.t("q.replace_confirm"), confirm, kind="primary",
                                data="q-replace-confirm")],
         ))
@@ -612,7 +613,7 @@ class QuestionnairesPage:
             actions=[wc.button(ui, ui.t("common.cancel"), lambda e: self.app.page.pop_dialog(),
                                kind="quiet"),
                      wc.button(ui, ui.t("q.publish").rstrip("…"), self._publish, kind="primary",
-                               data="q-publish-confirm")],
+                               data="q-publish-confirm", autofocus=True)],
         )
         self.app.page.show_dialog(dialog)
 
@@ -685,7 +686,7 @@ class QuestionnairesPage:
         ui = self.app.ui
         answers: dict = {}
         holder = ft.Column(scroll=ft.ScrollMode.AUTO, height=460, width=560, spacing=tk.SPACE_2)
-        message = ft.Text("", size=13, color=ui.p.danger)
+        message = ft.Text("", size=ui.size(13), color=ui.p.danger)
 
         def redraw():
             from survey_storage import question_is_visible
@@ -728,7 +729,7 @@ class QuestionnairesPage:
         self._collect_state = (answers, submit)
 
     async def _export(self, survey):
-        from survey_storage import save_survey_codebook, save_survey_csv
+        from survey_storage import export_survey_responses
 
         app = self.app
 
@@ -736,9 +737,7 @@ class QuestionnairesPage:
             return csv_path.with_name(csv_path.stem + "_codebook.json")
 
         def write(csv_path: Path) -> Path:
-            written = save_survey_csv(app.survey_root, survey.survey_id, csv_path)
-            save_survey_codebook(app.survey_root, survey.survey_id, codebook(written))
-            return written
+            return export_survey_responses(app.survey_root, survey.survey_id, csv_path)[0]
 
         outcome = await app.save_file(
             app.t("q.export_responses"), f"{survey.survey_id}_responses.csv", "csv", write,

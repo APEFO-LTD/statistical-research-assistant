@@ -20,15 +20,21 @@ import workspace_tokens as tk
 from workspace_methods import (
     FAMILIES, GOAL_ROLES, GOALS, ITEMS_NOT_TOTALS, METHODS, RoleProblems, advise,
     confirmation_scope, default_options, method_confirmations, required_confirmations,
-    run_method, settle_confirmations, total_score_problem,
+    run_method, settle_confirmations, total_score_problem, unchosen_options,
 )
 from workspace_state import LEVELS, ResearchTask
 from workspace_text import count_text, label as engine_label
+import workspace_variables as wv
+
+# Room on the right of a result card for its "Repeat with changes" button
+# (an icon button over the card's corner).
+REPEAT_ICON_ROOM = tk.CONTROL_HEIGHT
 
 GOAL_ICONS = {
     "compare": ft.Icons.COMPARE_ARROWS, "change": ft.Icons.TIMELINE,
     "relate": ft.Icons.SCATTER_PLOT_OUTLINED, "associate": ft.Icons.GRID_ON,
-    "predict": ft.Icons.TRENDING_UP, "scale": ft.Icons.FACT_CHECK_OUTLINED,
+    "predict": ft.Icons.TRENDING_UP, "process": ft.Icons.HUB_OUTLINED,
+    "scale": ft.Icons.FACT_CHECK_OUTLINED,
     "structure": ft.Icons.ACCOUNT_TREE_OUTLINED, "describe": ft.Icons.BAR_CHART,
 }
 
@@ -79,6 +85,87 @@ def _variable_options(ui: wc.Ui, session, *, allow_id: bool = False):
     return options
 
 
+def _names(value) -> list[str]:
+    return list(value) if isinstance(value, (list, tuple)) else ([value] if value else [])
+
+
+def selection_from_run(goal: str, method: str, roles: dict | None) -> dict | None:
+    """The guided choices (``GOAL_ROLES[goal]``) of a run's method roles: how
+    *Repeat with changes* gives back the variables a result was calculated
+    with, also when the task's own choices have changed since. None when
+    the method is not one ``goal`` leads to."""
+    r = dict(roles or {})
+    if goal == "relate":
+        pairs = {"batch_correlation": ("x", "ys"), "correlation": ("x", "y"), "chi": ("a", "b")}
+        if method in pairs:
+            first, second = pairs[method]
+            return {"x": r.get(first), "y": _names(r.get(second))}
+    if goal == "compare":
+        if method == "batch_groups":
+            return {"outcome": _names(r.get("outcomes")), "group": r.get("group")}
+        if method in ("groups", "omnibus"):
+            return {"outcome": _names(r.get("outcome")), "group": r.get("group")}
+        if method == "chi":
+            return {"outcome": _names(r.get("b")), "group": r.get("a")}
+        if method == "ancova":
+            return {"outcome": _names(r.get("outcome")), "group": r.get("group"),
+                    "covariates": _names(r.get("covariates"))}
+    if goal == "change":
+        if method == "paired":
+            return {"measures": [n for n in (r.get("before"), r.get("after")) if n]}
+        if method == "repeated":
+            return {"measures": _names(r.get("measures"))}
+    if goal == "associate" and method == "chi":
+        return {"a": r.get("a"), "b": r.get("b")}
+    if goal == "predict":
+        if method in ("regression", "logistic"):
+            return {"outcome": r.get("outcome"), "predictors": _names(r.get("predictors"))}
+        if method == "ancova":
+            return {"outcome": r.get("outcome"),
+                    "predictors": [*_names(r.get("group")), *_names(r.get("covariates"))]}
+    if goal in ("scale", "structure") and r.get("items"):
+        return {"items": _names(r.get("items"))}
+    if goal == "describe" and method in ("descriptive", "explore"):
+        found = {"variable": r.get("variable")}
+        if r.get("group"):
+            found["group"] = r["group"]
+        return found
+    return None
+
+
+def scored_item_sets(app) -> list[tuple[str, list[str]]]:
+    """``(score, its items)`` of the scale scores made in Data → Prepare
+    that are in the data on screen, newest first (at most three): the
+    session's steps not stored yet, then the project's history of this
+    dataset version and of the versions it was prepared from."""
+    session = app.session
+    if not session.has_data:
+        return []
+    steps = list(reversed(session.pending_transformations))
+    projects = app.projects
+    if projects.active and projects.dataset_id:
+        dataset_id, seen = projects.dataset_id, set()
+        while dataset_id and dataset_id not in seen:
+            seen.add(dataset_id)
+            try:
+                steps += list(reversed(projects.project.transformations(dataset_id)))
+                dataset_id = projects.project.dataset(dataset_id).parent_id
+            except Exception:
+                break
+    columns = set(map(str, session.df.columns))
+    found: list[tuple[str, list[str]]] = []
+    for step in steps:
+        params = step.get("params") or {}
+        if step.get("kind") != "score_scale":
+            continue
+        target = str(params.get("target") or "")
+        sources = [str(name) for name in params.get("sources") or []]
+        if (target in columns and len(sources) > 1 and all(n in columns for n in sources)
+                and target not in {t for t, _ in found}):
+            found.append((target, sources))
+    return found[:3]
+
+
 class AnalyzePage:
     def __init__(self, app):
         self.app = app
@@ -104,6 +191,12 @@ class AnalyzePage:
         self.task_id: str | None = None     # Stage 36: the research task on screen
         # Stage 37.0a: the hypothesis a new analysis (not yet a task) will test.
         self.pending_hypothesis: str | None = None
+        # Stage 37 (Issue #68): what the variable panels show (their search,
+        # and "{key}:all" for a long list shown in full), and the task or
+        # result the analysis on screen is a copy of (it becomes a new task
+        # at its first run; nothing confirmed is copied).
+        self.filters: dict[str, str] = {}
+        self.copy_of: dict | None = None
 
     def rerun(self, entry) -> None:
         """Open a saved result's analysis for the current data. The researcher
@@ -113,6 +206,7 @@ class AnalyzePage:
         self.form_roles = dict(entry.roles or {})
         self.form_options = {**default_options(METHODS[key]), **(entry.options or {})}
         self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
+        self.filters, self.copy_of = {}, None
         self.message = (self.app.t("analyze.rerun", title=entry.title), "info")
         self.app.navigate("analyze")
 
@@ -125,6 +219,7 @@ class AnalyzePage:
         self.pending_hypothesis = None
         self.method, self.form_roles, self.form_options = None, {}, {}
         self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
+        self.filters, self.copy_of = {}, None
         self.message = None
 
     # ------------------------------------------------- confirmations (K1)
@@ -154,6 +249,16 @@ class AnalyzePage:
     def _missing(key: str, options: dict, holding: dict) -> list:
         return [c for c in required_confirmations(METHODS[key], options) if c.key not in holding]
 
+    @staticmethod
+    def _unchosen_text(ui, key: str, options: dict) -> str | None:
+        """Stage 37: what the researcher still has to choose (an option with
+        no default, such as the moderated path), or None."""
+        unchosen = unchosen_options(METHODS[key], {**default_options(METHODS[key]), **options})
+        if not unchosen:
+            return None
+        return "\n".join(ui.t("block.choose_option", option=ui.t(o.prompt) if o.prompt
+                              else engine_label(ui.language, o.label)) for o in unchosen)
+
     # ----------------------------------------------------------- layout
     def build(self) -> ft.Control:
         app, ui = self.app, self.app.ui
@@ -179,6 +284,10 @@ class AnalyzePage:
             body.append(wc.notice(ui, self.message[0], self.message[1], data="analyze-message"))
         return app.constrained(ft.Column([header, *body], spacing=tk.SPACE_5,
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
+
+    def footer(self) -> ft.Control | None:
+        """Stage 37.0b: the next action, below the page (design §7.9)."""
+        return self.app.pages["project"].hypotheses.footer_for("analyze")
 
     def _set_mode(self, mode: str):
         self.mode = mode
@@ -239,7 +348,8 @@ class AnalyzePage:
                       wc.step_card(ui, 4, ui.t("step.method"), [], state="locked",
                                    scroll_key="step-method")]
             return steps
-        steps.append(wc.step_card(ui, 2, ui.t("step.variables"), self._role_pickers(),
+        steps.append(wc.step_card(ui, 2, ui.t("step.variables"),
+                                  self._copy_notice() + self._role_pickers(),
                                   state="active", data="step-variables",
                                   scroll_key="step-variables"))
         advice = advise(self.goal, self.selection, s)
@@ -262,6 +372,7 @@ class AnalyzePage:
             task = session.task(self.task_id)
             self.goal, self.selection, self.override = goal, {}, None
             self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
+            self.filters, self.copy_of = {}, None     # another question: not a copy
             self.message = None
             if (task is not None and (task.state or {}).get("auto_title")
                     and not session.task_results(task.id)):
@@ -292,21 +403,20 @@ class AnalyzePage:
     def _role_pickers(self) -> list[ft.Control]:
         ui, s = self.app.ui, self.app.session
         controls: list[ft.Control] = []
-        for role in GOAL_ROLES[self.goal]:
-            options = _variable_options(ui, s)
+        roles = GOAL_ROLES[self.goal]
+        for role in roles:
             if role.multiple:
-                chosen = list(self.selection.get(role.key) or [])
-                boxes = [wc.checkbox(ui, label, name in chosen,
-                                     on_change=lambda e, r=role.key, n=name: self._toggle(r, n,
-                                                                                          e.control.value),
-                                     data=f"role-{role.key}-{name}")
-                         for name, label in options]
-                controls += [wc.section_label(ui, ui.t(role.label)),
-                             self._quick_select(role, options),
-                             ft.Container(ft.Row(boxes, wrap=True, spacing=tk.SPACE_4,
-                                                 run_spacing=0),
-                                          data=f"role-{role.key}")]
+                # Stage 37 (Issue #68, UX-3): search, name groups, ranges and
+                # only the variables this role can take (D7), with the reason
+                # for every other one.
+                controls.append(self._panel(
+                    f"role-{role.key}", role, roles, self.selection,
+                    quick=self._quick_select(role, _variable_options(ui, s)),
+                    on_toggle=lambda n, v, r=role.key: self._toggle(r, n, v),
+                    on_add=lambda names, r=role.key: self._add(r, names),
+                    on_remove=lambda names, r=role.key: self._remove(r, names)))
             else:
+                options = _variable_options(ui, s)
                 if role.optional:
                     options = [("", ui.t("role.none"))] + options
                 controls.append(wc.dropdown(
@@ -314,7 +424,33 @@ class AnalyzePage:
                     on_select=lambda e, r=role.key: self._pick(r, e.control.value),
                     width=360, data=f"role-{role.key}"))
         return [ft.Row(controls[:2], wrap=True, spacing=tk.SPACE_4)] + controls[2:] \
-            if not any(r.multiple for r in GOAL_ROLES[self.goal]) else controls
+            if not any(r.multiple for r in roles) else controls
+
+    def _panel(self, key: str, role, roles, chosen_roles: dict, *, quick, on_toggle, on_add,
+               on_remove) -> ft.Control:
+        """The variable panel of one multiple role (guided step 2 or the form)."""
+        ui, s = self.app.ui, self.app.session
+        taken = wv.taken_by_others(roles, chosen_roles, role.key)
+        offered, left_out = wv.offered_variables(s, role, taken)
+        levels = {info.name: ui.t(f"level.{info.confirmed}") for info in s.variables.values()}
+
+        def query(text: str):
+            self.filters[key] = text
+            self.app.render()
+
+        def expand(value: bool):
+            # A long list is shown in full only when asked: kept as "the
+            # search" of this panel (the empty search shows it all).
+            self.filters[f"{key}:all"] = "1" if value else ""
+            self.app.render()
+
+        return wv.role_panel(
+            ui, key=key, title=ui.t(role.label), offered=offered, left_out=left_out,
+            chosen=list(chosen_roles.get(role.key) or []), query=self.filters.get(key, ""),
+            allowed=role.levels, label=lambda name: f"{name} · {levels.get(name, '—')}",
+            on_toggle=on_toggle, on_add=on_add, on_remove=on_remove, on_query=query,
+            quick=quick, order=list(s.variables),
+            expanded=bool(self.filters.get(f"{key}:all")), on_expand=expand)
 
     def _pick(self, role: str, value):
         self.selection[role] = value or None
@@ -331,6 +467,15 @@ class AnalyzePage:
         self.override = None
         self.app.render()
 
+    def _add(self, role: str, names: list[str]):
+        """A name group, the shown variables or Enter in the search: added to
+        what is chosen (in column order), nothing removed."""
+        self._select(role, wv.merged(list(self.selection.get(role) or []), names))
+
+    def _remove(self, role: str, names: list[str]):
+        gone = set(names)
+        self._select(role, [n for n in self.selection.get(role) or [] if n not in gone])
+
     def _others_chosen(self, role_key: str) -> set[str]:
         chosen = set()
         for key, value in self.selection.items():
@@ -338,7 +483,7 @@ class AnalyzePage:
                 chosen.update(value if isinstance(value, list) else ([value] if value else []))
         return chosen
 
-    def _quick_select(self, role, options) -> ft.Control:
+    def _quick_select(self, role, options) -> list[ft.Control]:
         """Batch first (spec §2D): every variable of one level in one action."""
         ui, s = self.app.ui, self.app.session
         taken = self._others_chosen(role.key)
@@ -369,11 +514,33 @@ class AnalyzePage:
                             data=f"role-{role.key}-from-{task.id}"))
             if len(buttons) >= 4:
                 break
+        buttons += self._score_buttons(role, f"role-{role.key}", self.selection, taken,
+                                       lambda names, r=role.key: self._select(r, names))
         if self.selection.get(role.key):
             buttons.append(wc.button(ui, ui.t("pick.clear"),
                                      lambda e, r=role.key: self._select(r, []), kind="quiet",
                                      icon=ft.Icons.CLEAR, data=f"role-{role.key}-clear"))
-        return ft.Row(buttons, wrap=True, spacing=tk.SPACE_2)
+        return buttons
+
+    def _score_buttons(self, role, key: str, chosen_roles: dict, taken, select) -> list:
+        """Stage 37 (Issue #68): the items a scale score was made from (Data →
+        Prepare), offered for the items of its reliability: an item set is
+        chosen once, not again box by box."""
+        ui, s = self.app.ui, self.app.session
+        if role.key != "items":
+            return []
+        current = list(chosen_roles.get(role.key) or [])
+        buttons = []
+        for target, sources in scored_item_sets(self.app):
+            usable = [n for n in sources if n in s.variables and n not in taken
+                      and s.level(n) in role.levels + ("unknown",)]
+            if len(usable) == len(sources) > 1 and usable != current:
+                buttons.append(wc.button(
+                    ui, ui.t("pick.score_items", score=target, count=len(usable)),
+                    lambda e, n=tuple(usable): select(list(n)), kind="quiet",
+                    icon=ft.Icons.FUNCTIONS, tooltip=ui.t("pick.score_items_tip", score=target),
+                    data=f"{key}:score:{target}"))
+        return buttons
 
     def _select(self, role: str, names: list[str]):
         self.selection[role] = list(names)
@@ -420,8 +587,10 @@ class AnalyzePage:
         project = self._project()
         if project is None or old == new:
             return
+        entries = self.app.session.task_results(task.id)
         try:
             project.add_protocol_record("link", hypothesis_id=new or old, task_id=task.id,
+                                        run_id=entries[-1].record_id if entries else None,
                                         detail={"from": old, "to": new})
         except (ProjectError, OSError) as error:
             self.app.status(self.app.t("hyp.not_recorded", reason=str(error)), "danger")
@@ -462,6 +631,22 @@ class AnalyzePage:
             app.render()
             return
         number, hypothesis = found
+        if (self.mode == "guided" and self.task_id is None and self.goal
+                and self.pending_hypothesis == hypothesis_id):
+            # Review W1: the analysis of this hypothesis is being set up on
+            # screen (step 1). It becomes the task, with what is chosen on
+            # screen; nothing on screen is reset.
+            task = ResearchTask(str(uuid.uuid4()), app.t("task.title_for", h=number), self.goal,
+                                {k: (list(v) if isinstance(v, list) else v)
+                                 for k, v in self.selection.items()},
+                                hypothesis_id=hypothesis_id,
+                                state={"created": datetime.now().isoformat(timespec="seconds"),
+                                       "auto_title": True})
+            app.session.save_task(task)
+            self._record_link(task, None, hypothesis_id)
+            self.task_id, self.pending_hypothesis = task.id, None
+            app.navigate("analyze", section="variables")
+            return
         questions = {q["id"]: q for q in plan.get("questions", [])}
         goal = (questions.get(hypothesis.get("question_id") or "") or {}).get("type", "")
         goal = goal if goal in GOALS else ""
@@ -483,6 +668,8 @@ class AnalyzePage:
         app.session.save_task(task)
         self._record_link(task, None, hypothesis_id)
         self._open_task(task.id, render=False)
+        # The keyboard focus goes to the first variable choice (U11).
+        app.request_focus("step-variables" if goal else "step-goal", first_inside=True)
         app.navigate("analyze", section="variables" if goal else None)
 
     def open_task_for(self, task_id: str) -> None:
@@ -491,30 +678,42 @@ class AnalyzePage:
         if self.app.session.task(task_id) is None:
             self.app.render()
             return
-        self._open_task(task_id, render=False)
+        if not (self.mode == "guided" and self.task_id == task_id):
+            # Review W1: the task already open keeps what is chosen on screen
+            # (variables, method, confirmations not yet saved by a run).
+            self._open_task(task_id, render=False)
         has_result = bool(self.app.session.task_results(task_id))
         self.app.navigate("analyze", section="task-result" if has_result else "variables")
 
-    def _steps_row(self) -> list[ft.Control]:
-        """The eight steps of the analysis on screen (§7.6)."""
+    def current_steps(self):
+        """The eight steps of the analysis on screen (§7.6), as it is set up
+        here (the confirmations given before a run count); None without a
+        goal. The journey strip shows the same steps (Stage 37.0b, AC-5)."""
         from dataclasses import replace
 
         import research_workflow as rw
-        from workspace_hypotheses import step_row
 
         if not self.goal:
-            return []
-        ui, session = self.app.ui, self.app.session
+            return None
+        session = self.app.session
         task = session.task(self.task_id) or ResearchTask(
             "", "", self.goal, {}, hypothesis_id=self.pending_hypothesis)
-        # The choices on screen: the confirmations given here, before a run.
         shown = replace(task, goal=self.goal, selection=dict(self.selection),
                         confirms=dict(self.confirms),
                         state={**(task.state or {}), "confirm_scopes": dict(self.confirm_scopes)})
         plan_ids = frozenset(h["id"] for h in self._plan_hypotheses())
         method, options = (self.override if self.override else (None, None))
-        steps = rw.task_steps(rw.task_facts(shown, session, plan_ids=plan_ids, method=method,
-                                            options=options))
+        return rw.task_steps(rw.task_facts(shown, session, plan_ids=plan_ids, method=method,
+                                           options=options))
+
+    def _steps_row(self) -> list[ft.Control]:
+        """The eight steps of the analysis on screen (§7.6)."""
+        from workspace_hypotheses import step_row
+
+        steps = self.current_steps()
+        if not steps:
+            return []
+        ui = self.app.ui
         return [ft.Column([wc.section_label(ui, ui.t("task.steps")),
                            step_row(ui, steps, data="task-steps")], spacing=tk.SPACE_2)]
 
@@ -532,11 +731,18 @@ class AnalyzePage:
                 return f"H{numbers[task.hypothesis_id]} · {task.title}"
             return task.title
 
-        chips = [wc.chip(ui, title(task), "info" if task.id == self.task_id else "neutral",
-                         icon=ft.Icons.ASSIGNMENT_OUTLINED,
-                         tooltip=ui.t("task.open_tip"),
-                         on_click=lambda e, t=task.id: self._open_task(t), data=f"task-{task.id}")
-                 for task in tasks]
+        # Stage 37 (Issue #68): each task can be duplicated into a new one with
+        # the same question, variables and method (nothing confirmed is copied).
+        chips = [ft.Row([
+            wc.chip(ui, title(task), "info" if task.id == self.task_id else "neutral",
+                    icon=ft.Icons.ASSIGNMENT_OUTLINED, tooltip=ui.t("task.open_tip"),
+                    on_click=lambda e, t=task.id: self._open_task(t), data=f"task-{task.id}"),
+            wc.icon_button(ui, ft.Icons.CONTENT_COPY_OUTLINED,
+                           ui.t("task.duplicate_tip", title=title(task)),
+                           lambda e, t=task.id: self.duplicate_task(t),
+                           data=f"task-duplicate-{task.id}"),
+        ], spacing=0, tight=True, vertical_alignment=ft.CrossAxisAlignment.CENTER)
+            for task in tasks]
         chips.append(wc.button(ui, ui.t("task.new"), self._new_task, kind="quiet",
                                icon=ft.Icons.ADD, data="task-new"))
         return [ft.Column([wc.section_label(ui, ui.t("task.tasks")),
@@ -548,6 +754,7 @@ class AnalyzePage:
         if task is None:
             return
         self.pending_hypothesis = None
+        self.filters, self.copy_of = {}, None
         self.mode, self.task_id, self.goal = "guided", task.id, task.goal or None
         self.selection = {k: (list(v) if isinstance(v, list) else v)
                           for k, v in task.selection.items()}
@@ -567,17 +774,68 @@ class AnalyzePage:
         self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
         self.choosing_goal, self.message = False, None
         self.pending_hypothesis = None
+        self.filters, self.copy_of = {}, None
         self.app.render()
 
-    def _task_title(self, key: str, roles: dict) -> str:
+    # ---------------------------------------------- reuse (Stage 37, #68)
+    def duplicate_task(self, task_id: str) -> None:
+        """A new analysis with the question, variables and method of a task.
+        It becomes a new task at its first run: the original keeps its runs,
+        title and choices (review D5). Confirmations are not copied: each
+        holds for what it was given for (K1), so the researcher gives them
+        again; the link to a hypothesis is chosen again too."""
+        task = self.app.session.task(task_id)
+        if task is None or task.goal not in GOALS:
+            self.app.render()
+            return
+        self._start_copy(task.title, task.id, task.goal, task.selection, task.method,
+                         task.options)
+
+    def repeat_result(self, entry) -> None:
+        """Results → *Repeat with changes*: the analysis of this result (its
+        variables, method and options) as a new task, nothing confirmed; a
+        result of All methods opens its form the same way."""
+        key = "omnibus" if entry.method == "posthoc" else entry.method
+        task = self.app.session.task(entry.task_id)
+        if task is not None and task.goal in GOALS:
+            selection = selection_from_run(task.goal, key, entry.roles) or task.selection
+            self._start_copy(entry.title, task.id, task.goal, selection, key,
+                             entry.options or {})
+        elif key in METHODS:
+            self.rerun(entry)
+
+    def _start_copy(self, title: str, source: str | None, goal: str, selection: dict,
+                    method: str, options: dict) -> None:
+        app = self.app
+        self.mode, self.task_id, self.goal = "guided", None, goal
+        self.selection = {k: (list(v) if isinstance(v, list) else v)
+                          for k, v in (selection or {}).items()}
+        self.confirms, self.confirm_scopes, self.reconfirm = {}, {}, set()
+        self.pending_hypothesis = None
+        self.choosing_goal, self.message, self.filters = False, None, {}
+        self.override = None
+        if method in METHODS:
+            # The method of the original, unless it is what is recommended anyway.
+            advice = advise(goal, self.selection, app.session)
+            if not (advice.ready and advice.method == method and all(
+                    (options or {}).get(k) == v for k, v in advice.options.items())):
+                self.override = (method, dict(options or {}))
+        self.copy_of = {"title": title, "task": source}
+        app.navigate("analyze", section="variables")
+
+    def _copy_notice(self) -> list[ft.Control]:
+        if not self.copy_of or self.task_id:
+            return []
         ui = self.app.ui
-        if key == "batch_correlation":
-            return ui.t("task.title_relate", x=roles["x"], count=len(roles["ys"]))
-        if key == "batch_groups":
-            return ui.t("task.title_compare", group=roles["group"], count=len(roles["outcomes"]))
-        names = [v for value in roles.values()
-                 for v in (value if isinstance(value, list) else [value]) if v]
-        return f"{method_label(key, {})}: {', '.join(names[:3])}"
+        return [wc.notice(ui, ui.t("task.copy_notice", title=self.copy_of["title"]), "info",
+                          data="task-copy-notice")]
+
+    def _task_title(self, key: str, roles: dict, options: dict | None = None) -> str:
+        """The task's name for what it runs (Stage 37.0b: with the options of
+        the run, so a Pearson correlation is not named after Spearman)."""
+        from research_workflow import task_title
+
+        return task_title(self.app.ui.language, key, roles, options)
 
     def _remember_task(self, key: str, roles: dict, options: dict, confirms: dict,
                        scopes: dict) -> ResearchTask | None:
@@ -591,18 +849,24 @@ class AnalyzePage:
         if task is None:
             # Stage 37.0a: a new analysis tests the hypothesis chosen in step 1.
             linked, self.pending_hypothesis = self.pending_hypothesis, None
-            task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles), self.goal, {},
-                                hypothesis_id=linked,
-                                state={"created": datetime.now().isoformat(timespec="seconds")})
+            state = {"created": datetime.now().isoformat(timespec="seconds")}
+            if self.copy_of and self.copy_of.get("task"):
+                state["copied_from"] = self.copy_of["task"]     # Stage 37 (Issue #68)
+            task = ResearchTask(str(uuid.uuid4()), self._task_title(key, roles, options),
+                                self.goal, {}, hypothesis_id=linked, state=state)
+            self.copy_of = None
         task.selection = {k: (list(v) if isinstance(v, list) else v)
                           for k, v in self.selection.items()}
         task.method, task.options = key, dict(options)
         task.confirms = {k: True for k in confirms if confirms[k] and k in scopes}
         task.state = {**(task.state or {}),
                       "confirm_scopes": {k: scopes[k] for k in task.confirms}}
-        if task.state.pop("auto_title", None):
-            # Made for a hypothesis: named after the analysis at its first run.
-            task.title = self._task_title(key, roles)
+        task.state.pop("auto_title", None)
+        # Stage 37.0b (review D5): the task is named after what it runs now
+        # (a task made for a hypothesis, at its first run; a task whose
+        # variables changed, at the run with the new ones). Each result keeps
+        # its own specification and the report names it by that.
+        task.title = self._task_title(key, roles, options)
         self.task_id = task.id
         saved = self.app.session.save_task(task)
         if linked:
@@ -635,6 +899,9 @@ class AnalyzePage:
             rows.append(wc.text(ui, "• " + line, tk.TYPE_BODY, selectable=True))
         if len(entries) > 1:
             rows.append(wc.caption(ui, ui.t("task.versions", count=len(entries))))
+        task = s.task(self.task_id)
+        if task is not None and self._tested_hypothesis() is not None:
+            rows += self._task_review(entry, task)
         missing = bool(chosen) and bool(self._missing(chosen[0], chosen[1], holding or {}))
         why = (ui.t("disabled.confirm_first") if missing else
                ui.t("disabled.resolve_first") if not chosen else None)
@@ -773,9 +1040,12 @@ class AnalyzePage:
                           data=f"alt-{alternative.method}-{alternative.options.get('method', '')}"),
             ], vertical_alignment=ft.CrossAxisAlignment.CENTER))
         missing = self._missing(key, options, holding)
+        unchosen = self._unchosen_text(ui, key, options)
         run = wc.button(ui, ui.t("rec.run", method=label), self._run_guided, kind="primary",
-                        icon=ft.Icons.PLAY_ARROW, disabled=bool(missing) or self.running,
-                        tooltip=ui.t("disabled.confirm_first") if missing else None,
+                        icon=ft.Icons.PLAY_ARROW,
+                        disabled=bool(missing or unchosen) or self.running,
+                        tooltip=(unchosen if unchosen else
+                                 ui.t("disabled.confirm_first") if missing else None),
                         data="guided-run")
         controls: list[ft.Control] = [
             ft.Row([wc.heading(ui, label, tk.TYPE_TITLE_M, data="guided-method"),
@@ -786,8 +1056,11 @@ class AnalyzePage:
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
             wc.section_label(ui, ui.t("rec.why")), *reasons,
         ]
+        if unchosen:
+            controls.append(wc.notice(ui, unchosen, "warning", data="guided-choose-option"))
         if alternatives:
             controls += [wc.section_label(ui, ui.t("rec.alternatives")), *alternatives]
+        controls += self._plan_checks(key, options)
         controls += [
             wc.notice(ui, ui.t("rec.not_automatic"), "neutral"),
             ft.Row([run, wc.button(ui, ui.t("rec.open_advanced"),
@@ -798,6 +1071,88 @@ class AnalyzePage:
             controls.append(ft.Row([ft.ProgressRing(width=18, height=18, stroke_width=2),
                                     wc.text(ui, ui.t("run.running"))], spacing=tk.SPACE_2))
         return controls
+
+    def _tested_hypothesis(self) -> str | None:
+        """The hypothesis of the plan the analysis on screen tests, if any."""
+        task = self.app.session.task(self.task_id)
+        hypothesis_id = task.hypothesis_id if task is not None else self.pending_hypothesis
+        ids = {h["id"] for h in self._plan_hypotheses()}
+        return hypothesis_id if hypothesis_id in ids else None
+
+    def _plan_checks(self, method: str, options: dict) -> list[ft.Control]:
+        """Step 4 (design §7.10): the checks against the plan that apply
+        before Run (direction, method, variables, family, α). They inform and
+        never stop a run; the decision is taken in the hypothesis."""
+        import research_workflow as rw
+
+        hypothesis_id = self._tested_hypothesis()
+        if hypothesis_id is None:
+            return []
+        ui = self.app.ui
+        number, checks = rw.checks_before_run(
+            self.app.session, self._project(), hypothesis_id, task_id=self.task_id,
+            goal=self.goal, method=method, options=options, selection=dict(self.selection))
+        if not number:
+            return []
+        rows: list[ft.Control] = [wc.caption(ui, ui.t("task.checks_body"))]
+        reasons = {r["id"]: r.get("reason", "") for r in self._project().protocol_records(
+            hypothesis_id=hypothesis_id)} if checks else {}
+        for index, check in enumerate(checks):
+            state = {"open": "hyp.check.open", "info": "hyp.check.info"}.get(check.state)
+            rows.append(ft.Row([
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED if check.state == "open"
+                        else ft.Icons.CHECK_CIRCLE_OUTLINE, size=18,
+                        color=ui.p.warning if check.state == "open" else ui.p.success),
+                ft.Column([wc.text(ui, rw.check_message(check, ui.language), tk.TYPE_BODY,
+                                   selectable=True, data=f"task-check-{index}"),
+                           wc.caption(ui, ui.t(state) if state else ui.t(
+                               f"hyp.check.{check.state}",
+                               reason=reasons.get(check.record_id, "")))],
+                          spacing=2, expand=True),
+            ], spacing=tk.SPACE_2, vertical_alignment=ft.CrossAxisAlignment.START))
+        if not checks:
+            rows.append(wc.caption(ui, ui.t("task.checks_none", h=number),
+                                   data="task-checks-none"))
+        return [wc.section_label(ui, ui.t("task.checks", h=number)),
+                ft.Column(rows, spacing=tk.SPACE_2, data="task-checks")]
+
+    def _task_review(self, entry, task) -> list[ft.Control]:
+        """The review of a batch result inside its task, for a task that
+        tests a hypothesis (design §7.10): *Tests H…*, the assumption ticks and
+        the note, bound to the same saved state as Results (K2), so the
+        beginner does not leave the task to review."""
+        ui, session = self.app.ui, self.app.session
+        controls: list[ft.Control] = []
+        tested = self.app.pages["results"]._hypothesis_line(entry, data="task-result-hypothesis")
+        if tested is not None:
+            controls.append(tested)
+        try:
+            assumptions = tuple(entry.run.evidence().assumptions)
+        except Exception:          # an unreadable result: nothing to tick
+            assumptions = ()
+        controls.append(wc.section_label(ui, ui.t("task.review")))
+        controls += [wc.checkbox(ui, assumption, assumption in entry.reviewed,
+                                 on_change=lambda e, a=assumption, i=entry.id: self._review(
+                                     i, a, e.control.value), data=f"task-review-{index}")
+                     for index, assumption in enumerate(assumptions)]
+        controls.append(wc.text_field(
+            ui, ui.t("results.notes"), entry.note, multiline=True,
+            on_change=lambda e, i=entry.id: session.set_note(i, e.control.value or ""),
+            data="task-notes"))
+        skipped = "interpretation" in ((task.state or {}).get("skipped") or ())
+        if skipped and not (entry.note or "").strip():
+            controls.append(wc.caption(ui, ui.t("task.notes_skipped"), data="task-notes-skipped"))
+        elif not (entry.note or "").strip():
+            controls.append(wc.button(
+                ui, ui.t("next.skip_note"),
+                lambda e, t=task.id: self.app.pages["project"].hypotheses.skip_interpretation(t),
+                kind="quiet", icon=ft.Icons.SKIP_NEXT, data="task-skip-notes"))
+        return controls
+
+    def _review(self, entry_id: int, assumption: str, value: bool):
+        """A tick in the task's review: the same state as on Results (K2)."""
+        self.app.session.set_reviewed(entry_id, assumption, bool(value))
+        self.app.render()
 
     def _use(self, method: str, options: dict):
         self.override = (method, dict(options))
@@ -820,8 +1175,9 @@ class AnalyzePage:
         if not chosen:
             return
         holding = self._holding(chosen)
-        if self._missing(chosen[0], chosen[1], holding):
-            self.app.status(self.app.t("disabled.confirm_first"), "warning")
+        unchosen = self._unchosen_text(self.app.ui, chosen[0], chosen[1])
+        if unchosen or self._missing(chosen[0], chosen[1], holding):
+            self.app.status(unchosen or self.app.t("disabled.confirm_first"), "warning")
             self.app.render()
             return
         await self._execute(chosen[0], chosen[2], chosen[1], {k: True for k in holding},
@@ -890,6 +1246,26 @@ class AnalyzePage:
                    vertical_alignment=ft.CrossAxisAlignment.CENTER),
         ]
         shown = 0
+        recent = [] if query else self._recent()
+        if recent:
+            # Stage 37 (Issue #68): the methods last used in this project, with
+            # the variables and options of their last run (nothing confirmed).
+            sections += [wc.heading(ui, ui.t("catalog.recent"), tk.TYPE_TITLE_S),
+                         ft.ResponsiveRow([ft.Container(
+                             content=ft.Column([
+                                 wc.text(ui, METHODS[key].title, tk.TYPE_LABEL,
+                                         weight=ft.FontWeight.W_600),
+                                 wc.caption(ui, ui.t("catalog.recent_last", title=entry.title,
+                                                     time=f"{entry.created:%H:%M}"),
+                                            color=ui.p.text_secondary, max_lines=2),
+                             ], spacing=tk.SPACE_1),
+                             bgcolor=ui.p.surface, border=ft.Border.all(1, ui.p.border),
+                             border_radius=ui.radius("card"), padding=tk.SPACE_4, ink=True,
+                             on_click=lambda e, ent=entry: self._open_recent(ent),
+                             col={"xs": 12, "md": 6, "xl": 3}, data=f"recent-{key}",
+                             tooltip=ui.t("catalog.recent_tip"))
+                             for key, entry in recent], spacing=tk.SPACE_3,
+                             run_spacing=tk.SPACE_3)]
         for family in FAMILIES:
             cards = []
             for spec in METHODS.values():
@@ -919,6 +1295,36 @@ class AnalyzePage:
         self.search = e.control.value or ""
         self.app.render()
 
+    def _recent(self) -> list[tuple[str, object]]:
+        """``(method, its newest result)`` of the last four methods run in this
+        project whose variables are all in the data on screen."""
+        session, found, seen = self.app.session, [], set()
+        for entry in reversed(session.results):
+            key = "omnibus" if entry.method == "posthoc" else entry.method
+            if key not in METHODS or key in seen:
+                continue
+            names = [n for value in (entry.roles or {}).values() for n in _names(value)]
+            if names and all(n in session.variables for n in names):
+                seen.add(key)
+                found.append((key, entry))
+            if len(found) == 4:
+                break
+        return found
+
+    def _open_recent(self, entry):
+        """A recent method's form with the variables and options of its last
+        run; every confirmation is given again (K1)."""
+        key = "omnibus" if entry.method == "posthoc" else entry.method
+        self.method = key
+        self.form_roles = {k: (list(v) if isinstance(v, list) else v)
+                           for k, v in (entry.roles or {}).items()}
+        self.form_options = {**default_options(METHODS[key]), **(entry.options or {})}
+        self.form_confirms, self.form_scopes, self.form_reconfirm = {}, {}, set()
+        self.filters = {}
+        self.message = (self.app.t("analyze.recent_notice", method=METHODS[key].title,
+                                   time=f"{entry.created:%H:%M}"), "info")
+        self.app.render()
+
     def _open_method(self, key: str):
         self.method = key
         self.form_roles, self.form_confirms, self.form_scopes = {}, {}, {}
@@ -945,13 +1351,23 @@ class AnalyzePage:
         for role in spec.roles:
             options = _variable_options(ui, s)
             if role.multiple:
-                chosen = list(self.form_roles.get(role.key) or [])
-                roles += [wc.section_label(ui, ui.t(role.label)), ft.Row([
-                    wc.checkbox(ui, label, name in chosen,
-                                on_change=lambda e, r=role.key, n=name: self._form_toggle(
-                                    r, n, e.control.value),
-                                data=f"form-{role.key}-{name}")
-                    for name, label in options], wrap=True, spacing=tk.SPACE_4)]
+                # Stage 37 (Issue #68, D7): the same panel as the guided step:
+                # ANCOVA's covariates never offer its outcome or its group.
+                taken = wv.taken_by_others(spec.roles, self.form_roles, role.key)
+                quick = self._score_buttons(role, f"form-{role.key}", self.form_roles, taken,
+                                            lambda names, r=role.key: self._form_set(r, names))
+                if self.form_roles.get(role.key):
+                    quick.append(wc.button(ui, ui.t("pick.clear"),
+                                           lambda e, r=role.key: self._form_set(r, []),
+                                           kind="quiet", icon=ft.Icons.CLEAR,
+                                           data=f"form-{role.key}-clear"))
+                roles.append(self._panel(
+                    f"form-{role.key}", role, spec.roles, self.form_roles, quick=quick,
+                    on_toggle=lambda n, v, r=role.key: self._form_toggle(r, n, v),
+                    on_add=lambda names, r=role.key: self._form_set(
+                        r, wv.merged(list(self.form_roles.get(r) or []), names)),
+                    on_remove=lambda names, r=role.key: self._form_set(
+                        r, [n for n in self.form_roles.get(r) or [] if n not in set(names)])))
             else:
                 if role.optional:
                     options = [("", ui.t("role.none"))] + options
@@ -1005,10 +1421,15 @@ class AnalyzePage:
         if other:
             content.append(wc.notice(ui, problems_text(ui, other), "warning",
                                      data="form-problems"))
+        unchosen = self._unchosen_text(ui, self.method, self.form_options)
+        if unchosen:
+            content.append(wc.notice(ui, unchosen, "warning", data="form-choose-option"))
         content.append(ft.Row([
             wc.button(ui, ui.t("form.run"), self._run_form, kind="primary",
-                      icon=ft.Icons.PLAY_ARROW, disabled=bool(problems or missing) or self.running,
+                      icon=ft.Icons.PLAY_ARROW,
+                      disabled=bool(problems or missing or unchosen) or self.running,
                       tooltip=(ui.t("disabled.resolve_first") if problems else
+                               unchosen if unchosen else
                                ui.t("disabled.confirm_first") if missing else None),
                       data="form-run"),
             wc.button(ui, ui.t("form.back"), self._back, kind="quiet", icon=ft.Icons.ARROW_BACK),
@@ -1018,6 +1439,11 @@ class AnalyzePage:
 
     def _form_pick(self, role, value):
         self.form_roles[role] = value or None
+        self.form_confirms.pop(ITEMS_NOT_TOTALS.key, None)   # given for other columns
+        self.app.render()
+
+    def _form_set(self, role, names):
+        self.form_roles[role] = list(names)
         self.form_confirms.pop(ITEMS_NOT_TOTALS.key, None)   # given for other columns
         self.app.render()
 
@@ -1062,8 +1488,9 @@ class AnalyzePage:
         needed = list(required_confirmations(spec, self.form_options))
         if totals:
             needed.append(ITEMS_NOT_TOTALS)
-        if [c for c in needed if c.key not in holding]:
-            self.app.status(self.app.t("disabled.confirm_first"), "warning")
+        unchosen = self._unchosen_text(self.app.ui, self.method, self.form_options)
+        if unchosen or [c for c in needed if c.key not in holding]:
+            self.app.status(unchosen or self.app.t("disabled.confirm_first"), "warning")
             self.app.render()
             return
         confirms = {k: True for k in holding}
@@ -1130,8 +1557,10 @@ class ResultsPage:
         self.feedback: dict[int, tuple[str, str]] = {}
         self.figure_number = "1"
         from workspace_assistant import AssistantPanel
+        from workspace_export import ExportPanel
 
         self.assistant = AssistantPanel(self)    # Stage 36 §12: AI drafts, per result
+        self.export = ExportPanel(app, "results")    # Stage 37 (#67): one Export action
 
     # Stage 36.8 (K2): the researcher's note and reviewed checks are kept on
     # each result (ResultEntry.note / .reviewed) and saved with the project.
@@ -1146,6 +1575,7 @@ class ResultsPage:
     def reset(self) -> None:
         """Another project: nothing said about its results' exports."""
         self.feedback = {}
+        self.export.feedback = None
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
@@ -1171,8 +1601,13 @@ class ResultsPage:
             ], vertical_alignment=ft.CrossAxisAlignment.START, spacing=tk.SPACE_5)],
                 spacing=tk.SPACE_4)
         return app.constrained(ft.Column(
-            [body, wc.caption(self.app.ui, session_note(app), data="results-note")],
+            [body, self.export.build(),
+             wc.caption(self.app.ui, session_note(app), data="results-note")],
             spacing=tk.SPACE_3), tk.CONTENT_MAX_WIDTH + 200)
+
+    def footer(self) -> ft.Control | None:
+        """Stage 37.0b: the next action, below the page (design §7.9)."""
+        return self.app.pages["project"].hypotheses.footer_for("results")
 
     def _select(self, entry_id: int):
         self.app.session.selected_result = entry_id
@@ -1183,8 +1618,8 @@ class ResultsPage:
         items = []
         for entry in reversed(self.app.session.results):
             selected = entry.id == current.id
-            items.append(ft.Container(
-                content=ft.Column([
+            card = ft.Container(
+                content=ft.Row([ft.Column([
                     wc.text(ui, entry.title, tk.TYPE_LABEL, weight=ft.FontWeight.W_600,
                             max_lines=2),
                     wc.caption(ui, f"{entry.dataset} · {entry.created:%H:%M}"),
@@ -1192,12 +1627,30 @@ class ResultsPage:
                                icon=ft.Icons.DESCRIPTION_OUTLINED)] if entry.in_report else []),
                     *([wc.chip(ui, ui.t("results.stale"), "warning", icon=ft.Icons.UPDATE,
                                data=f"result-stale-{entry.id}")] if entry.stale_reasons else []),
-                ], spacing=2),
+                ], spacing=2, expand=True)], spacing=tk.SPACE_1,
+                    vertical_alignment=ft.CrossAxisAlignment.START),
                 bgcolor=ui.p.accent_subtle if selected else ui.p.surface,
                 border=ft.Border.all(1, ui.p.accent if selected else ui.p.border),
-                border_radius=ui.radius("card"), padding=tk.SPACE_3, ink=True,
+                border_radius=ui.radius("card"), ink=True,
+                padding=ft.Padding.only(left=tk.SPACE_3, top=tk.SPACE_3, bottom=tk.SPACE_3,
+                                        right=tk.SPACE_1 + (REPEAT_ICON_ROOM if entry.method else tk.SPACE_2)),
                 on_click=lambda e, i=entry.id: self._select(i), data=f"result-{entry.id}",
-            ))
+            )
+            if not entry.method:
+                items.append(card)
+                continue
+            # Stage 37 (Issue #68): a result can be repeated with changes from
+            # the list itself, as a new task (nothing confirmed is copied). The
+            # button lies over the card's corner, not inside the card: a
+            # button inside the clickable card merges into it, and neither the
+            # card nor the button is a button any more (screen readers, the
+            # pointer; tools/workspace_state_checks.py).
+            repeat = wc.icon_button(ui, ft.Icons.CONTENT_COPY_OUTLINED,
+                                    ui.t("results.repeat_named", title=entry.title),
+                                    lambda e, i=entry.id: self._repeat(i),
+                                    data=f"result-repeat-{entry.id}")
+            items.append(ft.Stack([card, ft.Container(repeat, top=tk.SPACE_1, right=tk.SPACE_1)],
+                                  data=f"result-row-{entry.id}"))
         return ft.Column(items, spacing=tk.SPACE_2, data="results-log",
                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
 
@@ -1220,6 +1673,7 @@ class ResultsPage:
                 ft.Column([wc.heading(ui, run.title, tk.TYPE_TITLE_M, data="result-title"),
                            wc.caption(ui, f"{evidence.method} · {entry.dataset}")],
                           spacing=2, expand=True),
+                *self._repeat_button(entry),
                 self._report_toggle(entry),
             ], vertical_alignment=ft.CrossAxisAlignment.START),
         ]
@@ -1361,10 +1815,45 @@ class ResultsPage:
         sections.append(wc.card(ui, provenance, title=ui.t("results.provenance"),
                                 data="result-provenance"))
         sections.append(self._exports(entry, evidence, reviewed))
+        others = self._others(entry)
+        if others is not None:
+            sections.append(others)
         return ft.Column(sections, spacing=tk.SPACE_4, data=f"result-detail-{entry.id}",
-                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH)
+                         horizontal_alignment=ft.CrossAxisAlignment.STRETCH,
+                         key=ft.ScrollKey("result-detail"))
 
-    def _hypothesis_line(self, entry) -> ft.Control | None:
+    OTHERS = 5     # other results listed at the end of a result
+
+    def _others(self, current) -> ft.Control | None:
+        """Stage 37 (Issue #68): the newest other results at the end of this
+        one, to open or to repeat with changes from where the reading ends
+        (the results list is above the whole result: an item analysis of 20
+        items is about 13,000 px long)."""
+        ui = self.app.ui
+        others = [e for e in reversed(self.app.session.results) if e.id != current.id]
+        if not others:
+            return None
+        rows = []
+        for entry in others[:self.OTHERS]:
+            row = [wc.button(ui, f"{entry.title} · {entry.created:%H:%M}",
+                             lambda e, i=entry.id: self._open_other(i), kind="quiet",
+                             icon=ft.Icons.ARROW_UPWARD, tooltip=ui.t("results.other_open_tip"),
+                             data=f"result-other-{entry.id}")]
+            if entry.method:
+                row.append(wc.icon_button(ui, ft.Icons.CONTENT_COPY_OUTLINED,
+                                          ui.t("results.repeat_named", title=entry.title),
+                                          lambda e, i=entry.id: self._repeat(i),
+                                          data=f"result-other-repeat-{entry.id}"))
+            rows.append(ft.Row(row, spacing=tk.SPACE_1, wrap=True,
+                               vertical_alignment=ft.CrossAxisAlignment.CENTER))
+        return wc.card(ui, rows, title=ui.t("results.others"), data="result-others")
+
+    def _open_other(self, entry_id: int):
+        """Another result, shown from its top (the page scrolls to it)."""
+        self.app.session.selected_result = entry_id
+        self.app.navigate("results", section="detail")
+
+    def _hypothesis_line(self, entry, data: str = "result-hypothesis") -> ft.Control | None:
         """Stage 37.0a: the hypothesis this result was calculated as a test of,
         as the plan stated it then (the snapshot kept with the result)."""
         from workspace_hypotheses import alpha_text
@@ -1380,20 +1869,49 @@ class ResultsPage:
             if found is None:
                 return wc.notice(ui, ui.t("results.tests_gone",
                                           version=snapshot.get("plan_version") or "—"),
-                                 "neutral", data="result-hypothesis")
+                                 "neutral", data=data)
             number, hypothesis = found
             detail = ui.t("results.tests_detail", version=snapshot.get("plan_version") or "—",
                           priority=ui.t(f"plan.priority.{snapshot.get('priority', 'primary')}"),
                           direction=ui.t(f"plan.direction.{snapshot.get('direction', 'two-sided')}"),
                           alpha=alpha_text(snapshot.get("alpha", 0.05)))
+            detail += self._hypothesis_decisions(project, hypothesis["id"], number)
+            panel = app.pages["project"].hypotheses
             return wc.notice(ui, detail, "info", title=ui.t(
                 "results.tests", h=number, text=hypothesis.get("text", "")),
-                data="result-hypothesis")
+                actions=[wc.button(ui, ui.t("results.open_hypothesis", h=number),
+                                   wc.handler(panel.show_hypothesis, hypothesis["id"]),
+                                   kind="quiet", icon=ft.Icons.OPEN_IN_NEW,
+                                   data=f"{data}-open")],
+                data=data)
         task = app.session.task(entry.task_id)
         if task is not None and task.hypothesis_id in numbers:
             return wc.notice(ui, ui.t("results.linked_late", h=numbers[task.hypothesis_id][0]),
-                             "neutral", data="result-hypothesis")
+                             "neutral", data=data)
         return None
+
+    def _hypothesis_decisions(self, project, hypothesis_id: str, number: int) -> str:
+        """Stage 37.0b (design §7.10, AC-8): on the result's *Tests H…* card,
+        the decisions recorded for the hypothesis (deviations,
+        acknowledgements, justifications, priority changes) and how many of
+        its checks wait for a decision."""
+        import research_workflow as rw
+
+        ui = self.app.ui
+        panel = self.app.pages["project"].hypotheses
+        records = [r for r in rw.active_records(project.protocol_records(
+            hypothesis_id=hypothesis_id)) if r.get("kind") in (
+                "deviation", "acknowledgement", "justification", "designation")]
+        text = ""
+        if records:
+            text += "\n" + ui.t("results.decisions", h=number) + "\n" + "\n".join(
+                "• " + panel._record_text(record) for record in records)
+        view = next((v for v in rw.hypothesis_views(self.app.session, project)
+                     if v.facts.id == hypothesis_id), None)
+        waiting = len(rw.open_checks(view.checks)) if view is not None else 0
+        if waiting:
+            text += "\n" + ui.t("results.open_checks", count=waiting)
+        return text
 
     def _provenance(self, entry, evidence) -> list[ft.Control]:
         """What the numbers rest on (Issue #32): the dataset version, complete
@@ -1461,6 +1979,20 @@ class ResultsPage:
             width -= tk.PANE_LIST_WIDTH + tk.SPACE_5
         return width >= 1000
 
+    def _repeat_button(self, entry) -> list[ft.Control]:
+        """*Repeat with changes*: this analysis as a new task (Stage 37, #68)."""
+        if not entry.method:
+            return []
+        ui = self.app.ui
+        return [wc.button(ui, ui.t("results.repeat"), lambda e, i=entry.id: self._repeat(i),
+                          icon=ft.Icons.CONTENT_COPY_OUTLINED, tooltip=ui.t("results.repeat_tip"),
+                          data="result-repeat")]
+
+    def _repeat(self, entry_id: int):
+        entry = self.app.session.result(entry_id)
+        if entry is not None and entry.method:
+            self.app.pages["analyze"].repeat_result(entry)
+
     def _report_toggle(self, entry) -> ft.Control:
         ui = self.app.ui
         return wc.button(
@@ -1510,7 +2042,7 @@ class ResultsPage:
                                  width=min(1100, self.app.content_width),
                                  bgcolor="#FFFFFF"),
             actions=[wc.button(ui, ui.t("common.close"),
-                               lambda e: self.app.page.pop_dialog())],
+                               lambda e: self.app.page.pop_dialog(), autofocus=True)],
         )
         self.app.page.show_dialog(dialog)
 
@@ -1635,7 +2167,14 @@ class ReportsPage:
         self.include_stale = False
         self.opened: set[str] = set()
         self.feedback: tuple[str, str] | None = None
-        self._preview: ft.Text | None = None   # updated in place while typing
+        # The preview is kept between renders and changed in place while the
+        # title is typed (a "hosted" control, Issue #80): see _preview_text.
+        self._preview: ft.Text | None = None
+        self._preview_look = None
+        self.hosted_now: list[ft.Control] = []
+        from workspace_export import ExportPanel
+
+        self.export = ExportPanel(app, "reports")    # Stage 37 (#67): one Export action
 
     # Stage 36.8 (K2): the study title, the chosen sections (36.6) and the
     # report language (default: the interface's) belong to the project: they
@@ -1660,6 +2199,7 @@ class ReportsPage:
         self.include_stale = False
         self.feedback = None
         self._preview = None
+        self.export.feedback = None
 
     def _blocked(self) -> bool:
         stale = [e for e in self.app.session.report_entries() if e.stale_reasons]
@@ -1667,6 +2207,7 @@ class ReportsPage:
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
+        self.hosted_now = []
         disabled = not s.report_order or self._blocked()
         why = (ui.t("disabled.report_empty") if not s.report_order else
                ui.t("disabled.report_stale") if self._blocked() else None)
@@ -1679,7 +2220,6 @@ class ReportsPage:
                       data="reports-export"),
         ])
         entries = s.report_entries()
-        self._preview = None
         if not entries:
             body = [wc.empty_state(ui, ft.Icons.DESCRIPTION_OUTLINED, ui.t("reports.empty.title"),
                                    ui.t("reports.empty.body"), actions=[
@@ -1718,9 +2258,8 @@ class ReportsPage:
                     wc.checkbox(ui, ui.t("reports.include_stale"), self.include_stale,
                                 on_change=lambda e: self._include(bool(e.control.value)),
                                 data="reports-include-stale")], data="reports-stale")]
-            self._preview = wc.text(
-                ui, s.combined_report(self.study_title), tk.TYPE_BODY, selectable=True,
-                data="reports-preview-text")
+            self._preview_text(s.combined_report(self.study_title))
+            self.hosted_now.append(self._preview)
             preview = wc.expansion(
                 ui, wc.heading(ui, ui.t("reports.preview"), tk.TYPE_TITLE_S),
                 [ft.Container(self._preview, padding=tk.SPACE_4)],
@@ -1746,11 +2285,16 @@ class ReportsPage:
             ]
         if self.feedback:
             body.append(wc.notice(ui, self.feedback[0], self.feedback[1], data="reports-feedback"))
+        body.append(self.export.build())
         return app.constrained(ft.Column([header, *body, wc.caption(
             ui, session_note(app), data="reports-note")], spacing=tk.SPACE_4,
             horizontal_alignment=ft.CrossAxisAlignment.STRETCH), tk.READING_MAX_WIDTH + 240)
 
     # ------------------------------------------------- research report (36.6)
+    def footer(self) -> ft.Control | None:
+        """Stage 37.0b: the next action, below the page (design §7.9)."""
+        return self.app.pages["project"].hypotheses.footer_for("reports")
+
     def report_language(self) -> str:
         return self.language or self.app.session.language
 
@@ -1765,9 +2309,15 @@ class ReportsPage:
         from project_store import library_versions
 
         app, s = self.app, self.app.session
-        tasks = {task.id: task.title for task in s.tasks}
+        # Stage 37.0b (review D5): each result under the name of its own
+        # specification (method, variables and options as it was run).
+        from research_workflow import task_title
+
+        language = self.report_language()
         infos = [rr.result_info(entry, reviewed=entry.reviewed, note=entry.note,
-                                task_title=tasks.get(entry.task_id, ""))
+                                task_title=task_title(language, entry.method or "",
+                                                      entry.roles, entry.options)
+                                if entry.task_id and entry.method else "")
                  for entry in s.report_entries()]
         inputs = rr.ReportInputs(title=self.study_title, language=self.report_language(),
                                  question=app.research_question(), results=infos,
@@ -1778,8 +2328,15 @@ class ReportsPage:
             inputs.project = app.projects.info().title
             plan = project.plan()
             status = project.hypothesis_status() if plan else {}
-            inputs.hypotheses = [{**h, "standing": status.get(h.get("id"), {}).get("standing")}
+            inputs.hypotheses = [{**h, "standing": status.get(h.get("id"), {}).get("standing"),
+                                  "standing_known": status.get(h.get("id"), {}).get(
+                                      "inferential_known", True)}
                                  for h in (plan or {}).get("plan", {}).get("hypotheses", [])]
+            # Stage 37.0b: per hypothesis, the analyses and results that test
+            # it, the recorded decisions and the open checks (saved data only).
+            inputs.evidence = rr.hypothesis_evidence(s, project, s.report_entries())
+            inputs.removed = rr.removed_hypotheses(
+                project, [h.get("id") for h in inputs.hypotheses])
             inputs.questionnaires = [q["title"] for q in project.questionnaires()]
             names = {d.id: d.name for d in project.datasets()}
             for dataset_id, name in names.items():
@@ -1797,12 +2354,21 @@ class ReportsPage:
         present = {section.key: len(section.items) for section in plan.sections}
         language = self.report_language()
         rows = []
+        if language != ui.language:
+            # Stage 37 (D11): each section is named as the report will name it;
+            # say so, so that two languages on one line are not a surprise.
+            from user_settings import LANGUAGE_NAMES
+
+            rows.append(wc.caption(ui, ui.t("reports.section_names",
+                                            name=LANGUAGE_NAMES.get(language, language)),
+                                   data="reports-section-language"))
         for number, key in enumerate(rr.SECTIONS, start=1):
             label = f"{number}. {rr.text(language, key)}"
             if key == "title":
                 rows.append(wc.caption(ui, label + " · " + ui.t("reports.section_title")))
                 continue
-            state = (ui.t("reports.section_items", count=present[key]) if key in present
+            # "1 part", "2 parts" (D11: never "1 parts"), in the interface language.
+            state = (count_text(ui.language, present[key], "parts") if key in present
                      else ui.t("reports.section_empty") if key in self.sections
                      else ui.t("reports.section_off"))
             rows.append(wc.checkbox(ui, f"{label} · {state}", key in self.sections,
@@ -1822,19 +2388,32 @@ class ReportsPage:
         self.app.session.update_report(sections_off=frozenset(left_out))
         self.app.render()
 
+    def _preview_text(self, value: str) -> ft.Text:
+        """The preview text: one control kept between renders (made again
+        only for another language, theme or text size), so that typing the
+        title changes it in place without rebuilding the page."""
+        ui = self.app.ui
+        look = (ui.language, ui.p, ui.size(13))
+        if self._preview is None or self._preview_look != look:
+            self._preview = wc.text(ui, value, tk.TYPE_BODY, selectable=True,
+                                    data="reports-preview-text")
+            self._preview_look = look
+        else:
+            wc.set_text(self._preview, value)
+        return self._preview
+
     def _set_title(self, e):
         """The preview shows the title as it will be exported. It is updated
         in place: re-rendering the page on every keystroke is not needed.
         The title is kept in the session at once and saved in the project
         when the field is left (and before an export or the project closes),
-        so typing does not log every keystroke."""
+        so typing does not log every keystroke. Issue #80: the preview is a
+        hosted control, never frozen; a page-wide ``page.update()`` does not
+        reach it inside the frozen page, ``update_hosted`` does."""
         self.app.session.update_report(title=e.control.value or "", save=False)
-        if self._preview is not None:
+        if self._preview is not None and any(c is self._preview for c in self.hosted_now):
             wc.set_text(self._preview, self.app.session.combined_report(self.study_title))
-            try:
-                self.app.page.update()
-            except Exception:  # pragma: no cover - page not shown
-                pass
+            self.app.update_hosted(self._preview)
 
     def _save_title(self, e=None):
         self.app.session.notify("report_settings")

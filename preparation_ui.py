@@ -11,11 +11,32 @@ from data_preparation import (
 )
 
 
-def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
+# The classic screens' secondary text colour: 5.8:1 on white and 5.4:1 on
+# their #F5F7FC background (WCAG AA). Stage 37 (review D6): the caption was
+# #A8B6C9, 2.06:1 on white.
+CAPTION_COLOR = "#536781"
+
+
+def build_preparation_workspace(page, load_dataframe, *, with_steps=False,
+                                caption_color: str | None = CAPTION_COLOR,
+                                item_picker=None, refresh=None):
     """Return (view, reset_for_new_dataset). Loading into analysis is explicit.
 
     ``with_steps``: ``load_dataframe(frame, steps)`` also receives the steps
-    applied since the last reset, so the caller can keep them as history."""
+    applied since the last reset, so the caller can keep them as history.
+    ``caption_color``: the caption's colour; None takes the theme's text
+    colour (the research workspace, whose theme may be light or dark).
+
+    ``item_picker`` (Stage 37, Issue #68): the list a scale score's items
+    are chosen in, instead of the plain list of boxes; an object with
+    ``control``, ``set_columns(frame)`` and ``selected()`` (the research
+    workspace passes ``workspace_variables.PreparationItems``).
+
+    ``refresh`` (Issue #80): sends the panel's changes to the client; by
+    default ``page.update()``. The research workspace hosts the panel in a
+    page Flet 1.1 keeps frozen, which a page-wide update does not look
+    into, and passes its own (``WorkspaceApp.update_hosted``)."""
+    update = refresh if refresh is not None else page.update
     state = {"working": None, "steps": [], "source_path": None}
 
     method = ft.Dropdown(
@@ -60,7 +81,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
     mode_reverse = ft.Row([reverse_min, reverse_max], wrap=True)
     mode_scale = ft.Column([
         ft.Text("Items of ONE construct, already coded in the same direction"),
-        items,
+        item_picker.control if item_picker is not None else items,
         ft.Row([score_method, min_answered], wrap=True),
     ])
     status = ft.Text("Load a dataset first.")
@@ -83,7 +104,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
                 target.value = source.value + hint
             elif method.value == "scale":
                 target.value = "scale_mean"
-        page.update()
+        update()
 
     method.on_select = set_mode
 
@@ -107,10 +128,13 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
         source.value = next(
             (x for x in columns if x.startswith("stress_q")), columns[0]
         ) if columns else None
-        items.controls = [
-            ft.Checkbox(label=c, value=False) for c in columns
-            if pd.api.types.is_numeric_dtype(frame[c])
-        ]
+        if item_picker is not None:
+            item_picker.set_columns(frame)
+        else:
+            items.controls = [
+                ft.Checkbox(label=c, value=False) for c in columns
+                if pd.api.types.is_numeric_dtype(frame[c])
+            ]
         min_answered.value = "3"
         set_mode()
 
@@ -130,7 +154,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
     def apply_step(e):
         if state["working"] is None:
             status.value = "Load a dataset first."
-            page.update()
+            update()
             return
         frame = state["working"]
         output = (target.value or "").strip()
@@ -149,7 +173,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
                     float(reverse_min.value), float(reverse_max.value),
                 )
             elif method.value == "scale":
-                selected = [
+                selected = item_picker.selected() if item_picker is not None else [
                     box.label for box in items.controls if bool(box.value)
                 ]
                 result = score_scale(
@@ -168,7 +192,7 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
             update_columns()
         except (ValueError, TypeError, KeyError) as err:
             status.value = f"Transformation error: {err}"
-        page.update()
+        update()
 
     async def load_for_analysis(e):
         if state["working"] is None:
@@ -183,12 +207,12 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
                 f"Prepared table sent to Dataset: "
                 f"{len(state['working'])} rows."
             )
-        page.update()
+        update()
 
     async def save_prepared(e):
         if state["working"] is None:
             status.value = "Load a dataset first."
-            page.update()
+            update()
             return
         try:
             path = await picker.save_file(
@@ -206,14 +230,14 @@ def build_preparation_workspace(page, load_dataframe, *, with_steps=False):
                 status.value = f"Saved: {csv}\nRecipe: {recipe}"
         except Exception as err:
             status.value = f"Save error: {err}"
-        page.update()
+        update()
 
     view = ft.Column(
         controls=[
             ft.Text(
                 "Work on a COPY. Every action creates a NEW column. "
                 "Original variables and the original CSV/XLSX are left intact.",
-                color="#A8B6C9",
+                color=caption_color, data="preparation-caption",
             ),
             method,
             ft.Row([source, target], wrap=True, spacing=12),
