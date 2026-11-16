@@ -15,6 +15,12 @@ the integrated tree (docs/STAGE37_INTEGRATION.md):
   folder) and the export choices (in the preferences file) are separate; the
   reproducibility bundle never carries the library, whatever the backup
   choice, while a .sra backup carries it only when chosen.
+* UX × export and library: the export choices live in the one settings file
+  (key ``export``), migrated from an earlier build's ``preferences.json``
+  without loss and with Russian kept; Settings → *Export defaults* shows and
+  changes the choices the Export cards use; Settings → *Research library and
+  privacy* shows the library's real backup choice, search backend and the
+  state of *Ask with sources*.
 
 Synthetic data only.
 """
@@ -177,7 +183,6 @@ class LibraryExportTests(unittest.TestCase):
         import research_library as rl
         import stage36_fixtures as fx
         from test_workspace_library import picked
-        from workspace_export import preferences_file
         from workspace_harness import Workspace
 
         ws = Workspace()
@@ -204,7 +209,8 @@ class LibraryExportTests(unittest.TestCase):
                           or n.endswith((".sqlite3", "backup.json"))], names)
         # Each choice is kept where its own branch keeps it, untouched by the other.
         self.assertTrue(rl.travels(project.path), "exporting leaves the backup choice")
-        remembered = json.loads(preferences_file().read_text(encoding="utf-8"))
+        remembered = json.loads((ws.root / "settings.json").read_text(encoding="utf-8"))
+        self.assertEqual(remembered["export"]["formats"]["data"], "bundle")
         self.assertNotIn("library", json.dumps(remembered).lower())
         backup = ws.app.projects.store.export_package(project.id, ws.root / "with.sra")
         with zipfile.ZipFile(backup) as archive:
@@ -212,8 +218,118 @@ class LibraryExportTests(unittest.TestCase):
         ws.app.navigate("library")
         ws.check("library-backup", False)
         self.assertFalse(rl.travels(project.path))
-        self.assertEqual(json.loads(preferences_file().read_text(encoding="utf-8")),
-                         remembered, "the backup choice leaves the export choices")
+        self.assertEqual(json.loads((ws.root / "settings.json").read_text(encoding="utf-8")),
+                         remembered, "the backup choice leaves the settings file")
+
+
+
+class SettingsFileTests(unittest.TestCase):
+    """Part 2 of the integration: app_preferences × user_settings × the hub."""
+
+    EXPORT = {"formats": {"data": "sav", "results": "bundle"}, "csv_layout": "semicolon",
+              "csv_bom": False}
+
+    def workspace(self, root=None):
+        from workspace_harness import Workspace
+
+        ws = Workspace(root=root)
+        self.addCleanup(ws.close)
+        return ws
+
+    def test_an_earlier_builds_choices_migrate_without_loss_and_russian_stays(self):
+        import tempfile
+
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = Path(folder.name)
+        legacy = root / "preferences.json"
+        legacy.write_text(json.dumps({"language": "ru", "recent_files": [],
+                                      "appearance": "windows", "export": self.EXPORT}),
+                          encoding="utf-8")
+        before = legacy.read_bytes()
+        ws = self.workspace(root)
+        stored = json.loads((root / "settings.json").read_text(encoding="utf-8"))
+        self.assertEqual(stored["export"], self.EXPORT)
+        self.assertEqual(stored["language"], "ru")
+        self.assertEqual(ws.app.session.language, "ru")
+        self.assertEqual(legacy.read_bytes(), before, "the old file is only read")
+        ws.click("nav-data")
+        self.assertEqual(ws.app.pages["data"].export.format, "sav")
+        self.assertEqual(ws.app.pages["data"].export.layout, "semicolon")
+        self.assertFalse(ws.app.pages["data"].export.bom)
+        # Remembering a new choice writes only the export key: Russian stays.
+        ws.app.pages["data"].export._choose("csv")
+        stored = json.loads((root / "settings.json").read_text(encoding="utf-8"))
+        self.assertEqual(stored["language"], "ru")
+        self.assertEqual(stored["export"]["formats"], {"data": "csv", "results": "bundle"})
+        self.assertEqual(stored["export"]["csv_layout"], "semicolon")
+
+    def test_choices_written_by_an_earlier_build_after_the_settings_file_are_read(self):
+        import tempfile
+
+        import app_preferences
+        import user_settings as us
+
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        root = Path(folder.name)
+        settings = us.UserSettings.load(us.path_for(root), legacy=us.LegacySources())
+        legacy = root / "preferences.json"
+        legacy.write_text(json.dumps({"export": self.EXPORT}), encoding="utf-8")
+        from unittest import mock
+
+        with mock.patch.object(app_preferences, "preferences_path", lambda: legacy):
+            self.assertEqual(app_preferences.export_preferences(settings=settings), self.EXPORT)
+            app_preferences.remember_export({"csv_bom": True}, settings=settings)
+        self.assertEqual(settings.stored("export"), {**self.EXPORT, "csv_bom": True})
+
+    def test_the_export_defaults_section_is_the_cards_choices(self):
+        ws = self.workspace()
+        ws.app.navigate("settings")
+        self.assertTrue(ws.find("settings-section-export"))
+        self.assertEqual(ws.find("settings-export-format-data").value, "xlsx")
+        self.assertEqual(ws.find("settings-export-csv-layout").value, "comma")
+        self.assertTrue(ws.find("settings-export-csv-layout-note"))
+        ws.choose("settings-export-format-data", "sav")
+        ws.choose("settings-export-csv-layout", "semicolon")
+        ws.check("settings-export-csv-bom", False)
+        stored = json.loads(ws.app.settings.path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["export"], {"formats": {"data": "sav"},
+                                            "csv_layout": "semicolon", "csv_bom": False})
+        ws.click("nav-data")
+        card = ws.app.pages["data"].export
+        self.assertEqual((card.format, card.layout, card.bom), ("sav", "semicolon", False))
+        card._choose("csv")                                  # chosen on the card
+        ws.app.navigate("settings")
+        self.assertEqual(ws.find("settings-export-format-data").value, "csv")
+        # Reset settings: the export defaults are settings too.
+        ws.app.reset_settings()
+        ws.app.navigate("settings")
+        self.assertEqual(ws.find("settings-export-format-data").value, "xlsx")
+        self.assertEqual(ws.app.pages["data"].export.format, "xlsx")
+
+    def test_the_library_section_shows_and_changes_the_real_backup_choice(self):
+        import research_library as rl
+
+        ws = self.workspace()
+        ws.app.navigate("settings")
+        self.assertTrue(ws.find("settings-section-library"))
+        self.assertTrue(ws.find("settings-library-no-project"))
+        caps = rl.capabilities()
+        self.assertIn(caps.sqlite, ws.find("settings-library-backend").value)
+        ws.app.projects.create("Fictional privacy study")
+        project = ws.app.projects.project
+        ws.app.navigate("settings")
+        self.assertFalse(ws.find("settings-library-backup").value, "off by default")
+        ws.check("settings-library-backup", True)
+        self.assertTrue(rl.travels(project.path))
+        ws.app.navigate("library")
+        self.assertTrue(ws.find("library-backup").value, "the Library page shows the same")
+        ws.check("library-backup", False)
+        ws.app.navigate("settings")
+        self.assertFalse(ws.find("settings-library-backup").value)
+        self.assertEqual(ws.find("settings-library-backup-note").value,
+                         ws.app.t("library.backup_off"))
 
 
 if __name__ == "__main__":

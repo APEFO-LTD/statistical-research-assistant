@@ -262,7 +262,7 @@ class ExportDataJourneyTests(unittest.TestCase):
                     facts = e2e.check_export(target, kind, source)
                     self.assertEqual(facts["rows"], 180)
                     self.assertEqual(facts["cells"], 180 * 98)
-                self.assertEqual(e2e.remembered_export(root / "preferences.json"), "csv")
+                self.assertEqual(e2e.remembered_export(root / "settings.json"), "csv")
             finally:
                 ws.close()
             again = Workspace(root=root)

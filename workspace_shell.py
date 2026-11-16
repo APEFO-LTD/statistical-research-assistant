@@ -1086,6 +1086,9 @@ class WorkspaceApp:
         self.text_scale, self.density, self.typeface = (
             s.get("text_scale"), s.get("density"), s.get("typeface"))
         self.last_place = (None, None)
+        from workspace_export import forget_choices
+
+        forget_choices(self)            # the export defaults are settings too
         self._rebuild()
         self.status(self.t("settings.reset_done"), "success")
 

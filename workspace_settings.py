@@ -10,8 +10,9 @@ their ``order``. A feature adds its own section with one entry::
 
 where ``build_export(page)`` returns the section's controls (``page`` is the
 :class:`SettingsPage`; ``page.app`` the workspace). Orders 10-100 are taken
-by the built-in sections below; the gaps (65, 85) are free for the export
-defaults and the research library's privacy settings.
+by the built-in sections below; the gaps (65, 85) hold the export defaults
+(``workspace_export.export_settings``) and the research library's privacy
+settings (``workspace_library.library_settings``).
 
 What is chosen here is kept in the settings file (``user_settings``) and
 applies at once: appearance, typeface, text size, density, language, the
@@ -62,6 +63,13 @@ class SettingsPage:
     def __init__(self, app):
         from workspace_ai import AiProvidersCard
         from workspace_profile import ProfileSettings
+        # The sections the export and the research library add (Stage 37
+        # integration): *Export defaults* (65), *Research library and privacy* (85).
+        import workspace_export
+        import workspace_library
+
+        workspace_export.register_settings()
+        workspace_library.register_settings()
 
         self.app = app
         self.ocr_summary = ""

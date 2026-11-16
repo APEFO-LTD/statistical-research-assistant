@@ -28,6 +28,12 @@ Rules
   touches research data: projects, questionnaires, responses, backups, the
   researcher profile and AI keys live elsewhere.
 
+Stage 37 integration: the last export choices (#67, key ``export``: the
+format per page, the CSV separator and byte-order mark) live here too;
+:func:`migrate_legacy` copies those an earlier build kept in
+``preferences.json``, and ``app_preferences.export_preferences`` reads and
+``remember_export`` writes them through :meth:`UserSettings.update`.
+
 What stays elsewhere, on purpose: the update check's state
 (``updates/state.json``, read by the updater and its helper), the researcher
 profile (personal entries with their own Delete button) and the AI provider
@@ -69,6 +75,11 @@ ROUTES = ("home", "project", "data", "questionnaires", "import", "analyze", "res
           "reports", "charts", "settings", "help")
 MAX_RECENTS = 8
 MAX_PATH = 4096
+# The export choices (Stage 37, #67): the pages with an Export card, the
+# formats they offer and the CSV separators (workspace_export, data_export).
+EXPORT_CONTEXTS = ("data", "results", "reports")
+EXPORT_FORMATS = ("xlsx", "sav", "csv", "bundle", "results")
+CSV_LAYOUTS = ("comma", "semicolon")
 
 DEFAULTS: dict[str, Any] = {
     "language": "en",
@@ -84,6 +95,7 @@ DEFAULTS: dict[str, Any] = {
     "last_project": None,
     "window": None,                # {"width", "height", "left", "top", "maximized"}
     "recent_files": [],
+    "export": {},                  # {"formats": {page: format}, "csv_layout", "csv_bom"}
 }
 
 _LOCK = threading.Lock()
@@ -119,6 +131,25 @@ def _recent(value: Any) -> list[str] | None:
             if isinstance(item, str) and 0 < len(item) <= MAX_PATH]
 
 
+def clean_export(value: Any) -> dict | None:
+    """The export choices this version knows (a dict, possibly empty), or
+    None when ``value`` is not a set of choices at all. Unknown pages,
+    formats or separators are left out of what the program uses; they stay
+    in the file as written."""
+    if not isinstance(value, dict):
+        return None
+    found: dict = {}
+    formats = value.get("formats")
+    if isinstance(formats, dict):
+        found["formats"] = {k: v for k, v in formats.items()
+                            if k in EXPORT_CONTEXTS and v in EXPORT_FORMATS}
+    if value.get("csv_layout") in CSV_LAYOUTS:
+        found["csv_layout"] = value["csv_layout"]
+    if isinstance(value.get("csv_bom"), bool):
+        found["csv_bom"] = value["csv_bom"]
+    return found
+
+
 def _in(choices) -> Callable[[Any], Any]:
     return lambda value: value if isinstance(value, (str, int)) and not isinstance(value, bool) \
         and value in choices else None
@@ -141,6 +172,7 @@ VALIDATORS: dict[str, Callable[[Any], Any]] = {
     else None,
     "window": _window,
     "recent_files": _recent,
+    "export": clean_export,
 }
 # Keys whose None is a meaningful value ("not chosen"), not an unknown one.
 NULLABLE = {"sidebar_expanded", "last_project", "window"}
@@ -262,6 +294,9 @@ def migrate_legacy(sources: LegacySources) -> dict:
         appearance = preferences.get("appearance")
         if isinstance(appearance, str) and appearance.strip():
             raw["corners"] = appearance          # kept as written, even if unknown here
+        export = preferences.get("export")
+        if isinstance(export, dict) and export:
+            raw["export"] = export               # an earlier build's export choices, as written
     workspace = _read_json(sources.workspace)
     if isinstance(workspace, dict):
         used.append("workspace.json")
@@ -330,11 +365,11 @@ class UserSettings:
         value = self._raw.get(key)
         if value is None:
             default = DEFAULTS[key]
-            return list(default) if isinstance(default, list) else default
+            return type(default)(default) if isinstance(default, (list, dict)) else default
         checked = VALIDATORS[key](value)
         if checked is None:
             default = DEFAULTS[key]
-            return list(default) if isinstance(default, list) else default
+            return type(default)(default) if isinstance(default, (list, dict)) else default
         return checked
 
     def as_dict(self) -> dict:

@@ -512,8 +512,11 @@ class SettingsHubTests(unittest.TestCase):
         import workspace_settings as wst
 
         keys = [s.key for s in self.ws.app.pages["settings"].sections()]
+        # Stage 37 integration: the export defaults (65) and the research
+        # library's privacy (85) are registered by their own modules.
         self.assertEqual(keys, ["appearance", "typography", "language", "start", "projects",
-                                "backups", "updates", "ai", "profile", "ocr", "reset"])
+                                "backups", "export", "updates", "ai", "library", "profile",
+                                "ocr", "reset"])
         for key in keys:
             self.assertTrue(self.ws.find(f"settings-jump-{key}"), key)
         for data in ("settings-theme", "settings-accent", "settings-corners",
@@ -535,15 +538,17 @@ class SettingsHubTests(unittest.TestCase):
     def test_another_feature_adds_its_section_with_one_entry(self):
         import workspace_settings as wst
 
-        section = wst.SettingsSection("export", "settings.section.backups", 65,
-                                      lambda page: [ft.Text("Export defaults", data="x-export")])
+        # Stage 37 integration: "export" is taken by the real export defaults;
+        # a feature of its own shows the same mechanism.
+        section = wst.SettingsSection("example", "settings.section.backups", 64,
+                                      lambda page: [ft.Text("Example", data="x-example")])
         wst.register(section)
-        self.addCleanup(wst.SECTIONS.pop, "export")
+        self.addCleanup(wst.SECTIONS.pop, "example")
         self.ws.app.render()
         keys = [s.key for s in self.ws.app.pages["settings"].sections()]
-        self.assertEqual(keys.index("export"), keys.index("backups") + 1)
-        self.assertTrue(self.ws.find("x-export"))
-        self.assertTrue(self.ws.find("settings-section-export"))
+        self.assertEqual(keys.index("example"), keys.index("backups") + 1)
+        self.assertTrue(self.ws.find("x-example"))
+        self.assertTrue(self.ws.find("settings-section-example"))
 
     def test_reset_settings_is_confirmed_and_keeps_research_data(self):
         app = self.ws.app

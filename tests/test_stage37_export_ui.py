@@ -75,7 +75,7 @@ class DataExportTests(WorkspaceCase):
         book = load_workbook(saved, read_only=True)
         self.assertEqual(book.sheetnames, ["Data", "Codebook", "Scales"])
         book.close()
-        self.assertEqual(json.loads((self.root / "preferences.json").read_text())["export"]
+        self.assertEqual(json.loads((self.root / "settings.json").read_text())["export"]
                          ["formats"]["data"], "xlsx")
 
     def test_cut_or_replaced_cells_are_named_before_and_after_saving(self):
@@ -150,7 +150,7 @@ class DataExportTests(WorkspaceCase):
         self.assertFalse(saved.read_bytes().startswith(b"\xef\xbb\xbf"))
         self.assertIn(";", saved.read_text(encoding="utf-8").splitlines()[0])
         self.assertTrue((saved.parent / (saved.stem + "_codebook.json")).is_file())
-        export = json.loads((self.root / "preferences.json").read_text())["export"]
+        export = json.loads((self.root / "settings.json").read_text())["export"]
         self.assertEqual((export["csv_layout"], export["csv_bom"]), ("semicolon", False))
 
     def test_a_save_that_fails_says_why_and_leaves_nothing(self):
@@ -203,7 +203,7 @@ class LanguageTests(WorkspaceCase):
             self.ws.choose("export-format-data", "csv")
             self.assertEqual(self.ws.find("export-csv-layout").value, "semicolon",
                              "Latvian or Russian: semicolon by default")
-            (self.root / "preferences.json").unlink(missing_ok=True)
+            self.ws.app.settings.update(export={})    # nothing remembered (settings file)
             self.ws.app.pages["data"].export._layout = None
 
 

@@ -15,7 +15,7 @@ One **Export** card on each of three pages. It holds a format (the last one used
 | Reports | bundle `.zip` · results `.xlsx` | data, codebook, results, the Word report as composed, figures, manifest |
 
 - **Two actions at most.** With the remembered format, a click on the button opens the Save dialog. Choosing another format first is the second action.
-- **Remembered.** The format per page, the CSV separator and the byte-order mark are kept in `preferences.json` under `"export"` (`app_preferences.export_preferences`, `remember_export`). `save_preferences`, which the classic interface also uses, now keeps keys it does not manage, so a language change there no longer drops them.
+- **Remembered.** The format per page, the CSV separator and the byte-order mark are kept in `preferences.json` under `"export"` (`app_preferences.export_preferences`, `remember_export`). `save_preferences`, which the classic interface also uses, now keeps keys it does not manage, so a language change there no longer drops them. **Stage 37 integration** (`docs/STAGE37_INTEGRATION.md` §6): the choices now live in the one settings file (`settings.json`, key `"export"`, `user_settings`). They are migrated from `preferences.json` without loss and shown and changed in Settings → *Export defaults*. `export_preferences`/`remember_export` without a path use that file.
 - **Before saving**, the card shows:
   - for `.sav`, what the format cannot hold, and every renamed, cut or converted field (see §3.3);
   - for `.xlsx` (and the bundle), every value the format cannot hold exactly, per variable and reason with a count, and *To keep every value exactly, export CSV (.csv)* (`export-xlsx-changes`, review X2);
@@ -315,7 +315,7 @@ The journey:
    - pyreadstat: `$FL2`, names, every cell;
    - pandas: byte-order mark, every cell, and the codebook vouching for the CSV by SHA-256.
    Each cell is compared with the fixture as the driver reads it with the csv module;
-5. checks that `preferences.json` remembers `csv`.
+5. checks that the settings file (`settings.json` of the data folder; `preferences.json` before the integration) remembers `csv`.
 
 No disabled state is asserted, because UI Automation reports every button as enabled.
 

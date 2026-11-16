@@ -1167,3 +1167,72 @@ def _provider_name(provider: str) -> str:
 
     info = ai_providers.PROVIDERS.get(provider)
     return info.name if info else provider
+
+
+# ---------------------------------- Settings → Research library and privacy (Stage 37)
+def library_settings(page) -> list[ft.Control]:
+    """The section *Research library and privacy* of the Settings page: what
+    is true of the library now. Its search is local (the backend this
+    program's SQLite offers); *Ask with sources* uses the AI provider of the
+    section above and only after each request is seen; and, for the open
+    project, the same backup-and-copy choice as on the Library page
+    (``research_library.travels``; off by default)."""
+    import ai_context
+    import research_library as rl
+
+    app, ui = page.app, page.app.ui
+    caps = rl.capabilities()
+    rows: list[ft.Control] = [
+        wc.text(ui, ui.t("library.local"), tk.TYPE_BODY, weight=ft.FontWeight.W_600,
+                data="settings-library-local"),
+        wc.caption(ui, ui.t("library.local_tip")),
+        wc.caption(ui, ui.t("settings.library_backend_fts5" if caps.fts5 else
+                            "settings.library_backend_plain", sqlite=caps.sqlite),
+                   data="settings-library-backend"),
+    ]
+    try:
+        setup = ai_context.readiness(app.project_root.parent)
+    except Exception:
+        setup = None
+    if setup is not None and setup.ready:
+        ask = ui.t("settings.library_ask_ready", provider=setup.provider_name, model=setup.model)
+    else:
+        ask = ui.t("settings.library_ask_off")
+    rows += [wc.text(ui, ui.t("settings.library_ask"), tk.TYPE_BODY),
+             wc.caption(ui, ask, data="settings-library-ask")]
+    project = app.projects.project if app.projects.active else None
+    if project is None:
+        rows.append(wc.caption(ui, ui.t("settings.library_no_project"),
+                               data="settings-library-no-project"))
+        return rows
+    travels = rl.travels(project.path)
+    library = app.pages.get("library")
+
+    def choose(e) -> None:
+        value = bool(e.control.value)
+        if library is not None:
+            library.set_travels(value)
+        else:
+            rl.set_travels(project.path, value)
+            app.render()
+
+    rows += [
+        wc.checkbox(ui, ui.t("library.backup"), travels, on_change=choose,
+                    data="settings-library-backup"),
+        wc.caption(ui, ui.t("library.backup_on" if travels else "library.backup_off"),
+                   data="settings-library-backup-note"),
+        wc.button(ui, ui.t("settings.library_open"), lambda e=None: app.navigate("library"),
+                  kind="quiet", icon=ft.Icons.LOCAL_LIBRARY_OUTLINED,
+                  data="settings-library-open"),
+    ]
+    return rows
+
+
+def register_settings() -> None:
+    """Add this module's section to the Settings page (idempotent)."""
+    from workspace_settings import SettingsSection, register
+
+    register(SettingsSection("library", "settings.section.library", 85, library_settings))
+
+
+register_settings()

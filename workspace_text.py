@@ -4912,6 +4912,77 @@ T.update({
 })
 
 
+# Stage 37 integration (docs/STAGE37_INTEGRATION.md): the Settings sections
+# *Export defaults* and *Research library and privacy*, which show and change
+# the export branch's and the library branch's real settings.
+# LV/RU drafts — needs native review.
+T.update({
+    "settings.section.export": ("Export defaults", "Eksporta noklusējumi",
+                                "Параметры экспорта по умолчанию"),
+    "settings.export_body": (
+        "The choices each Export card starts with. Choosing a format, the separator or the "
+        "byte-order mark on an Export card changes them here too.",
+        "Izvēles, ar kurām sākas katra eksporta kartīte. Ja eksporta kartītē izvēlaties formātu, "
+        "atdalītāju vai baitu secības zīmi, tās mainās arī šeit.",
+        "Варианты, с которых начинается каждая карточка экспорта. Если выбрать формат, "
+        "разделитель или метку порядка байтов на карточке экспорта, они изменятся и здесь."),
+    "settings.export_format.data": ("Data page", "Datu lapa", "Страница данных"),
+    "settings.export_format.results": ("Results page", "Rezultātu lapa", "Страница результатов"),
+    "settings.export_format.reports": ("Reports page", "Pārskatu lapa", "Страница отчётов"),
+    "settings.export_layout_default": (
+        "Not chosen yet: in Latvian and Russian the separator is a semicolon, in English a comma.",
+        "Vēl nav izvēlēts: latviešu un krievu valodā atdalītājs ir semikols, angļu valodā komats.",
+        "Ещё не выбрано: на латышском и русском разделитель — точка с запятой, на английском — "
+        "запятая."),
+    "settings.export_privacy": (
+        "Exports are written only where you save them; nothing is uploaded. A research library is "
+        "never part of an export.",
+        "Eksportētie faili tiek ierakstīti tikai tur, kur tos saglabājat; nekas netiek augšupielādēts. "
+        "Pētījuma bibliotēka nekad nav eksporta daļa.",
+        "Файлы экспорта записываются только туда, куда вы их сохраняете; ничего не загружается в "
+        "сеть. Исследовательская библиотека никогда не входит в экспорт."),
+    "settings.section.library": ("Research library and privacy", "Pētījuma bibliotēka un privātums",
+                                 "Исследовательская библиотека и конфиденциальность"),
+    "settings.library_backend_fts5": (
+        "Search index: SQLite {sqlite} full-text search (FTS5) on this computer.",
+        "Meklēšanas indekss: SQLite {sqlite} pilnteksta meklēšana (FTS5) šajā datorā.",
+        "Поисковый индекс: полнотекстовый поиск SQLite {sqlite} (FTS5) на этом компьютере."),
+    "settings.library_backend_plain": (
+        "Search index: this computer's SQLite {sqlite} has no full-text search; the library "
+        "searches with its own slower method, still on this computer.",
+        "Meklēšanas indekss: šī datora SQLite {sqlite} nav pilnteksta meklēšanas; bibliotēka meklē "
+        "ar savu lēnāko metodi, joprojām šajā datorā.",
+        "Поисковый индекс: в SQLite {sqlite} на этом компьютере нет полнотекстового поиска; "
+        "библиотека ищет собственным, более медленным способом, тоже на этом компьютере."),
+    "settings.library_ask": (
+        "Ask with sources sends only the passages you tick, to the AI provider above, after you "
+        "have seen the exact request; each request is approved on its own.",
+        "Jautāt ar avotiem nosūta tikai jūsu atzīmētos fragmentus augstāk norādītajam MI "
+        "pakalpojumu sniedzējam pēc tam, kad esat redzējis precīzu pieprasījumu; katru pieprasījumu "
+        "apstiprina atsevišķi.",
+        "«Спросить с источниками» отправляет только отмеченные вами фрагменты указанному выше "
+        "провайдеру ИИ, после того как вы увидели точный запрос; каждый запрос подтверждается "
+        "отдельно."),
+    "settings.library_ask_ready": ("Set up: {provider} · {model}.",
+                                   "Iestatīts: {provider} · {model}.",
+                                   "Настроено: {provider} · {model}."),
+    "settings.library_ask_off": (
+        "No AI provider is set up, so Ask with sources is off; search works without it.",
+        "Nav iestatīts neviens MI pakalpojumu sniedzējs, tāpēc Jautāt ar avotiem ir izslēgts; "
+        "meklēšana darbojas bez tā.",
+        "Провайдер ИИ не настроен, поэтому «Спросить с источниками» выключено; поиск работает и "
+        "без него."),
+    "settings.library_no_project": (
+        "Open a project to choose whether its library is included in backups and copies (off by "
+        "default).",
+        "Atveriet projektu, lai izvēlētos, vai tā bibliotēka tiek iekļauta rezerves kopijās un "
+        "kopijās (pēc noklusējuma nē).",
+        "Откройте проект, чтобы выбрать, включается ли его библиотека в резервные копии и копии "
+        "(по умолчанию нет)."),
+    "settings.library_open": ("Open the research library", "Atvērt pētījuma bibliotēku",
+                              "Открыть исследовательскую библиотеку"),
+})
+
 # Engine-facing confirmation and option labels: canonical English (kept in
 # provenance) → displayed LV/RU. Method names stay international.
 LABELS: dict[str, tuple[str, str]] = {

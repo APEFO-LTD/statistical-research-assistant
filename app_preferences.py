@@ -17,6 +17,10 @@ import os
 from pathlib import Path
 import tempfile
 
+# Re-exported: the export choices' values (Stage 37, #67) are validated by the
+# settings file (#68).
+from user_settings import CSV_LAYOUTS, EXPORT_CONTEXTS, EXPORT_FORMATS, clean_export
+
 
 DEFAULT_LANGUAGE = "en"
 LANGUAGES = {"en", "lv", "ru"}
@@ -126,7 +130,8 @@ def _load_file(location: Path) -> AppPreferences:
 
 
 def _save_file(preferences: AppPreferences, destination: Path) -> Path:
-    # Stage 37: keys this function does not manage (the export choices) stay.
+    # Stage 37: keys this function does not manage (an earlier build's export
+    # choices) stay in the old single-file format too.
     serialized = json.dumps({
         **_other_keys(destination),
         "language": preferences.language,
@@ -186,50 +191,67 @@ def remember_file(
 
 
 # ------------------------------------------------- export choices (Stage 37)
-EXPORT_CONTEXTS = ("data", "results", "reports")
-EXPORT_FORMATS = ("xlsx", "sav", "csv", "bundle", "results")
-CSV_LAYOUTS = ("comma", "semicolon")
-
-
-def export_preferences(path: Path | None = None) -> dict:
-    """The last export choices: {"formats": {context: format}, "csv_layout",
-    "csv_bom"}; anything unknown or malformed is left out."""
-    location = path or preferences_path()
+# The last export choices (#67) live in the one settings file (#68), key
+# ``export``, validated by ``user_settings``. With an explicit ``path`` the
+# old single-file format (``preferences.json``, key ``export``) is read and
+# written as before; the settings file is made from it once (migration), and
+# while it holds no export choices an earlier build's are read from it.
+def _export_in_file(location: Path) -> dict:
+    """The raw ``export`` document of a single-file preferences file ({})."""
     try:
         raw = json.loads(location.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except (OSError, ValueError, UnicodeError):
         return {}
     export = raw.get("export") if isinstance(raw, dict) else None
-    if not isinstance(export, dict):
-        return {}
-    found: dict = {}
-    formats = export.get("formats")
-    if isinstance(formats, dict):
-        found["formats"] = {k: v for k, v in formats.items()
-                            if k in EXPORT_CONTEXTS and v in EXPORT_FORMATS}
-    if export.get("csv_layout") in CSV_LAYOUTS:
-        found["csv_layout"] = export["csv_layout"]
-    if isinstance(export.get("csv_bom"), bool):
-        found["csv_bom"] = export["csv_bom"]
-    return found
+    return dict(export) if isinstance(export, dict) else {}
 
 
-def remember_export(values: dict, path: Path | None = None) -> Path:
-    """Merge ``values`` into the remembered export choices (only valid ones)."""
-    location = path or preferences_path()
-    current = {**export_preferences(location)}
+def _merge_export(current: dict, values: dict) -> dict:
+    """``current`` (as stored; unknown keys kept) with the valid ``values``."""
+    merged = dict(current)
     if isinstance(values.get("formats"), dict):
-        current["formats"] = {**current.get("formats", {}), **{
+        stored = merged.get("formats") if isinstance(merged.get("formats"), dict) else {}
+        merged["formats"] = {**stored, **{
             k: v for k, v in values["formats"].items()
             if k in EXPORT_CONTEXTS and v in EXPORT_FORMATS}}
     if values.get("csv_layout") in CSV_LAYOUTS:
-        current["csv_layout"] = values["csv_layout"]
+        merged["csv_layout"] = values["csv_layout"]
     if isinstance(values.get("csv_bom"), bool):
-        current["csv_bom"] = values["csv_bom"]
-    try:
-        raw = json.loads(location.read_text(encoding="utf-8"))
-        raw = raw if isinstance(raw, dict) else {}
-    except (OSError, ValueError):
-        raw = {}
-    raw["export"] = current
-    return _write_atomic(location, json.dumps(raw, ensure_ascii=False, indent=2))
+        merged["csv_bom"] = values["csv_bom"]
+    return merged
+
+
+def _stored_export(settings) -> dict:
+    """The export choices as the settings file holds them; while it holds
+    none, those an earlier build kept in ``preferences.json`` (only read)."""
+    stored = settings.stored("export")
+    if isinstance(stored, dict):
+        return dict(stored)
+    return _export_in_file(preferences_path())
+
+
+def export_preferences(path: Path | None = None, *, settings=None) -> dict:
+    """The last export choices: {"formats": {context: format}, "csv_layout",
+    "csv_bom"}; anything unknown or malformed is left out. ``settings`` is
+    the program's :class:`user_settings.UserSettings` (default: the user's
+    settings file); ``path`` reads an old single-file preferences file."""
+    if path is not None:
+        return clean_export(_export_in_file(path)) or {}
+    return clean_export(_stored_export(settings or _settings())) or {}
+
+
+def remember_export(values: dict, path: Path | None = None, *, settings=None) -> Path:
+    """Merge ``values`` into the remembered export choices (only valid ones).
+    Raises OSError when the settings file cannot be written."""
+    if path is not None:
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            raw = raw if isinstance(raw, dict) else {}
+        except (OSError, ValueError):
+            raw = {}
+        raw["export"] = _merge_export(_export_in_file(path), values)
+        return _write_atomic(path, json.dumps(raw, ensure_ascii=False, indent=2))
+    settings = settings or _settings()
+    if not settings.update(export=_merge_export(_stored_export(settings), values)):
+        raise OSError(settings.error or "the settings file could not be written")
+    return settings.path

@@ -1,7 +1,8 @@
 """One Export action for the Data, Results and Reports pages (Stage 37, #67).
 
 Each page shows the same small card: a format (the last one used is
-remembered in the preferences), one button that opens the system's Save
+remembered in the settings file, ``user_settings``, key ``export``; Settings →
+*Export defaults* shows and changes the same choices), one button that opens the system's Save
 dialog, and the advanced options folded away. The data page's default is a
 copy of the data (.xlsx with its codebook), exact unless the card lists the
 values the format cannot hold; the results page's an
@@ -37,13 +38,13 @@ SCOPES = ("all", "selected", "report")
 PROGRESS_SECONDS = 0.5
 
 
-def preferences_file():
-    """The preferences file beside the workspace settings: in the program
-    ``~/.statistical_research_assistant/preferences.json``; in the tests the
-    harness's own folder."""
-    from workspace_shell import workspace_settings_path
-
-    return workspace_settings_path().with_name("preferences.json")
+def forget_choices(app) -> None:
+    """The Export cards read the remembered choices again (after Settings →
+    *Export defaults* or *Reset settings* changed them)."""
+    for name in CONTEXTS:
+        panel = getattr(app.pages.get(name), "export", None)
+        if isinstance(panel, ExportPanel):
+            panel._chosen = panel._layout = panel._bom = None
 
 
 class ExportPanel:
@@ -70,7 +71,7 @@ class ExportPanel:
         from app_preferences import export_preferences
 
         try:
-            return export_preferences(preferences_file())
+            return export_preferences(settings=self.app.settings)
         except Exception:
             return {}
 
@@ -78,7 +79,7 @@ class ExportPanel:
         from app_preferences import remember_export
 
         try:
-            remember_export(values, preferences_file())
+            remember_export(values, settings=self.app.settings)
         except Exception:
             pass        # a convenience: never block an export
 
@@ -494,3 +495,66 @@ class ExportPanel:
         names = list(dict.fromkeys(str(name) for name, _, _ in changes))
         shown = ", ".join(names[:6]) + (" …" if len(names) > 6 else "")
         return " " + self.app.t("export.saved_changed", count=count, columns=shown)
+
+
+# ------------------------------------------- Settings → Export defaults (Stage 37)
+def export_settings(page) -> list[ft.Control]:
+    """The section *Export defaults* of the Settings page: the choices every
+    Export card starts with, exactly those the cards remember (the settings
+    file, key ``export``). A change here is a change of the cards, and the
+    other way round."""
+    from app_preferences import export_preferences, remember_export
+
+    app, ui = page.app, page.app.ui
+    try:
+        remembered = export_preferences(settings=app.settings)
+    except Exception:
+        remembered = {}
+    formats = remembered.get("formats") or {}
+
+    def keep(**values) -> None:
+        try:
+            remember_export(values, settings=app.settings)
+        except (OSError, ValueError) as error:
+            app.status(ui.t("settings.not_saved", error=str(error)), "warning")
+        forget_choices(app)
+        app.render()
+
+    rows: list[ft.Control] = [wc.text(ui, ui.t("settings.export_body"), tk.TYPE_BODY)]
+    pickers = []
+    for context in CONTEXTS:
+        value = formats.get(context)
+        value = value if value in FORMATS[context] else DEFAULTS[context]
+        pickers.append(wc.dropdown(
+            ui, ui.t(f"settings.export_format.{context}"),
+            [(fmt, ui.t(f"export.format.{fmt}")) for fmt in FORMATS[context]], value,
+            on_select=lambda e, c=context: keep(formats={c: e.control.value}), width=340,
+            data=f"settings-export-format-{context}"))
+    rows.append(ft.Row(pickers, wrap=True, spacing=tk.SPACE_3, run_spacing=tk.SPACE_3))
+    layout = remembered.get("csv_layout")
+    rows.append(wc.dropdown(
+        ui, ui.t("export.csv.layout"),
+        [(key, ui.t(f"export.csv.layout.{key}")) for key in ("comma", "semicolon")],
+        layout if layout in ("comma", "semicolon") else (
+            "semicolon" if app.session.language in ("lv", "ru") else "comma"),
+        on_select=lambda e: keep(csv_layout=e.control.value), width=460,
+        data="settings-export-csv-layout"))
+    if layout not in ("comma", "semicolon"):
+        rows.append(wc.caption(ui, ui.t("settings.export_layout_default"),
+                               data="settings-export-csv-layout-note"))
+    bom = remembered.get("csv_bom")
+    rows.append(wc.checkbox(ui, ui.t("export.csv.bom"), bom if isinstance(bom, bool) else True,
+                            on_change=lambda e: keep(csv_bom=bool(e.control.value)),
+                            data="settings-export-csv-bom"))
+    rows.append(wc.caption(ui, ui.t("settings.export_privacy"), data="settings-export-privacy"))
+    return rows
+
+
+def register_settings() -> None:
+    """Add this module's section to the Settings page (idempotent)."""
+    from workspace_settings import SettingsSection, register
+
+    register(SettingsSection("export", "settings.section.export", 65, export_settings))
+
+
+register_settings()

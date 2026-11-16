@@ -73,7 +73,7 @@ Journeys (synthetic data only; see JOURNEYS):
                  exported from the Data page's Export card as .xlsx, .sav
                  and .csv through the Save dialog; each file read here with
                  openpyxl, pyreadstat or pandas and compared cell by cell;
-                 the last format remembered
+                 the last format remembered in the settings file
 * research-library
                  (Stage 37.3, #69) a project's research library: a synthetic
                  PDF added in the Open dialog, searched offline, the cited
@@ -4293,7 +4293,8 @@ def check_export(path: Path, kind: str, source: dict) -> dict:
 
 
 def remembered_export(preferences: Path) -> str | None:
-    """The Data page's export format the program remembered (preferences.json)."""
+    """The Data page's export format the program remembered: key ``export``
+    of the settings file (Stage 37 integration; ``preferences.json`` before)."""
     import json
 
     try:
@@ -4309,7 +4310,8 @@ def journey_export_data(gui: Gui, work: Path, journey: Journey) -> None:
     .sav and .csv, each through the native Save dialog. Every file is opened
     here with an independent reader and compared cell by cell with the
     fixture as the driver reads it itself. The last format chosen is
-    remembered in preferences.json. tests/test_stage37_export_journey.py
+    remembered in the settings file (settings.json of the data folder).
+    tests/test_stage37_export_journey.py
     walks the same flow in the harness."""
     csv_path = master_fixture(work / "stage37-master")
     source = master_source(csv_path)
@@ -4335,8 +4337,7 @@ def journey_export_data(gui: Gui, work: Path, journey: Journey) -> None:
         with journey.step(f"the .{kind} file read with an independent reader"):
             journey.facts[name] = check_export(target, kind, source)
     with journey.step("the last format is remembered"):
-        preferences = Path.home() / ".statistical_research_assistant" / "preferences.json"
-        remembered = remembered_export(preferences)
+        remembered = remembered_export(settings_file(gui))
         journey.facts["remembered_format"] = remembered
         expect(remembered == "csv", f"the remembered format is {remembered!r}, not csv")
 
