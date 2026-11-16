@@ -1,6 +1,6 @@
 # Stage 37 — UX metrics: the baseline of eight tasks (Issue #68)
 
-> **Status: the baseline (§2–§8), and its re-measurement after the variable panel and reuse (§9, branch `claude/stage37-ux-vars`).** The baseline numbers were measured on the application code of `2f9af71` (`stage37/master-acceptance-interoperability-spec`) with `tools/ux_metrics.py`, which the baseline branch adds. Synthetic data only: the Stage 37 master fixture and the Stage 36 UCLA/SACS-shaped CSV, both generated into a temporary folder. Scroll distances are **estimates**, not measurements (§4.5).
+> **Status: the baseline (§2–§8), its re-measurement after the variable panel and reuse (§9, branch `claude/stage37-ux-vars`), and the combined Stage 37 UX branch (§10, `claude/stage37-ux`).** The baseline numbers were measured on the application code of `2f9af71` (`stage37/master-acceptance-interoperability-spec`) with `tools/ux_metrics.py`, which the baseline branch adds. Synthetic data only: the Stage 37 master fixture and the Stage 36 UCLA/SACS-shaped CSV, both generated into a temporary folder. Scroll distances are **estimates**, not measurements (§4.5).
 
 ## 1. Command
 
@@ -301,3 +301,45 @@ Measured with the same command and the same synthetic fixtures. "Before" is `b83
 - **T3.** The tool uses the name group in Data → Prepare and the score's items in Analyze when they are on screen; otherwise it ticks the 20 boxes as before. The fact `item_picker_choices` is counted by the panel's rule, because a long list no longer shows every box.
 - **T5 and T7.** When the same action is on the page more than once (the results list, "Other results"), the tool takes the nearer one (`Meter.nearest`, by the scroll estimate). A repeat action more than one screen away is not scrolled to. T5 then takes the sidebar and the task's *Duplicate*: 5 interactions. This was measured on this branch before "Other results" was added, when the only repeat action was in the results list ≈ 13,000 px above.
 - **Selections.** The panel's own controls (`role-items:search`, …) are never counted as a variable put into a role. Variables a name group or the score's items add are remembered as bulk selections and are not counted as repeated, by the rule of §4.3.
+
+## 10. Re-measured: both halves combined (branch `claude/stage37-ux`)
+
+Measured with the same command and fixtures on the merge of `claude/stage37-ux-shell` (UX 1/2: workspace start, one settings file, EN/LV top bar, text size, Settings) and `claude/stage37-ux-vars` (UX 2/2: variable panel and reuse). "Before" is `b83567c`, measured again: it gives exactly the numbers of §2 and §2.1. "After" is the merge commit. Scroll is an estimate (§4.5).
+
+### 10.1 At 1440 × 800
+
+| # | Task | Interactions (click · box · dropdown) | Typed | Pages | Dialogs | Repeat sel. | Focus lost | Scroll px (est.) |
+|---|---|---|---|---|---|---|---|---|
+| T1 | First start to an open project with data | 3 (3 · 0 · 0) → **2 (2 · 0 · 0)** | 1 | 3 → **2** | 1 | 0 | 0 | 162 |
+| T2 | Confirm the measurement levels of the 98-variable file | 4 (1 · 1 · 1) | 0 | 0 | 0 | 0 | 0 | 5,440 |
+| T3 | Define and score one 20-item scale, check its reliability | 51 (6 · 41 · 2) → **13 (8 · 1 · 2)** | 1 | 2 | 0 | 20 → **0** | 0 | 5,312 → **4,000** |
+| T4 | Eight correlations in one batch, add them to the report | 10 (7 · 1 · 1) | 0 | 1 | 0 | 0 | 0 | 1,146 → **1,284** |
+| T5 | Repeat a previous analysis with one variable changed | 5 (3 · 0 · 1) → **4 (2 · 0 · 1)** | 0 | 1 | 0 | 0 | 0 | 780 → **520** |
+| T6 | Export the Word report | 2 (2 · 0 · 0) | 0 | 1 | 1 | 0 | 0 | 0 |
+| T7 | Reopen the project after a restart, review every result | 4 (4 · 0 · 0) → **3 (3 · 0 · 0)** | 0 | 3 → **2** | 0 | 0 | 0 | 19,550 → **16,736** |
+| T8 | Change the language and the text size, continue | 5 (5 · 0 · 0), text size not available → **5 (5 · 0 · 0), text size included** | 0 | 3 | 0 | 0 | 0 | 210 → **209** |
+| | **novice** | 68 → **29** | 2 | 6 → **5** | 1 | 20 → **0** | 0 | 12,060 → **10,886** |
+| | **supervisor** | 16 → **14** | 0 | 8 → **7** | 1 | 0 | 0 | 20,540 → **17,465** |
+
+### 10.2 At 1200 × 720
+
+| # | Task | Interactions (click · box · dropdown) | Typed | Pages | Dialogs | Repeat sel. | Focus lost | Scroll px (est.) |
+|---|---|---|---|---|---|---|---|---|
+| T1 | First start to an open project with data | 3 (3 · 0 · 0) → **2 (2 · 0 · 0)** | 1 | 3 → **2** | 1 | 0 | 0 | 286 |
+| T2 | Confirm the measurement levels of the 98-variable file | 4 (1 · 1 · 1) | 0 | 0 | 0 | 0 | 0 | 5,564 |
+| T3 | Define and score one 20-item scale, check its reliability | 51 (6 · 41 · 2) → **13 (8 · 1 · 2)** | 1 | 2 | 0 | 20 → **0** | 0 | 6,200 → **4,518** |
+| T4 | Eight correlations in one batch, add them to the report | 10 (7 · 1 · 1) | 0 | 1 | 0 | 0 | 0 | 1,386 → **1,524** |
+| T5 | Repeat a previous analysis with one variable changed | 5 (3 · 0 · 1) → **4 (2 · 0 · 1)** | 0 | 1 | 0 | 0 | 0 | 920 → **680** |
+| T6 | Export the Word report | 2 (2 · 0 · 0) | 0 | 1 | 1 | 0 | 0 | 0 |
+| T7 | Reopen the project after a restart, review every result | 5 (3 · 0 · 1) → **3 (3 · 0 · 0)** | 0 | 3 → **2** | 0 | 0 | 0 | 20,224 → **16,872** |
+| T8 | Change the language and the text size, continue | 5 (5 · 0 · 0), text size not available → **5 (5 · 0 · 0), text size included** | 0 | 3 | 0 | 0 | 0 | 376 → **289** |
+| | **novice** | 68 → **29** | 2 | 6 → **5** | 1 | 20 → **0** | 0 | 13,436 → **11,892** |
+| | **supervisor** | 17 → **14** | 0 | 8 → **7** | 1 | 0 | 0 | 21,520 → **17,841** |
+
+### 10.3 What the combination adds to §9
+
+- **T1, T7.** The program starts in the research workspace: no *Open the preview* click and no classic page change. T7 continues the last project from Home (`home-continue`) and opens the second result from "Other results" (UX 2/2).
+- **T8.** Text size is now a counted step (`settings-text-size:125` in Settings, then back to Reports): 4 interactions in session 2 instead of 1 with the text size missing. The next start keeps Latvian (`language_at_start: lv`), so only Reports is clicked again (1 instead of 4). The total stays 5, but it now includes the text size.
+- **T3, T5.** As in §9: the variable panel and *Repeat with changes*.
+- **Confirmations.** `data-accept-confirm` (T2) and `design-confirm-one_construct` (T3) are still counted in every run.
+
