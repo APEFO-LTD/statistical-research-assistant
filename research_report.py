@@ -155,7 +155,12 @@ TEXT = {
         "what.method": "method", "what.variables": "variables", "what.direction": "direction",
         "what.alpha": "significance level", "what.designation": "designation",
         "what.sample": "sample", "what.exclusions": "exclusions", "what.data": "data",
-        "what.other": "other", "what.wording": "wording",
+        "what.other": "other", "what.wording": "wording", "what.question": "question kind",
+        "no_method": "no planned method", "no_kind": "no kind chosen",
+        "removed_title": "Hypotheses withdrawn from the plan after results:",
+        "removed_line": "H{number} ({priority}): “{text}” was withdrawn from the plan in version "
+                        "{version} ({runs} result(s) in the project), recorded {when}. "
+                        "Reason: {reason}",
         "about.H-DIR-TWOSIDED": "a directional hypothesis, two-sided p-values",
         "about.H-DIR-OMNIBUS": "a directional hypothesis, a test without direction",
         "about.H-FAMILY-UNCORRECTED": "several tests without an adjustment",
@@ -284,7 +289,11 @@ TEXT = {
         "what.method": "metode", "what.variables": "mainīgie", "what.direction": "virziens",
         "what.alpha": "nozīmības līmenis", "what.designation": "prioritāte",
         "what.sample": "izlase", "what.exclusions": "izslēgšana", "what.data": "dati",
-        "what.other": "cits", "what.wording": "formulējums",
+        "what.other": "cits", "what.wording": "formulējums", "what.question": "jautājuma veids",
+        "no_method": "plānotās metodes nav", "no_kind": "veids nav izvēlēts",
+        "removed_title": "Hipotēzes, kas pēc rezultātiem izņemtas no plāna:",
+        "removed_line": "H{number} ({priority}): “{text}” izņemta no plāna {version}. versijā "
+                        "(rezultāti projektā: {runs}), ierakstīts {when}. Iemesls: {reason}",
         "about.H-DIR-TWOSIDED": "virziena hipotēze, divpusējas p vērtības",
         "about.H-DIR-OMNIBUS": "virziena hipotēze, tests bez virziena",
         "about.H-FAMILY-UNCORRECTED": "vairāki testi bez korekcijas",
@@ -414,7 +423,11 @@ TEXT = {
         "what.method": "метод", "what.variables": "переменные", "what.direction": "направленность",
         "what.alpha": "уровень значимости", "what.designation": "приоритет",
         "what.sample": "выборка", "what.exclusions": "исключения", "what.data": "данные",
-        "what.other": "другое", "what.wording": "формулировка",
+        "what.other": "другое", "what.wording": "формулировка", "what.question": "тип вопроса",
+        "no_method": "метод не запланирован", "no_kind": "тип не выбран",
+        "removed_title": "Гипотезы, исключённые из плана после результатов:",
+        "removed_line": "H{number} ({priority}): «{text}» исключена из плана в версии {version} "
+                        "(результатов в проекте: {runs}), записано {when}. Причина: {reason}",
         "about.H-DIR-TWOSIDED": "направленная гипотеза, двусторонние p-значения",
         "about.H-DIR-OMNIBUS": "направленная гипотеза, критерий без направления",
         "about.H-FAMILY-UNCORRECTED": "несколько проверок без поправки",
@@ -571,6 +584,9 @@ class ReportInputs:
     # Stage 37.0b: {hypothesis id: HypothesisEvidence}. Without it the
     # Hypotheses section is written exactly as before.
     evidence: dict = field(default_factory=dict)
+    # Review A: hypotheses withdrawn from the plan after results, as
+    # (withdrawal record, the records written for it before), oldest first.
+    removed: list = field(default_factory=list)
 
 
 # -------------------------------------------------------------------- plan
@@ -884,6 +900,13 @@ def _change_value(language: str, what: str, value) -> str:
         return _ui(language, f"plan.direction.{value}")
     if what == "alpha":
         return _alpha(value)
+    if what in ("method", "variables"):
+        # Review B: the planned method ({"method", "options"}) or variables.
+        if what == "method" and isinstance(value, dict) and not value.get("method"):
+            return text(language, "no_method")
+        return _plan_fact(language, value) if value else "—"
+    if what == "question":
+        return _ui(language, f"goal.{value}") if value else text(language, "no_kind")
     return "“" + _one_line(value) + "”" if value else "—"
 
 
@@ -980,6 +1003,46 @@ def hypothesis_rows(evidence: HypothesisEvidence, hypothesis: dict, language: st
                           else "note", text(language, "limits_title", number=number,
                                             items=" ".join(limits))))
     return items
+
+
+def removed_hypotheses(project, current_ids) -> list[tuple[dict, tuple[dict, ...]]]:
+    """Review A: (withdrawal record, earlier records) of every hypothesis
+    withdrawn from the plan and not in it now, from the protocol records."""
+    if project is None:
+        return []
+    records = project.protocol_records()
+    found = []
+    for record in records:
+        detail = record.get("detail") or {}
+        hid = record.get("hypothesis_id")
+        if (record.get("kind") != "withdrawal" or record.get("supersedes") is not None
+                or detail.get("what") != "hypothesis" or hid in set(current_ids)):
+            continue
+        earlier = tuple(r for r in records if r.get("hypothesis_id") == hid
+                        and r is not record and not (r.get("kind") == "withdrawal"
+                                                     and r.get("supersedes") is None))
+        found.append((record, earlier))
+    return found
+
+
+def removed_rows(removed, language: str) -> list[Item]:
+    """Review A: each hypothesis withdrawn from the plan after results, with
+    its last saved wording, the plan version, the reason, and every decision
+    recorded for it before (so nothing recorded leaves the report)."""
+    if not removed:
+        return []
+    lines = []
+    for record, earlier in removed:
+        saved = (record.get("detail") or {}).get("hypothesis") or {}
+        number = saved.get("number") or "?"
+        lines.append(text(language, "removed_line", number=number,
+                          priority=_priority(language, saved.get("priority")),
+                          text=_one_line(saved.get("text")) or "—",
+                          version=record.get("plan_version") or "—",
+                          runs=int(record.get("results_in_project") or 0),
+                          when=_when(record.get("at")), reason=_one_line(record.get("reason"))))
+        lines += record_lines(HypothesisEvidence(number, records=tuple(earlier)), language)
+    return [Item("note", text(language, "removed_title")), Item("list", "\n".join(lines))]
 
 
 def _limitations(language: str, result: EvidenceResult) -> str:
@@ -1083,6 +1146,7 @@ def plan_report(inputs: ReportInputs) -> ReportPlan:
         evidence = inputs.evidence.get(str(hypothesis.get("id") or ""))
         if evidence is not None:
             hypotheses += hypothesis_rows(evidence, hypothesis, language)
+    hypotheses += removed_rows(inputs.removed, language)
     table = evidence_table(inputs, language)
     if table:
         hypotheses += table

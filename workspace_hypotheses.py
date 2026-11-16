@@ -314,12 +314,38 @@ class HypothesisPanel:
     def list_card(self, views=None) -> ft.Control:
         ui = self.app.ui
         views = self._views if views is None else views
-        if not views:
+        removed = self._removed(views)
+        if not views and not removed:
             return ft.Container(visible=False)
         rows: list[ft.Control] = [wc.caption(ui, ui.t("hyp.body"))]
         rows += [self._row(view) for view in views]
+        rows += removed
         return ft.Container(wc.card(ui, rows, title=ui.t("hyp.title"), data="project-hypotheses"),
                             key=ft.ScrollKey("project-hypotheses"))
+
+    def _removed(self, views) -> list[ft.Control]:
+        """Review A: the hypotheses withdrawn from the plan after results stay
+        in the history, with the reason and the decisions recorded for them."""
+        import research_report as rr
+
+        project = self.app.projects.project if self.app.projects.active else None
+        found = rr.removed_hypotheses(project, [v.facts.id for v in views])
+        if not found:
+            return []
+        ui = self.app.ui
+        out: list[ft.Control] = [wc.section_label(ui, ui.t("hyp.removed"))]
+        for index, (record, earlier) in enumerate(found):
+            saved = (record.get("detail") or {}).get("hypothesis") or {}
+            out.append(wc.text(ui, ui.t("hyp.removed_line", h=saved.get("number") or "?",
+                                        text=saved.get("text") or "—",
+                                        version=record.get("plan_version") or "—",
+                                        when=_when(record.get("at", "")),
+                                        reason=record.get("reason") or ""),
+                               tk.TYPE_BODY, selectable=True, data=f"hyp-removed-{index}"))
+            for position, item in enumerate(earlier):
+                out.append(wc.caption(ui, self._record_text(item),
+                                      data=f"hyp-removed-{index}-record-{position}"))
+        return out
 
     def toggle(self, hypothesis_id: str) -> None:
         if hypothesis_id in self.opened:

@@ -542,15 +542,34 @@ PROTOCOL_KINDS = ("designation", "link", "acknowledgement", "deviation", "justif
                   "withdrawal")
 REASON_KINDS = ("designation", "acknowledgement", "deviation", "justification", "withdrawal")
 DEVIATION_WHAT = ("method", "variables", "direction", "alpha", "designation", "sample",
-                  "exclusions", "data", "other", "wording")
+                  "exclusions", "data", "other", "wording", "question")
+
+
+def _question_kind(plan: dict, hypothesis: dict) -> str:
+    """The kind of research question a hypothesis belongs to ('' if none)."""
+    questions = {q.get("id"): q for q in plan.get("questions", []) or []}
+    return str((questions.get(hypothesis.get("question_id") or "") or {}).get("type") or "")
+
+
+def _planned_method(hypothesis: dict) -> dict:
+    return {"method": str(hypothesis.get("method_key") or ""),
+            "options": dict(hypothesis.get("method_options") or {})}
 
 
 def plan_changes(previous: dict, clean: dict) -> list[tuple[str, str, object, object]]:
     """(hypothesis id, what, from, to) of every substantive change of a saved
     hypothesis between two plans (Stage 37.0b, review S8): its priority
-    (``designation``), its wording (H1 or H0), its direction or its α."""
+    (``designation``), its wording (H1 or H0), its direction or its α; and
+    (review B) its planned method and options (``method``), its planned
+    variables (``variables``) and the kind of its research question
+    (``question``). A saved hypothesis that is gone (removed, or its H1
+    cleared) is ``removed``, from its last saved form (review A)."""
     before = {h["id"]: h for h in previous.get("hypotheses", [])}
+    kept = {h["id"] for h in clean.get("hypotheses", [])}
     changes = []
+    for number, old in enumerate(previous.get("hypotheses", []), start=1):
+        if old["id"] not in kept:
+            changes.append((old["id"], "removed", {**old, "number": number}, None))
     for hypothesis in clean.get("hypotheses", []):
         old = before.get(hypothesis["id"])
         if old is None:
@@ -570,7 +589,17 @@ def plan_changes(previous: dict, clean: dict) -> list[tuple[str, str, object, ob
         if abs(float(old.get("alpha", 0.05)) - float(hypothesis["alpha"])) > 1e-12:
             changes.append((hid, "alpha", float(old.get("alpha", 0.05)),
                             float(hypothesis["alpha"])))
+        if _planned_method(old) != _planned_method(hypothesis):
+            changes.append((hid, "method", _planned_method(old), _planned_method(hypothesis)))
+        if _question_kind(previous, old) != _question_kind(clean, hypothesis):
+            changes.append((hid, "question", _question_kind(previous, old),
+                            _question_kind(clean, hypothesis)))
+        if dict(old.get("roles") or {}) != dict(hypothesis.get("roles") or {}):
+            changes.append((hid, "variables", dict(old.get("roles") or {}),
+                            dict(hypothesis.get("roles") or {})))
     return changes
+
+
 _HEX12 = re.compile(r"[0-9a-f]{12}")
 # Stage 37.0b (review S16; design §13, default 3, owner-changeable): results
 # that describe the data or check a measure. They do not test a hypothesis, so
@@ -776,7 +805,12 @@ def _insert_protocol_record(db: sqlite3.Connection, kind: str, *, hypothesis_id=
     payload = json.dumps(detail, ensure_ascii=False, sort_keys=True, default=str)
     if len(payload) > 8000:
         raise ProjectError("The record's details are too long.")
-    if kind == "withdrawal":
+    if kind == "withdrawal" and supersedes is None and detail.get("what") == "hypothesis":
+        # Review A: a hypothesis withdrawn from the plan after results. It
+        # names the hypothesis, not a record, and keeps its last saved form.
+        if hypothesis_id is None:
+            raise ProjectError("The withdrawal of a hypothesis names the hypothesis.")
+    elif kind == "withdrawal":
         target = db.execute("SELECT kind FROM protocol_records WHERE id = ?",
                             (str(supersedes or ""),)).fetchone()
         if target is None:
@@ -1437,7 +1471,11 @@ class Project:
         Stage 37.0b (review S8): so does any substantive change of a saved
         hypothesis once results exist: its wording (H1 or H0), direction or
         α. Each change is recorded as a ``deviation`` of the plan (what,
-        from, to) with the reason, and logged as ``plan_changed``."""
+        from, to) with the reason, and logged as ``plan_changed``. So do its
+        planned method, variables and question kind (review B). Removing a
+        saved hypothesis after results needs a reason too and is recorded as
+        the ``withdrawal`` of that hypothesis, with its last saved form
+        (review A)."""
         with self._write() as db:
             latest = db.execute("SELECT id, plan FROM plan_versions ORDER BY id DESC LIMIT 1").fetchone()
             previous = json.loads(latest["plan"]) if latest is not None else {"hypotheses": []}
@@ -1482,7 +1520,16 @@ class Project:
                     continue
                 _log(db, "plan_changed", {"hypothesis": hid, "what": what, "version": version,
                                           "runs_before": runs})
-                if runs:
+                if runs and what == "removed":
+                    _insert_protocol_record(db, "withdrawal", hypothesis_id=hid,
+                                            detail={"what": "hypothesis", "hypothesis": {
+                                                key: old.get(key) for key in (
+                                                    "number", "text", "h0", "priority",
+                                                    "direction", "alpha", "question_id",
+                                                    "method_key", "method_options", "roles")
+                                                if old.get(key) not in (None, "", {})}},
+                                            reason=reasons[hid], plan_version=version)
+                elif runs:
                     _insert_protocol_record(db, "deviation", hypothesis_id=hid,
                                             detail={"what": what, "from": old, "to": new},
                                             reason=reasons[hid], plan_version=version)

@@ -61,6 +61,9 @@ class ResearchPlanCard:
         self.feedback: tuple[str, str] | None = None
         # Stage 37.0a: {hypothesis id: reason} for a priority changed after results.
         self.reasons: dict[str, str] = {}
+        # Review A: saved hypotheses removed from the draft after results,
+        # (position, hypothesis), until saved with a reason or kept.
+        self.removing: list[tuple[int, dict]] = []
         # Stage 37.0b: the id of Q1 while it only shows the project's research
         # question (a plan without typed questions); None once the researcher
         # uses it (types, chooses its kind, adds a hypothesis to it).
@@ -80,6 +83,7 @@ class ResearchPlanCard:
             self.project_id = info_id
             self.feedback = None
             self.reasons = {}
+            self.removing = []
             self.auto_question = self.linked_question = None
             self.draft.setdefault("questions", [])
             self._show_question_row()
@@ -174,10 +178,13 @@ class ResearchPlanCard:
         priority, wording (H1, H0), direction or α. The α as typed: one that
         is not a number is explained when the plan is saved."""
         current = project.plan()
-        saved = {h["id"]: h for h in ((current or {}).get("plan") or {}).get("hypotheses", [])}
+        saved_plan = (current or {}).get("plan") or {}
+        saved = {h["id"]: h for h in saved_plan.get("hypotheses", [])}
         old = saved.get(hypothesis.get("id"))
         if old is None:
             return []
+        if not str(hypothesis.get("text") or "").strip():
+            return ["removed"]                           # H1 cleared: review A
         changes = []
         if old.get("priority", "primary") != hypothesis.get("priority", "primary"):
             changes.append("designation")
@@ -191,6 +198,22 @@ class ResearchPlanCard:
                 changes.append("alpha")
         except (TypeError, ValueError):
             pass
+        # Review B: the planned method and its options, the kind of its
+        # research question and the planned variables.
+        def method(h):
+            return (str(h.get("method_key") or ""),
+                    {k: str(v) for k, v in dict(h.get("method_options") or {}).items()
+                     if str(v or "")})
+        if method(old) != method(hypothesis):
+            changes.append("method")
+        kinds = {q.get("id"): q.get("type") or "" for q in saved_plan.get("questions", [])}
+        now = {q.get("id"): q.get("type") or "" for q in self.draft.get("questions", [])
+               if str(q.get("text") or "").strip() or q.get("type")}
+        if kinds.get(old.get("question_id") or "", "") != now.get(
+                hypothesis.get("question_id") or "", ""):
+            changes.append("question")
+        if dict(old.get("roles") or {}) != dict(hypothesis.get("roles") or {}):
+            changes.append("variables")
         return changes
 
     def _needs_reason(self, project, hypothesis: dict) -> bool:
@@ -203,8 +226,11 @@ class ResearchPlanCard:
     def _reason_message(self, project, number: int, hypothesis: dict) -> str:
         """The message of a missing reason: the 37.0a one for a priority."""
         ui = self.app.ui
-        if self._changes(project, hypothesis) == ["designation"]:
+        changes = self._changes(project, hypothesis)
+        if changes == ["designation"]:
             return ui.t("plan.reason_needed", h=number)
+        if changes == ["removed"]:
+            return ui.t("plan.remove_reason_needed", h=number)
         return ui.t("plan.change_reason_needed", h=number)
 
     # --------------------------------------------------------------- build
@@ -226,6 +252,7 @@ class ResearchPlanCard:
         for index, hypothesis in enumerate(self.draft["hypotheses"]):
             rows.append(self._hypothesis(index, hypothesis, status.get(hypothesis.get("id", "")),
                                          project))
+        rows += self._removing_rows()
         if not self.draft["hypotheses"]:
             rows.append(wc.caption(ui, ui.t("plan.no_hypotheses")))
         rows.append(ft.Row([
@@ -334,8 +361,10 @@ class ResearchPlanCard:
                           data=f"plan-h{index}-alpha"),
         ], wrap=True, spacing=tk.SPACE_2))
         if self._needs_reason(project, hypothesis):
-            label = ("plan.h.reason" if self._changes(project, hypothesis) == ["designation"]
-                     else "plan.h.change_reason")
+            changes = self._changes(project, hypothesis)
+            label = ("plan.h.reason" if changes == ["designation"] else
+                     "plan.h.remove_reason" if changes == ["removed"] else
+                     "plan.h.change_reason")
             fields.append(wc.text_field(
                 ui, ui.t(label), self.reasons.get(hypothesis["id"], ""), multiline=True,
                 on_change=lambda e, h=hypothesis["id"]: self._set_reason(h, e.control.value or ""),
@@ -567,8 +596,46 @@ class ResearchPlanCard:
         self.app.render()
 
     def _remove(self, index: int):
-        del self.draft["hypotheses"][index]
+        """Remove a hypothesis from the draft. A saved one, once results
+        exist, is kept aside until it is saved with a reason, which is
+        recorded as its withdrawal (review A); *Keep* puts it back."""
+        hypothesis = self.draft["hypotheses"].pop(index)
+        project = self._project()
+        if (project is not None and hypothesis.get("id") and self.app.session.results
+                and self._changes(project, {**hypothesis, "text": ""}) == ["removed"]):
+            self.removing.append((index, hypothesis))
         self.app.render()
+
+    def _keep(self, position: int):
+        index, hypothesis = self.removing.pop(position)
+        self.draft["hypotheses"].insert(min(index, len(self.draft["hypotheses"])), hypothesis)
+        self.app.render()
+
+    def _removing_rows(self) -> list[ft.Control]:
+        ui = self.app.ui
+        rows = []
+        saved = self._saved_numbers()
+        for position, (_, hypothesis) in enumerate(self.removing):
+            number = saved.get(hypothesis["id"], position + 1)
+            rows.append(wc.card(ui, [
+                wc.caption(ui, ui.t("plan.h.removing", h=number)),
+                wc.text_field(ui, ui.t("plan.h.remove_reason"),
+                              self.reasons.get(hypothesis["id"], ""), multiline=True,
+                              on_change=lambda e, h=hypothesis["id"]: self._set_reason(
+                                  h, e.control.value or ""),
+                              data=f"plan-removed-{position}-reason"),
+                wc.button(ui, ui.t("plan.h.keep", h=number),
+                          lambda e, p=position: self._keep(p), icon=ft.Icons.UNDO,
+                          data=f"plan-removed-{position}-keep"),
+            ], title=f"H{number}. {hypothesis.get('text') or ''}"[:120],
+                data=f"plan-removed-{position}"))
+        return rows
+
+    def _saved_numbers(self) -> dict[str, int]:
+        project = self._project()
+        current = project.plan() if project is not None else None
+        return {h["id"]: number for number, h in enumerate(
+            ((current or {}).get("plan") or {}).get("hypotheses", []), start=1)}
 
     def _to_save(self) -> dict:
         """The draft as saved: a hypothesis keeps its question only if the
@@ -591,11 +658,18 @@ class ResearchPlanCard:
         before = project.plan()
         hypotheses = self.draft["hypotheses"]
         missing = [number for number, h in enumerate(hypotheses, start=1)
-                   if str(h.get("text") or "").strip() and self._needs_reason(project, h)
+                   if self._needs_reason(project, h)
                    and not self.reasons.get(h.get("id"), "").strip()]
         if missing:
             self.feedback = (self._reason_message(project, missing[0],
                                                   hypotheses[missing[0] - 1]), "danger")
+            self.app.render()
+            return
+        saved = self._saved_numbers()
+        removing = [saved.get(h["id"], 1) for _, h in self.removing
+                    if not self.reasons.get(h["id"], "").strip()]
+        if removing:
+            self.feedback = (ui.t("plan.remove_reason_needed", h=removing[0]), "danger")
             self.app.render()
             return
         reasons = {hid: text.strip() for hid, text in self.reasons.items() if text.strip()}
@@ -603,10 +677,13 @@ class ResearchPlanCard:
             version = project.save_plan(self._to_save(), reasons=reasons)
         except DesignationReasonNeeded as error:
             ids = [h.get("id") for h in hypotheses]
-            number = ids.index(error.hypotheses[0]) + 1 if error.hypotheses[0] in ids else 1
-            self.feedback = (self._reason_message(project, number, hypotheses[number - 1])
-                             if number <= len(hypotheses) else
-                             ui.t("plan.change_reason_needed", h=number), "danger")
+            if error.hypotheses[0] in ids:
+                number = ids.index(error.hypotheses[0]) + 1
+                message = self._reason_message(project, number, hypotheses[number - 1])
+            else:
+                message = ui.t("plan.remove_reason_needed",
+                               h=self._saved_numbers().get(error.hypotheses[0], 1))
+            self.feedback = (message, "danger")
             self.app.render()
             return
         except (ProjectError, OSError) as error:
@@ -623,6 +700,7 @@ class ResearchPlanCard:
         self.auto_question = None
         self._show_question_row()
         self.reasons = {}
+        self.removing = []
         self.app.render()
 
     _save = save

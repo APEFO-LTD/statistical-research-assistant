@@ -3228,6 +3228,9 @@ T.update({
     "hyp.what.exclusions": ("The exclusions", "Izslēgšanas noteikumi", "Исключения"),
     "hyp.what.data": ("The data", "Dati", "Данные"),
     "hyp.what.other": ("Something else", "Kas cits", "Другое"),
+    # Review A/B (0b fixes). LV/RU drafts — needs native review.
+    "hyp.what.wording": ("The wording", "Formulējums", "Формулировка"),
+    "hyp.what.question": ("The kind of question", "Jautājuma veids", "Тип вопроса"),
     "hyp.save_record": ("Save the record", "Saglabāt ierakstu", "Сохранить запись"),
     "hyp.reason_first": ("Write the reason first: it is kept with the record.",
                          "Vispirms uzrakstiet iemeslu: tas tiek saglabāts ar ierakstu.",
@@ -3394,6 +3397,34 @@ T.update({
     "plan.h.change_reason": ("Why this hypothesis changes (needed: results exist)",
                              "Kāpēc šī hipotēze mainās (obligāti: rezultāti jau ir)",
                              "Почему меняется эта гипотеза (обязательно: результаты уже есть)"),
+    # Review A: a saved hypothesis removed after results. LV/RU drafts — needs native review.
+    "plan.remove_reason_needed": (
+        "Write why H{h} is removed from the plan: results were calculated before. It is recorded "
+        "as the withdrawal of H{h}, and H{h} stays in the records and the report. Nothing was "
+        "saved.",
+        "Uzrakstiet, kāpēc H{h} tiek izņemta no plāna: rezultāti jau tika aprēķināti. To ieraksta "
+        "kā H{h} atsaukšanu, un H{h} paliek ierakstos un atskaitē. Nekas netika saglabāts.",
+        "Напишите, почему H{h} исключается из плана: результаты уже были рассчитаны. Это "
+        "записывается как отзыв H{h}, и H{h} остаётся в записях и отчёте. Ничего не сохранено."),
+    "plan.h.remove_reason": ("Why this hypothesis is removed (needed: results exist)",
+                             "Kāpēc šī hipotēze tiek izņemta (obligāti: rezultāti jau ir)",
+                             "Почему эта гипотеза исключается (обязательно: результаты уже есть)"),
+    "plan.h.removing": (
+        "H{h} will be removed from the plan when the plan is saved. Results exist, so write the "
+        "reason: it is recorded as the withdrawal of H{h}, and H{h} stays in the records and the "
+        "Word report.",
+        "H{h} tiks izņemta no plāna, kad plāns tiks saglabāts. Rezultāti jau ir, tāpēc uzrakstiet "
+        "iemeslu: to ieraksta kā H{h} atsaukšanu, un H{h} paliek ierakstos un Word atskaitē.",
+        "H{h} будет исключена из плана при сохранении плана. Результаты уже есть, поэтому "
+        "напишите причину: это записывается как отзыв H{h}, и H{h} остаётся в записях и отчёте "
+        "Word."),
+    "plan.h.keep": ("Keep H{h}", "Paturēt H{h}", "Оставить H{h}"),
+    "hyp.removed": ("Withdrawn from the plan after results", "Pēc rezultātiem izņemtas no plāna",
+                    "Исключены из плана после результатов"),
+    "hyp.removed_line": (
+        "H{h} “{text}”: withdrawn in plan version {version}, recorded {when}. Reason: {reason}",
+        "H{h} “{text}”: izņemta plāna {version}. versijā, ierakstīts {when}. Iemesls: {reason}",
+        "H{h} «{text}»: исключена в версии плана {version}, записано {when}. Причина: {reason}"),
 
     # A plan version saved before 37.0b (review C-S16/W2). LV/RU drafts — needs native review.
     "hyp.standing_facts_unknown": (

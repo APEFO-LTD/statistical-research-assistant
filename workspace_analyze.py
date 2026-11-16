@@ -1930,6 +1930,8 @@ class ReportsPage:
             # Stage 37.0b: per hypothesis, the analyses and results that test
             # it, the recorded decisions and the open checks (saved data only).
             inputs.evidence = rr.hypothesis_evidence(s, project, s.report_entries())
+            inputs.removed = rr.removed_hypotheses(
+                project, [h.get("id") for h in inputs.hypotheses])
             inputs.questionnaires = [q["title"] for q in project.questionnaires()]
             names = {d.id: d.name for d in project.datasets()}
             for dataset_id, name in names.items():
