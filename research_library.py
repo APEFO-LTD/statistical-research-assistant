@@ -69,7 +69,7 @@ DB_NAME = "library.sqlite3"
 SOURCES = "sources"
 # Parser and chunker version: a document indexed by another one is listed by
 # ``outdated()`` and read again by ``reindex``.
-CHUNKER = "passages-1"
+CHUNKER = "passages-2"      # 2: PDF ligatures folded, equal DOCX table cells kept
 SUFFIX_TYPES = {".pdf": "pdf", ".docx": "docx", ".txt": "txt", ".md": "md", ".markdown": "md"}
 TYPES = ("pdf", "docx", "txt", "md")
 LANGUAGES = ("en", "lv", "ru", "other")
@@ -219,7 +219,9 @@ def _diacritics_option(tokenizer: str) -> int:
 
 # Function words of English, Latvian and Russian, left out of stemmed and
 # prefix queries. Negations stay ("not", "ne", "не"); "no" is left out because
-# it is also the Latvian "from".
+# it is also the Latvian "from". The second block was added after the
+# independent review (retrieval R1): queries for absent concepts found only
+# passages these words matched ("статьи про …" → проблем, программе …).
 STOPWORDS = frozenset("""
 a an and are as at be been by for from has have how if in into is it its of on or
 that the their there these this those to was were what when where which who why with
@@ -229,7 +231,12 @@ un ir ar kas ka par no uz pie vai bet arī kā kur kad ja jo lai tas tā tie tā
 и в во на с со что как по к ко у о об обо из за для от до при это этот эта эти а но
 же ли бы был была было были быть есть его её их ему ей им или то так также где когда
 чтобы который которая которые которого какой какая какие
+per over via all out but both each
+bez pret pār var nav tad dēļ nevis
+про без под над перед через после между более все всё
 """.split())
+# The same words as typed without diacritics ("par" for "pār", "del" for "dēļ").
+_STOPWORDS_FOLDED = frozenset(fold_token(word) for word in STOPWORDS)
 # Endings removed before a prefix query (the longest that leaves 4 letters):
 # English, Latvian and Russian inflection, so "students" finds "student",
 # "lonely" finds "loneliness", "vientulības" finds "vientulība" and
@@ -292,10 +299,14 @@ def query_terms(query: str, *, mode: str = DEFAULT_QUERY_MODE, fold: bool = DEFA
         if mode == "exact":
             term = QueryTerm(token, False)
         else:
-            if token in STOPWORDS:
+            if token in STOPWORDS or fold_token(token) in _STOPWORDS_FOLDED:
                 continue
             base = token if mode == "prefix" else stem(token, suffixes)
-            term = QueryTerm(base, len(base) >= 3 and not base.isdigit())
+            # A word too short to be stemmed (under five letters) is matched
+            # as typed: "chi" must not find "children", nor "age" "agency"
+            # (retrieval R1; the benchmark's recall and MRR are unchanged).
+            short = mode != "prefix" and base == token and len(token) < 5
+            term = QueryTerm(base, len(base) >= 3 and not base.isdigit() and not short)
         if trigram:
             if len(term.text) < 3:
                 continue
@@ -337,12 +348,16 @@ def detect_language(text: str) -> str:
 
 
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+# Latin ligatures (U+FB00-FB06) as their letters: pypdf gives them for a PDF
+# whose fonts name ligature glyphs without a ToUnicode map (LaTeX), and no
+# tokenizer folds them, so "significant" was not found (retrieval R2).
+_LIGATURES = {code: unicodedata.normalize("NFKC", chr(code)) for code in range(0xFB00, 0xFB07)}
 
 
 def clean_text(text: str) -> str:
-    """NFC (a decomposed ā would split a word), no control characters (the
-    snippet marks), no carriage returns."""
-    text = unicodedata.normalize("NFC", str(text or ""))
+    """NFC (a decomposed ā would split a word), ligatures as letters, no
+    control characters (the snippet marks), no carriage returns."""
+    text = unicodedata.normalize("NFC", str(text or "")).translate(_LIGATURES)
     text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\t", " ")
     return _CONTROL.sub("", text)
 
@@ -698,10 +713,18 @@ def _docx_blocks(data: bytes, cancel=None) -> tuple[list[tuple[str, int]], str]:
             _check(cancel)
         if isinstance(item, Table):
             for row in item.rows:
+                # A merged cell is the same cell (python-docx repeats its
+                # element) and is read once; equal neighbouring cells are
+                # two values and both stay (retrieval R3).
                 cells: list[str] = []
+                previous = None
                 for cell in row.cells:
-                    value = " ".join(cell.text.split())
-                    if value and (not cells or cells[-1] != value):
+                    element = getattr(cell, "_tc", None)
+                    if element is not None and element is previous:
+                        continue
+                    previous = element
+                    value = " ".join(clean_text(cell.text).split())
+                    if value:
                         cells.append(value)
                 if cells:
                     blocks.append((" | ".join(cells), 0))

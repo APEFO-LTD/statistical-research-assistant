@@ -139,6 +139,28 @@ class TokenizerTests(LibraryCase):
         self.assertEqual((result.terms, result.hits, result.total), ((), (), 0))
 
 
+    def test_function_words_and_short_words_do_not_find_unrelated_passages(self):
+        """Independent review verify-stage37-rag, retrieval R1: queries for
+        absent concepts found only passages matched by a function word
+        (про, per, без, перед) or a short word read as a prefix (chi …
+        children, age … agency)."""
+        library = self.library()
+        for document in fx.CORPUS:
+            self.add(library, document, "md")
+        for query in ("статьи про тревожность", "dropout per condition in the trial",
+                      "депрессия без лечения", "тревога перед экзаменами",
+                      "depresija pusaudžiem bez ārstēšanas"):
+            with self.subTest(query=query):
+                self.assertEqual(library.search(query).total, 0, query)
+        terms = rl.query_terms("chi-square test of age and mean")
+        self.assertIn(rl.QueryTerm("chi", False), terms)
+        self.assertNotIn(rl.QueryTerm("chi", True), terms)
+        self.assertIn(rl.QueryTerm("age", False), terms)
+        self.assertIn(rl.QueryTerm("mean", False), terms)
+        self.assertIn(rl.QueryTerm("student", True), rl.query_terms("students"))
+        self.assertEqual(rl.query_terms("per bez про более var"), ())
+
+
 # ============================================================ extraction
 class ExtractionTests(LibraryCase):
     def test_pdf_pages_sections_title_and_exact_offsets(self):
@@ -172,6 +194,41 @@ class ExtractionTests(LibraryCase):
         self.assertEqual(hit.passage.section, "Schedule")
         self.assertIn("Pilot interview | Room 214", hit.passage.text)
         self.assertRegex(hit.cite_id, rf"^{document.key}-s\d+\.1$")
+
+    def test_pdf_ligatures_are_searchable(self):
+        """Retrieval R2: pypdf maps the glyph names /ff /fi /fl of a LaTeX
+        PDF without ToUnicode to U+FB00-FB06, which no tokenizer folds."""
+        self.assertEqual(rl.tokens(rl.clean_text("signi\ufb01cant e\ufb00ect coe\ufb03cient "
+                                                 "re\ufb02ects in\ufb02uence")),
+                         ["significant", "effect", "coefficient", "reflects", "influence"])
+        library = self.library()
+        library.add_document(data="Results\n\nThe e\ufb00ect was signi\ufb01cant.\n".encode(),
+                             file_name="ligatures.txt")
+        self.assertEqual(library.search("significant effect").total, 1)
+
+    def test_docx_table_keeps_equal_neighbouring_cells(self):
+        """Retrieval R3: equal neighbouring cells were dropped, so values
+        moved under the wrong headers; a merged cell is still read once."""
+        import docx
+
+        document = docx.Document()
+        table = document.add_table(rows=3, cols=4)
+        for row, values in enumerate((("Group", "Mean", "SD", "N"), ("Control", "12", "12", "40"),
+                                      ("Treatment", "3.5", "0.5", "0.5"))):
+            for column, value in enumerate(values):
+                table.cell(row, column).text = value
+        merged = document.add_table(rows=1, cols=3)
+        merged.cell(0, 0).merge(merged.cell(0, 1)).text = "Wide"
+        merged.cell(0, 2).text = "Narrow"
+        decomposed = document.add_table(rows=1, cols=1)
+        decomposed.cell(0, 0).text = "da\u0304ti"
+        stream = BytesIO()
+        document.save(stream)
+        text = rl.extract(stream.getvalue(), "docx").segments[0].text
+        self.assertIn("Control | 12 | 12 | 40", text)
+        self.assertIn("Treatment | 3.5 | 0.5 | 0.5", text)
+        self.assertIn("Wide | Narrow", text)
+        self.assertIn("d\u0101ti", text)
 
     def test_markdown_and_text_headings(self):
         library = self.library()
