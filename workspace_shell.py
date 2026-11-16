@@ -738,11 +738,14 @@ class WorkspaceApp:
         # added in such a render: it would be frozen too and its next change
         # would raise. When one enters the page, the page gets a new key
         # once, so it is added as new (not frozen); later renders keep it
-        # (an identical object is retained, never re-marked), and its own
+        # (an identical object is retained, never re-marked, and not diffed:
+        # what the build changed in it is sent after the page), and its own
         # changes are sent with ``update_hosted``.
         hosted = [c for c in getattr(page, "hosted_now", ()) if c is not None]
-        if any(id(c) not in self._hosted_ids for c in hosted):
+        retained = [c for c in hosted if id(c) in self._hosted_ids]
+        if len(retained) < len(hosted):
             self._page_epoch += 1
+            retained = []
         self._hosted_ids = {id(c) for c in hosted}
         key = f"workspace-page-{self.route}"
         controls: list[ft.Control] = [ft.Column(
@@ -766,6 +769,8 @@ class WorkspaceApp:
         self.root.bgcolor = self.ui.p.canvas
         self._rendered_width = int(getattr(self.page, "width", None) or 1280)
         self.page.update()
+        if retained:          # what the page's build changed in them (see above)
+            self.page.update(*retained)
         if focus is not None:
             self._request_client_focus(focus)
 

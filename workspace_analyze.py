@@ -2167,7 +2167,11 @@ class ReportsPage:
         self.include_stale = False
         self.opened: set[str] = set()
         self.feedback: tuple[str, str] | None = None
-        self._preview: ft.Text | None = None   # the preview on screen (a render follows typing)
+        # The preview is kept between renders and changed in place while the
+        # title is typed (a "hosted" control, Issue #80): see _preview_text.
+        self._preview: ft.Text | None = None
+        self._preview_look = None
+        self.hosted_now: list[ft.Control] = []
         from workspace_export import ExportPanel
 
         self.export = ExportPanel(app, "reports")    # Stage 37 (#67): one Export action
@@ -2203,6 +2207,7 @@ class ReportsPage:
 
     def build(self) -> ft.Control:
         app, ui, s = self.app, self.app.ui, self.app.session
+        self.hosted_now = []
         disabled = not s.report_order or self._blocked()
         why = (ui.t("disabled.report_empty") if not s.report_order else
                ui.t("disabled.report_stale") if self._blocked() else None)
@@ -2215,7 +2220,6 @@ class ReportsPage:
                       data="reports-export"),
         ])
         entries = s.report_entries()
-        self._preview = None
         if not entries:
             body = [wc.empty_state(ui, ft.Icons.DESCRIPTION_OUTLINED, ui.t("reports.empty.title"),
                                    ui.t("reports.empty.body"), actions=[
@@ -2254,9 +2258,8 @@ class ReportsPage:
                     wc.checkbox(ui, ui.t("reports.include_stale"), self.include_stale,
                                 on_change=lambda e: self._include(bool(e.control.value)),
                                 data="reports-include-stale")], data="reports-stale")]
-            self._preview = wc.text(
-                ui, s.combined_report(self.study_title), tk.TYPE_BODY, selectable=True,
-                data="reports-preview-text")
+            self._preview_text(s.combined_report(self.study_title))
+            self.hosted_now.append(self._preview)
             preview = wc.expansion(
                 ui, wc.heading(ui, ui.t("reports.preview"), tk.TYPE_TITLE_S),
                 [ft.Container(self._preview, padding=tk.SPACE_4)],
@@ -2385,18 +2388,32 @@ class ReportsPage:
         self.app.session.update_report(sections_off=frozenset(left_out))
         self.app.render()
 
+    def _preview_text(self, value: str) -> ft.Text:
+        """The preview text: one control kept between renders (made again
+        only for another language, theme or text size), so that typing the
+        title changes it in place without rebuilding the page."""
+        ui = self.app.ui
+        look = (ui.language, ui.p, ui.size(13))
+        if self._preview is None or self._preview_look != look:
+            self._preview = wc.text(ui, value, tk.TYPE_BODY, selectable=True,
+                                    data="reports-preview-text")
+            self._preview_look = look
+        else:
+            wc.set_text(self._preview, value)
+        return self._preview
+
     def _set_title(self, e):
-        """The preview shows the title as it will be exported. The title is
-        kept in the session at once and saved in the project when the field
-        is left (and before an export or the project closes), so typing does
-        not log every keystroke. The preview follows by a render: it was
-        changed in place, but on Flet 1.1 the page around it is frozen once
-        rendered twice and the change raised "Frozen controls cannot be
-        updated" (Issue #80); the keyed render keeps the field, its caret
-        and the focus."""
+        """The preview shows the title as it will be exported. It is updated
+        in place: re-rendering the page on every keystroke is not needed.
+        The title is kept in the session at once and saved in the project
+        when the field is left (and before an export or the project closes),
+        so typing does not log every keystroke. Issue #80: the preview is a
+        hosted control, never frozen; a page-wide ``page.update()`` does not
+        reach it inside the frozen page, ``update_hosted`` does."""
         self.app.session.update_report(title=e.control.value or "", save=False)
-        if self._preview is not None:
-            self.app.render()
+        if self._preview is not None and any(c is self._preview for c in self.hosted_now):
+            wc.set_text(self._preview, self.app.session.combined_report(self.study_title))
+            self.app.update_hosted(self._preview)
 
     def _save_title(self, e=None):
         self.app.session.notify("report_settings")
