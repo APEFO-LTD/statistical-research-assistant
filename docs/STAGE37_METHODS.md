@@ -291,7 +291,7 @@ This section belongs to the last commit of the branch. Dropping that commit remo
 
 ## Fixes after the methods verification (`verify-stage37-methods.json`, reviewed `074dfbc`)
 
-Each fix has a red test in `tests/test_stage37_methods_fixes.py`, run against a clean export of `074dfbc` (it fails there) and green on the branch. No validated formula is changed; every independent oracle test still passes.
+Each fix has a red test in `tests/test_stage37_methods_fixes.py` (14 tests), run against a clean export of `074dfbc`: 13 fail there (31 failures counted per subtest; the one that passes is a control, the total indirect effect that keeps its label), and all pass on the branch. No validated formula is changed; every independent oracle test still passes.
 
 | ID | Severity | Status | Fix | Proved by (`test_stage37_methods_fixes`) |
 |---|---|---|---|---|
