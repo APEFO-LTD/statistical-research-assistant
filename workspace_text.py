@@ -558,6 +558,18 @@ T: dict[str, tuple[str, str, str]] = {
         "{provider} neatbildēja laikā, tāpēc melnraksts netiek rādīts. Pieprasījums netika nosūtīts atkārtoti, jo {provider} to joprojām var apstrādāt (un par to iekasēt maksu). Mēģiniet vēlāk vai izvēlieties ātrāku modeli nekā “{model}” sadaļā Iestatījumi → AI pakalpojumu sniedzēji.",
         "{provider} не ответил вовремя, поэтому черновик не показан. Запрос не отправлен повторно: {provider} может всё ещё обработать его (и выставить за него счёт). Повторите попытку позже или выберите более быструю модель, чем «{model}», в «Настройки» → «Провайдеры ИИ».",
     ),
+    "assistant.error.uncertain": (
+        "The connection to {provider} closed after the request was sent and before a reply "
+        "came, so no draft is shown. {provider} may have received the request (and may bill "
+        "it); it was not sent again. Check your usage with {provider} before sending it once "
+        "more.",
+        "Savienojums ar {provider} pārtrūka pēc pieprasījuma nosūtīšanas, pirms pienāca atbilde, "
+        "tāpēc melnraksts netiek rādīts. {provider} pieprasījumu, iespējams, saņēma (un var par "
+        "to iekasēt maksu); tas netika nosūtīts atkārtoti. Pirms sūtāt to vēlreiz, pārbaudiet "
+        "lietojumu pie {provider}.",
+        "Соединение с {provider} прервалось после отправки запроса, до получения ответа, поэтому "
+        "черновик не показан. {provider} мог получить запрос (и выставить за него счёт); повторно "
+        "он не отправлен. Прежде чем отправить его ещё раз, проверьте расход у {provider}."),
     "assistant.error.unsupported": (
         "{provider} refused this request for the model “{model}”: the model may not answer a plain text request like this one (for example a model for images, audio or tools), or the request is too long for it. Choose another model in Settings → AI providers.",
         "{provider} noraidīja šo pieprasījumu modelim “{model}”: šis modelis, iespējams, neatbild uz šādu vienkāršu teksta pieprasījumu (piemēram, tas ir attēlu, audio vai rīku modelis), vai pieprasījums tam ir pārāk garš. Izvēlieties citu modeli sadaļā Iestatījumi → AI pakalpojumu sniedzēji.",

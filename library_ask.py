@@ -261,9 +261,10 @@ def send(request: AskRequest, *, setup: ai_context.Readiness, key: str, project,
         return logged
 
     try:
+        # Sent at most once: no automatic resend of an approved request.
         reply = ai_providers.generate(provider, key, model, request.prompt,
                                       max_output_tokens=request.reply_tokens, budget=budget,
-                                      cancel=cancel, **http)
+                                      cancel=cancel, resend=False, **http)
     except ai_providers.ProviderError as error:
         if error.reason not in ai_assist.NOT_SENT:
             record(model, 0, error.reason)

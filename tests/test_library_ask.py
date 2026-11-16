@@ -9,6 +9,8 @@ only, among them a memo whose text tries to steer the model.
 
 from __future__ import annotations
 
+import http.client
+import io
 import json
 import os
 from pathlib import Path
@@ -16,6 +18,8 @@ import re
 import sys
 from types import SimpleNamespace
 import unittest
+from unittest import mock
+import urllib.error
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -381,6 +385,61 @@ class RefusalTests(unittest.TestCase):
             with self.subTest(code=code), self.assertRaises(ai_context.ContextRefused) as refused:
                 library_ask.send(request, setup=setup, key="sk-test-x", project=project)
             self.assertEqual(refused.exception.codes[0], code)
+
+
+class ResendTests(unittest.TestCase):
+    """Independent review verify-stage37-rag, privacy F3: an approved request
+    is sent at most once. A connection closed or reset after the request
+    went out may mean the provider received it (and bills it): it is not
+    sent again, and the researcher is told the outcome is uncertain."""
+
+    def setUp(self):
+        hit = SimpleNamespace(rank=1, cite_id="DABCDEF12-p4.1",
+                              passage=SimpleNamespace(text="Synthetic passage.", page=4,
+                                                      section="Method"),
+                              document=SimpleNamespace(title="Synthetic paper", version_label=""))
+        self.request = library_ask.build_request("Did stress fall?", [hit])
+        self.logged = []
+        self.project = SimpleNamespace(
+            id="p", ai_permissions=lambda: {},
+            log_ai_request=lambda *a, **k: self.logged.append(k or a))
+
+    def attempt(self, error):
+        sent = []
+
+        class Opener:
+            def open(self, req, timeout=None):
+                sent.append(req.data)
+                if callable(error):
+                    raise error()
+                raise error
+
+        with mock.patch("time.sleep"), self.assertRaises(ap.ProviderError) as failed:
+            library_ask.send(self.request, setup=ai_context.Readiness("openai", "m", 0, ""),
+                             key="k", project=self.project, opener=Opener())
+        return sent, failed.exception
+
+    def test_a_request_whose_reply_is_lost_is_not_sent_again(self):
+        for error in (http.client.RemoteDisconnected("closed"),
+                      ConnectionResetError(104, "reset"), BrokenPipeError(32, "pipe")):
+            with self.subTest(error=type(error).__name__):
+                sent, failure = self.attempt(error)
+                self.assertEqual(len(sent), 1, type(error).__name__)
+                self.assertEqual(failure.reason, "uncertain")
+
+    def test_a_refusal_by_the_provider_is_reported_not_repeated(self):
+        for status in (429, 500, 503):
+            with self.subTest(status=status):
+                error = urllib.error.HTTPError("https://api.openai.com/v1/responses", status,
+                                               "refused", {}, io.BytesIO(b"{}"))
+                sent, failure = self.attempt(error)
+                self.assertEqual(len(sent), 1, status)
+                self.assertIn(failure.reason, ("rate_limited", "unavailable"))
+
+    def test_a_connection_that_was_never_made_may_be_tried_again(self):
+        sent, failure = self.attempt(urllib.error.URLError(ConnectionRefusedError(111, "no")))
+        self.assertEqual(len(sent), ap.RETRIES + 1)
+        self.assertEqual(failure.reason, "offline")
 
 
 if __name__ == "__main__":

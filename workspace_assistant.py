@@ -55,7 +55,7 @@ ERRORS = {
     "rows_not_anonymous": "rows_not_anonymous", "no_project": "no_project",
     "too_long": "too_long", "cancelled": "cancelled", "not_found": "not_found",
     "empty": "empty", "malformed": "malformed", "too_large": "malformed",
-    "timeout": "timeout", "unsupported": "unsupported",
+    "timeout": "timeout", "unsupported": "unsupported", "uncertain": "uncertain",
 }
 NEEDS_SETTINGS = {"not_ready", "no_store", "bad_key", "budget", "not_found", "empty", "unknown",
                   "timeout", "unsupported"}
