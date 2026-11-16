@@ -89,6 +89,7 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "table.indirect": "Model {model}: indirect effects (percentile bootstrap)",
         "table.indirect.columns": ("Path", "Effect", "Bootstrap SE", "95% CI"),
         "table.effects": "Model {model}: direct and total effects",
+        "table.direct": "Model {model}: direct effect",
         "table.effects.columns": ("Effect", "b", "SE", "t", "p", "95% CI"),
         "table.interaction": "Model {model}: test of the interaction",
         "table.interaction.columns": ("Product", "Equation", "ΔR²", "F", "df", "p", "f²"),
@@ -125,6 +126,8 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         # Summary and interpretation
         "summary.n": "N = {n} complete cases of {total} (listwise).",
         "summary.indirect": "Indirect effect via {m}: {est}, 95% bootstrap CI [{low}, {high}].",
+        "summary.indirect_total": "Total indirect effect: {est}, 95% bootstrap CI [{low}, "
+                                  "{high}].",
         "summary.interaction": "Interaction {product}: b = {est}, 95% CI [{low}, {high}], {p}; "
                                "ΔR² = {dr2}.",
         "summary.index": "Index of moderated mediation via {m}: {est}, 95% bootstrap CI "
@@ -233,6 +236,10 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "jn.none": "No Johnson–Neyman value lies within the observed range of W: the "
                    "conditional effect is {state} at p < {alpha} across the whole range.",
         "jn.state.significant": "different from zero",
+        "jn.none.no_evidence": "No Johnson–Neyman value lies within the observed range of W: "
+                               "p ≥ {alpha} for the conditional effect across the whole range; "
+                               "these data do not provide evidence that it differs from zero "
+                               "there; this does not show that it is zero.",
         "jn.state.not_significant": "not different from zero",
         "sensitivity.note": "Simulated with the same model and N: X, W and covariate rows are "
                             "resampled from the data, the other coefficients and the residual "
@@ -318,6 +325,7 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "table.indirect": "{model}. modelis: netiešie efekti (procentiļu bootstrap)",
         "table.indirect.columns": ("Ceļš", "Efekts", "Bootstrap SE", "95% TI"),
         "table.effects": "{model}. modelis: tiešais un kopējais efekts",
+        "table.direct": "{model}. modelis: tiešais efekts",
         "table.effects.columns": ("Efekts", "b", "SE", "t", "p", "95% TI"),
         "table.interaction": "{model}. modelis: mijiedarbības pārbaude",
         "table.interaction.columns": ("Reizinājums", "Vienādojums", "ΔR²", "F", "bp", "p",
@@ -354,6 +362,8 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "cell.total_eq": "{outcome} (kopējais efekts: tikai X un kovariāti)",
         "summary.n": "N = {n} pilnie gadījumi no {total} (pilno gadījumu analīze).",
         "summary.indirect": "Netiešais efekts caur {m}: {est}, 95% bootstrap TI [{low}, {high}].",
+        "summary.indirect_total": "Kopējais netiešais efekts: {est}, 95% bootstrap TI [{low}, "
+                                  "{high}].",
         "summary.interaction": "Mijiedarbība {product}: b = {est}, 95% TI [{low}, {high}], {p}; "
                                "ΔR² = {dr2}.",
         "summary.index": "Moderētās mediācijas indekss caur {m}: {est}, 95% bootstrap TI "
@@ -458,6 +468,10 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "jn.none": "Neviena Džonsona–Neimana vērtība nav novērotajā W diapazonā: nosacītais "
                    "efekts visā diapazonā ir {state} pie p < {alpha}.",
         "jn.state.significant": "atšķirīgs no nulles",
+        "jn.none.no_evidence": "Neviena Džonsona–Neimana vērtība nav novērotajā W diapazonā: "
+                               "visā diapazonā nosacītajam efektam p ≥ {alpha}; šie dati "
+                               "nesniedz pierādījumus, ka tas tur atšķiras no nulles; tas "
+                               "nenozīmē, ka tas ir nulle.",
         "jn.state.not_significant": "neatšķiras no nulles",
         "sensitivity.note": "Simulēts ar to pašu modeli un N: X, W un kovariātu rindas tiek "
                             "atkārtoti izlasītas no datiem, pārējie koeficienti un atlikumu "
@@ -542,6 +556,7 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "table.indirect": "Модель {model}: косвенные эффекты (процентильный бутстреп)",
         "table.indirect.columns": ("Путь", "Эффект", "Бутстреп SE", "95% ДИ"),
         "table.effects": "Модель {model}: прямой и общий эффекты",
+        "table.direct": "Модель {model}: прямой эффект",
         "table.effects.columns": ("Эффект", "b", "SE", "t", "p", "95% ДИ"),
         "table.interaction": "Модель {model}: проверка взаимодействия",
         "table.interaction.columns": ("Произведение", "Уравнение", "ΔR²", "F", "сс", "p", "f²"),
@@ -578,6 +593,8 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "cell.total_eq": "{outcome} (общий эффект: только X и ковариаты)",
         "summary.n": "N = {n} полных случаев из {total} (построчное исключение).",
         "summary.indirect": "Косвенный эффект через {m}: {est}, 95% бутстреп-ДИ [{low}, {high}].",
+        "summary.indirect_total": "Общий косвенный эффект: {est}, 95% бутстреп-ДИ [{low}, "
+                                  "{high}].",
         "summary.interaction": "Взаимодействие {product}: b = {est}, 95% ДИ [{low}, {high}], "
                                "{p}; ΔR² = {dr2}.",
         "summary.index": "Индекс модерируемой медиации через {m}: {est}, 95% бутстреп-ДИ "
@@ -686,6 +703,10 @@ TEXT: dict[str, dict[str, str | tuple[str, ...]]] = {
         "jn.none": "Ни одно значение Джонсона–Неймана не лежит в наблюдаемом диапазоне W: "
                    "условный эффект во всём диапазоне {state} при p < {alpha}.",
         "jn.state.significant": "отличается от нуля",
+        "jn.none.no_evidence": "Ни одно значение Джонсона–Неймана не лежит в наблюдаемом "
+                               "диапазоне W: во всём диапазоне p ≥ {alpha} для условного "
+                               "эффекта; эти данные не дают свидетельств, что он там отличен "
+                               "от нуля; это не означает, что он равен нулю.",
         "jn.state.not_significant": "не отличается от нуля",
         "sensitivity.note": "Смоделировано с той же моделью и N: строки X, W и ковариат "
                             "извлекаются с возвращением из данных, остальные коэффициенты и "

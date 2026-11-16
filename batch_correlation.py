@@ -257,8 +257,13 @@ def permutation_floor_warning(rows, adjust: str, family_size: int) -> list[str]:
             "two-sided permutation estimate with 1,999 resamples can give: the true p may be "
             "much smaller.")
     if adjust in ("holm", "bonferroni") and family_size > 1:
+        # Review numerics F1: under Holm a pair ranked after smaller p-values
+        # (an asymptotic p of a pair with more than 500 cases) is multiplied
+        # by fewer tests; the floor stated is the one that holds.
+        smaller = sum(1 for row in rows if row.status == "ok" and row.p_raw is not None
+                      and row.p_raw < PERMUTATION_FLOOR - 1e-12) if adjust == "holm" else 0
         text += (f" With {family_size} tests their adjusted p cannot fall below "
-                 f"{min(1.0, family_size * PERMUTATION_FLOOR):.3f}.")
+                 f"{min(1.0, (family_size - smaller) * PERMUTATION_FLOOR):.3f}.")
     text += (" The option “Spearman p-value: t approximation (as SPSS reports)” has no such "
              "floor.")
     return [text]

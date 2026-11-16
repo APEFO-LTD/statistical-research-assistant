@@ -108,16 +108,16 @@ These values come from one run of the scenario (fixture v1, generator seed 37012
 | H1 linear model | 180 | R² = .117; b_X = −0.396, 95% CI [−0.609, −0.183] |
 | H2 r with avoidance-like, assertive-like | 180 | .106 (Holm p = .156), −.187 (Holm p = .024) |
 | H3 r of Y with M, avoidance-like, assertive-like | 177 / 180 / 180 | .072, .047, .142 |
-| H4 indirect via M; via avoidance-like; total | 177 | 0.066 [−0.005, 0.152]; 0.013 [−0.022, 0.048]; 0.079 [0.001, 0.165]; c′ = −0.480, c = −0.402 |
+| H4 indirect via M; via avoidance-like; total | 177 | 0.066 [−0.005, 0.151]; 0.013 [−0.022, 0.048]; 0.078 [0.001, 0.165]; c′ = −0.480, c = −0.402 |
 | H4, prorated scores | 180 | via M 0.074 [0.002, 0.165] |
-| H5 X × W → Y | 178 | b3 = 0.220 [0.015, 0.425], ΔR² = .022; slopes −0.621, −0.405, −0.190; Johnson–Neyman W = 4.593 |
+| H5 X × W → Y | 178 | b3 = 0.220 [0.015, 0.425], ΔR² = .022; slopes −0.620, −0.405, −0.190; Johnson–Neyman W = 4.593 |
 | H6 X × W → avoidance-like | 178 | b3 = −0.0004 [−0.007, 0.006]; no Johnson–Neyman value in range |
 | H7 Model 7 index | 175 | 0.017 [−0.024, 0.076] |
 | H8 Model 14 index | 175 | −0.040 [−0.106, 0.032] |
 
 Two things the synthetic output shows about the program, not about any population:
 
-- **H4 is inconsistent mediation (suppression).** Each indirect effect is positive while c′ and c are negative. The interpretation says *inconsistent mediation (suppression; MacKinnon, Krull & Lockwood, 2000)*. It never says "partial" or "full" mediation (review S5).
+- **H4: suppression only where the signs are conclusive.** Each indirect point estimate is positive while c′ and c are negative. Only the total indirect effect has a bootstrap interval that excludes zero, so only it is called *inconsistent mediation (suppression; MacKinnon, Krull & Lockwood, 2000)*; for each specific indirect effect (intervals include zero) the interpretation says the sign difference is inconclusive (methods verification S37-INT-1). It never says "partial" or "full" mediation (review S5).
 - **The missing-data decision can move an interval across zero.** The interval of the indirect effect via M includes zero with listwise deletion (n = 177) and excludes it with prorated scores (n = 180). This is why the comparison is part of the scenario. The program reports both and decides nothing.
 
 ## 6. Fixture limits (review S6)

@@ -279,5 +279,73 @@ class F2RestoredSpearmanTests(unittest.TestCase):
                          "any other difference is still found")
 
 
+class SmallMinorTests(unittest.TestCase):
+    """S37-INT-4, S37-INT-6 and numerics F3 of the methods verification."""
+
+    def test_int4_no_johnson_neyman_point_does_not_assert_the_null(self):
+        from process_reporting import process_tables
+
+        r = fit_process(acceptance_frame(), ProcessSpec(
+            "1", "SYN_LON_TOTAL", "SYN_COPE_AVOID_LIKE", w="SYN_SUP_MEAN", covariates=COV))
+        self.assertEqual(r.johnson_neyman.points, ())
+        self.assertFalse(r.johnson_neyman.significant_everywhere)
+        rows = {}
+        for language in ("en", "lv", "ru"):
+            table = next(t for t in process_tables(r, language)
+                         if t.title == process_reporting._t(language, "table.jn"))
+            rows[language] = table.rows[0][0]
+        self.assertNotIn("is not different from zero", rows["en"])
+        self.assertIn("do not provide evidence", rows["en"])
+        self.assertNotIn("ir neatšķiras", rows["lv"])
+        self.assertNotIn("не отличается от нуля", rows["ru"])
+
+    def test_int6_models_7_and_14_table_holds_only_the_direct_effect(self):
+        from process_reporting import process_tables
+        from test_process_workspace import synthetic
+
+        r = fit_process(synthetic(), ProcessSpec("7", "x", "y", ("m1",), w="w", resamples=400))
+        for language in ("en", "lv", "ru"):
+            titles = [t.title for t in process_tables(r, language)]
+            self.assertNotIn(process_reporting._t(language, "table.effects", model="7"), titles)
+            self.assertIn(process_reporting._t(language, "table.direct", model="7"), titles)
+
+    def test_f3_the_total_indirect_effect_is_not_via_a_mediator(self):
+        from process_reporting import process_summary
+
+        r = fit_process(acceptance_frame(), ProcessSpec(
+            "4", "SYN_LON_TOTAL", "SYN_WELL_0_100", ("SYN_COPE_DIM1_MEAN", "SYN_COPE_AVOID_LIKE"),
+            covariates=COV))
+        self.assertNotIn("via Total indirect effect", process_summary(r, "en"))
+        self.assertIn("Total indirect effect: 0.078", process_summary(r, "en"))
+        self.assertNotIn("caur Kopējais", process_summary(r, "lv"))
+        self.assertNotIn("через Общий", process_summary(r, "ru"))
+
+
+class NumericsF1FloorWarningTests(unittest.TestCase):
+    """Numerics F1: the Holm floor stated for permutation-floor pairs is true
+    when the family mixes permutation and asymptotic Spearman p-values."""
+
+    def test_the_stated_floor_holds_for_every_floor_pair(self):
+        import re
+
+        from batch_correlation import correlate_many
+
+        rng = np.random.default_rng(11)
+        n = 600
+        x = rng.normal(size=n)
+        df = pd.DataFrame({"focal_score": x, "other_a": x + rng.normal(0, 1, n),
+                           "other_b": x + rng.normal(0, 1, n)})
+        df.loc[:149, "other_a"] = np.nan
+        family = correlate_many(df, "focal_score", ["other_a", "other_b"], method="spearman",
+                                adjust="holm", resamples=200)
+        floor = [r for r in family.rows if "permutation" in r.p_method
+                 and r.p_raw <= 0.001 + 1e-12]
+        self.assertTrue(floor)
+        note = next(w for w in family.warnings if "cannot fall below" in w)
+        bound = float(re.search(r"cannot fall below ([0-9]+\.[0-9]+)", note).group(1))
+        for row in floor:
+            self.assertGreaterEqual(row.p_adjusted + 1e-12, bound, note)
+
+
 if __name__ == "__main__":
     unittest.main()

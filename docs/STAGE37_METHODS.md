@@ -44,9 +44,9 @@ A W with two values is evaluated at both. A value outside the observed range is 
 
 **Options.**
 
-- **HC3.** Optional HC3 path standard errors, with t-based p-values and intervals as in `regression_analysis.py`. Model F and the ΔR² F tests stay classical; with HC3 the HC3 Wald F of each product is added.
+- **HC3.** Optional HC3 path standard errors, with t-based p-values and intervals as in `regression_analysis.py`. Model F and the ΔR² F tests stay classical; with HC3 the HC3 Wald F and p of each product are shown beside them in the interaction table (and, for the linear model, of each block in the blocks table), in EN/LV/RU (methods verification S37-INT-3).
 - **Mean-centring.** Optional. It applies to the variables that form products, wherever they are predictors. Conditional effects are always given at W values in the original metric, so they do not depend on centring (tested).
-- **Johnson–Neyman (Model 1).** The values of W where p = .05 are the roots of (b1 + b3u)² = t²(v11 + 2u·v13 + u²·v33), with u = W − centre. Only roots in the observed range are kept, with the share of the sample below and above each. Without a root the result states whether the effect is or is not different from zero over the whole range. **Validated** (§4).
+- **Johnson–Neyman (Model 1).** The values of W where p = .05 are the roots of (b1 + b3u)² = t²(v11 + 2u·v13 + u²·v33), with u = W − centre. Only roots in the observed range are kept, with the share of the sample below and above each. Without a root the result states that the effect differs from zero over the whole range, or that these data give no evidence that it does (it never states that the effect is zero; S37-INT-4). **Validated** (§4).
 
 **Effect sizes.**
 
@@ -141,7 +141,7 @@ The runner refuses to run without every confirmation the method asks for.
 
 - No causal verb in any language. EN, LV and RU outputs are scanned (`TextTests.test_no_causal_wording_and_no_mediation_labels_in_any_language`).
 - "Effect" is used only as the conventional name of a model quantity, and every result says so.
-- **Review S5 guard:** when an indirect effect has the opposite sign to c′ or c, the text says *inconsistent mediation (suppression; MacKinnon, Krull & Lockwood, 2000)*. Models 7 and 14 get the same note at the W values where the sign differs. No text uses "partial", "full" or "complete" mediation in any language.
+- **Review S5 guard:** when an indirect effect has the opposite sign to c′ or c, the text says *inconsistent mediation (suppression; MacKinnon, Krull & Lockwood, 2000)* only if the indirect effect's bootstrap interval excludes zero and so does the interval of the opposed effect (only conclusive ones are named); otherwise it says the sign difference is inconclusive (S37-INT-1). Models 7 and 14 apply the same rule at each W value (S37-INT-2). No text uses "partial", "full" or "complete" mediation in any language.
 
 **Figures** (`process_charts.py`):
 
@@ -215,7 +215,7 @@ The runner refuses to run without every confirmation the method asks for.
 | S12: no missingness summary or sensitivity re-run | done for the new models (summary, left-out comparison, `compare_estimates`) | `MissingDataTests`, acceptance |
 | S13: ω for more than 12 items | **not done**: ω stays validated for 3–12 items; a 13- or 20-item scale gets α and "not calculated" for ω | acceptance |
 
-**S10 in detail.** For n ≤ 500, Spearman's p is a two-sided permutation estimate with 1,999 resamples and a fixed seed. Its smallest value is 2/2000 = .001, and Holm over k tests cannot go below k × .001. The program now says so wherever the floor is reached. The t approximation with n − 2 df (the SPSS convention) has no floor. It is the existing option *Spearman p-value* of *Correlations: one variable with several*. The single-pair method has no such option, and its warning names the batch method.
+**S10 in detail.** For n ≤ 500, Spearman's p is a two-sided permutation estimate with 1,999 resamples and a fixed seed. Its smallest value is 2/2000 = .001, and Bonferroni over k tests cannot go below k × .001; Holm cannot go below (k − s) × .001, where s pairs have a smaller p (an asymptotic p of a pair with more than 500 cases; numerics F1). The program now says so wherever the floor is reached. The t approximation with n − 2 df (the SPSS convention) has no floor. It is the existing option *Spearman p-value* of *Correlations: one variable with several*. The single-pair method has no such option, and its warning names the batch method.
 
 ## 6. Limitations
 
@@ -287,3 +287,27 @@ This section belongs to the last commit of the branch. Dropping that commit remo
 - The main unit-test job installs both locks; the pruned-runtime job stays runtime-only, and the pingouin tests skip there.
 
 **The project licence remains the owner's decision.** This commit does not choose a licence and adds no LICENSE file; see `STAGE368_BUILD_LOCK.md` §5.3.
+
+
+## Fixes after the methods verification (`verify-stage37-methods.json`, reviewed `074dfbc`)
+
+Each fix has a red test in `tests/test_stage37_methods_fixes.py`, run against a clean export of `074dfbc` (it fails there) and green on the branch. No validated formula is changed; every independent oracle test still passes.
+
+| ID | Severity | Status | Fix | Proved by (`test_stage37_methods_fixes`) |
+|---|---|---|---|---|
+| S37-INT-1 | major | done | Model 4: the suppression label needs an indirect interval that excludes zero and a conclusive opposed effect; otherwise "the sign difference is inconclusive" (EN/LV/RU) | `S37Int1SuppressionModel4Tests` |
+| S37-INT-2 | major | done | Models 7/14: the same rule at each value of W; inconclusive W values get the inconclusive sentence | `S37Int2SuppressionConditionalTests` |
+| S37-INT-3 | major | done | the HC3 Wald F and p are shown (linear blocks table and structured quantities; path-model interaction table in EN/LV/RU); the notes say so | `S37Int3HC3Tests` |
+| integration F1 | major | done | a design confirmation that applies to an option value (Model 7, Model 14) records that value in its K1 scope; after a model switch it does not hold on any path (guided, Ctrl+Enter, Run again, clone, form) | `F1ModelBoundConfirmationTests` |
+| integration F2 | major | done | `same_report` also accepts a recalculated report equal to the saved one without the note lines a later version added (`ADDED_NOTES`, the S10 floor note), only if the saved report has none; golden 2f9af71 digest | `F2RestoredSpearmanTests` |
+| S37-INT-4 | minor | done | no Johnson–Neyman value: "these data do not provide evidence …; this does not show that it is zero" (EN/LV/RU) | `SmallMinorTests` |
+| S37-INT-6 | minor | done | Models 7/14: the table is titled "direct effect" | `SmallMinorTests` |
+| numerics F1 | minor | done | the Holm floor stated is (k − s) × .001 | `NumericsF1FloorWarningTests` |
+| numerics F2 | minor | done | `STAGE37_MASTER_ACCEPTANCE.md` §5: 0.151, 0.078, −0.620 as the program prints them; the H4 suppression sentence follows S37-INT-1 | doc |
+| numerics F3 | minor | done | the total indirect effect is "Total indirect effect: …", not "via Total indirect effect" | `SmallMinorTests` |
+
+**Deferred minors, with reasons.**
+- S37-INT-5 and integration F5 (an unchosen Model 7/14 counts as a chosen method in `task_facts` and H-METHOD-DIFFERS): the 37.0a workflow's method facts need an "unchosen option" state; a workflow change across `research_workflow`, outside this method fix.
+- integration F3 (factor category limits only inside the linear engine): needs a localized role check in `linear_problems`; a new refusal path with its own texts.
+- integration F4 (the "more than two categories" message for a two-category nominal coded 1/2): needs a reworded message and a decision on recoding guidance.
+- locks F1 (`STAGE368_BUILD_LOCK.md` present-tense counts 49 / 228 / 13): a packaging record of the licence commit; left to the lock owner so the SBOM counts are regenerated, not hand-edited.

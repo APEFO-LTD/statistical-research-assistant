@@ -155,9 +155,9 @@ def process_tables(result, language: str = "en", sensitivity=None) -> tuple[Proc
                             for point, below, above, (effect, se, p)
                             in zip(jn.points, jn.below, jn.above, jn.effects))
         else:
-            state = ("jn.state.significant" if jn.significant_everywhere
-                     else "jn.state.not_significant")
-            jn_rows = ((_t(language, "jn.none", state=_t(language, state),
+            # Review S37-INT-4: the null result is not stated as a fact.
+            key = "jn.none" if jn.significant_everywhere else "jn.none.no_evidence"
+            jn_rows = ((_t(language, key, state=_t(language, "jn.state.significant"),
                            alpha=f"{jn.alpha:g}"), "", "", "", "", ""),)
         tables.append(ProcessTable(_t(language, "table.jn"),
                                    _columns(language, "table.jn.columns"), jn_rows))
@@ -175,7 +175,7 @@ def process_tables(result, language: str = "en", sensitivity=None) -> tuple[Proc
                    ci(e.ci_low, e.ci_high)) for e in conditional)))
         direct = [e for e in result.effects if e.key == "direct"]
         tables.append(ProcessTable(
-            _t(language, "table.effects", model=model),
+            _t(language, "table.direct", model=model),     # review S37-INT-6: no total here
             _columns(language, "table.effects.columns"),
             tuple((_effect_label(e, language), num(e.value), num(e.se), f"{e.t:.2f}",
                    p_cell(e.p), ci(e.ci_low, e.ci_high)) for e in direct)))
@@ -308,9 +308,11 @@ def process_summary(result, language: str = "en") -> str:
     model = result.spec.model
     if model == "4":
         for e in result.indirect:
-            if e.key.startswith("indirect:") or e.key == "indirect_total":
-                lines.append(_t(language, "summary.indirect",
-                                m=e.mediator or _t(language, "q.indirect_total"),
+            if e.key.startswith("indirect:"):
+                lines.append(_t(language, "summary.indirect", m=e.mediator,
+                                est=num(e.value), low=num(e.ci_low), high=num(e.ci_high)))
+            elif e.key == "indirect_total":           # review numerics F3: not "via"
+                lines.append(_t(language, "summary.indirect_total",
                                 est=num(e.value), low=num(e.ci_low), high=num(e.ci_high)))
     if model == "1":
         e = result.estimate("interaction")
