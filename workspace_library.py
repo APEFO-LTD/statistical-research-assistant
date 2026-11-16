@@ -187,7 +187,14 @@ class LibraryPage:
         body: list[ft.Control] = [header]
         if self.message:
             body.append(wc.notice(ui, self.message[0], self.message[1], data="library-message"))
-        body += [self._documents(library), self._search(library), self._ask(library)]
+        cards = [self._documents(library), self._search(library), self._ask(library)]
+        # Keyed: a message coming or going shifts the cards, and Flet pairs
+        # unkeyed siblings by position, so the search and question fields
+        # and the backup box would be rebuilt and lose focus and caret
+        # (independent review integration F2).
+        for control, key in zip(cards, ("library-documents", "library-search", "library-ask")):
+            control.key = key
+        body += cards
         return app.constrained(ft.Column(body, spacing=tk.SPACE_4, data="library-page",
                                          horizontal_alignment=ft.CrossAxisAlignment.STRETCH))
 

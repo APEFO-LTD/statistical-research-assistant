@@ -437,6 +437,44 @@ class HardeningTests(LibraryUiCase):
         del page
 
 
+class StableRenderTests(LibraryUiCase):
+    """Independent review verify-stage37-rag, integration F2: the message
+    notice coming or going must not shift the cards, or Flet rebuilds the
+    search field, the question field and the backup box as new widgets and
+    their focus and caret are lost (workspace_shell promises they survive)."""
+
+    def same_widget(self, data: str, change) -> bool:
+        import warnings
+
+        from flet.controls.base_control import BaseControl
+        from flet.controls.object_patch import ObjectPatch
+
+        ws = self.ws
+        old, before = ws.app.page_control, ws.find(data)
+        change()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ObjectPatch.from_diff([old], [ws.app.page_control], control_cls=BaseControl,
+                                  frozen=True)
+        return ws.find(data)._i == before._i
+
+    def test_the_fields_survive_a_message_appearing_or_going(self):
+        ws = self.ws
+        self.project()
+        page = self.open_library()
+        ws.type("library-query", "coping")
+        self.assertTrue(self.same_widget("library-backup",
+                                         lambda: ws.check("library-backup", True)),
+                        "the backup box after its own message appears")
+        self.assertTrue(self.same_widget("library-query", lambda: self.add((fx.EN_NOTES, "txt"))),
+                        "the search field across an Add")
+        self.assertEqual(ws.find("library-query").value, "coping")
+        self.assertTrue(ws.find_all("library-message"))
+        note = fx.write(fx.LV_NOTES, self.files, "txt")
+        self.assertTrue(self.same_widget(
+            "library-query", lambda: ws.run(page.add_files(picked(note)))))
+
+
 class LanguageTests(unittest.TestCase):
     def test_every_part_of_the_page_reads_in_every_language(self):
         for language in ("en", "lv", "ru"):
