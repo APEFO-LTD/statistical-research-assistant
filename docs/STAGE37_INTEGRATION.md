@@ -191,3 +191,29 @@ The commit that adds this section changes only this document.
 
 Not run here: the Windows workflows (GUI journeys, package, installer, update).
 The six Stage 37 journeys have been checked only in the harness and have not run on Windows.
+
+
+## 8. Windows journeys of PR #79: root causes
+
+The installer run 43890696464 (commit `8c6afb3`) and the packaged GUI run
+43890696377 (same commit) passed 22 of 24 journeys. The installer run
+43894133123 (`90d0b40`) failed one more step (project-a). The packaged run
+43894133074 (`90d0b40`) failed only the same two. `8c6afb3` and `90d0b40`
+have the same product code.
+
+| Journey, step | Root cause | Kind | Fix |
+|---|---|---|---|
+| `stage37-hypothesis`, "UCLA with the eight scales, Spearman, Run": no *All quantitative (9)* | After *Create the analysis for H1*, U11 put the keyboard focus on the *First variable* dropdown (`autofocus` + `focus()`). Flet's non-editable dropdown gives its field a focus node that refuses focus (`canRequestFocus = editable`). When asked anyway, its open menu ignored the first arrow key. Down×3 therefore chose Sex instead of UCLA. The screenshot says "Sex — already the first variable", and the panel correctly offered *All quantitative (10)*. Once UCLA is the first variable the panel offers *(9)*, so the journey's selector was right. This was reproduced in a real Flutter client (Flet web, Chromium, Playwright): Sex with the request, UCLA without it. In the other journeys the keyboard choice worked and none of them had a focus request. | product | `8d9d0e9`: `WorkspaceApp.can_take_focus` does not treat a non-editable dropdown as a focus target. The request goes to the next control instead (the panel's *Find variables*). |
+| `startup-workspace`, "Settings: the classic interface as the start interface": saved `workspace` | The menu of *Interface at start* exposes no entries to UI Automation, so the driver chose by keyboard. UI Automation exposes no value of a Flet dropdown (it read `''`), so the driver counted two Downs from "no entry". Flutter's `DropdownMenu` (material_ui 1.6.0) opens a freshly built dropdown with the shown entry (*Research workspace*) highlighted, so the two Downs wrapped round to it. In Flet web, two Downs keep `workspace` and one Down gives `classic`, so a keyboard user can choose the classic interface. This is not (a), an inaccessible control. It is not (b), a lost update: a choice is saved when it is made, and a new test interleaves the Settings choice, the export cards and a second settings instance. | driver | `890178f`: `keyboard_keys()` counts from the shown entry, and `choose(current=…)` names that entry. The journey passes it. |
+| `project-a`, "choose outcome, group and covariate": no *Outcome* (installer run 43894133123 only) | The click on the ANCOVA card in the step before was lost. At the end of "open ANCOVA among all methods" the screenshot shows the method catalogue and Windows' system menu open. The next step closed the menu (`[menu] … closing it`) and found no form. That step checked nothing after its click, so the failure surfaced one step later. **What opened the system menu is not established.** The driver sent no key in that step, the file dialog was filled by a click (no Alt+N), and the program's window guard made 0 interventions. | driver (step without a check); the trigger is unknown | `890178f`: `open_method_form()` waits for the form's first field. If the form is missing, it logs the lost click and whether the system menu is open, closes the menu and clicks the card once more. |
+
+Tests that fail without the fixes: `test_stage37_journey` (focus after
+*Create the analysis for H1*), `test_stage37_settings`
+(`can_take_focus`), `test_stage37_shell_journeys` (`DropdownKeyboardTests`
+and the harness walk with `current=`, and `MethodFormTests`). Evidence only (it
+passes before and after): `test_stage37_integration`
+(`test_the_start_interface_survives_the_other_writers_of_the_settings_file`).
+
+Full suite after these fixes, run once on `890178f` with the command in §7:
+1834 tests ran in 1410 s, **OK, 10 skipped**. These journeys have not run
+on Windows again yet.
